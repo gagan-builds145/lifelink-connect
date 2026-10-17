@@ -1,0 +1,241 @@
+import { api } from "@/convex/_generated/api";
+import { SignupFrame } from "@/components/lifelink/SignupFrame";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useAuth } from "@/hooks/use-auth";
+import { BLOOD_GROUPS, CITIES, donationGuidance } from "@/lib/blood";
+import { useMutation } from "convex/react";
+import { AlertTriangle, HeartHandshake, Loader2, ShieldCheck } from "lucide-react";
+import { useState } from "react";
+import { useNavigate } from "react-router";
+import { toast } from "sonner";
+
+function dobLimits() {
+  const now = new Date();
+  const adult = new Date(now.getFullYear() - 18, now.getMonth(), now.getDate());
+  const senior = new Date(now.getFullYear() - 65, now.getMonth(), now.getDate());
+  return {
+    max: adult.toISOString().slice(0, 10),
+    min: senior.toISOString().slice(0, 10),
+    today: now.toISOString().slice(0, 10),
+  };
+}
+
+export default function SignupDonor() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const register = useMutation(api.profiles.registerDonor);
+  const limits = dobLimits();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [consent, setConsent] = useState(false);
+  const [form, setForm] = useState({
+    fullName: user?.name ?? "",
+    dateOfBirth: "",
+    gender: "",
+    phone: user?.phone ?? "",
+    address: "",
+    city: "Pune",
+    area: "",
+    bloodGroup: "O+",
+    lastDonationDate: "",
+    preferredCenter: "",
+    available: true,
+    shareContact: true,
+  });
+
+  const set = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) =>
+    setForm((prev) => ({ ...prev, [key]: value }));
+
+  const guidance = donationGuidance(form.lastDonationDate || null);
+
+  return (
+    <SignupFrame
+      eyebrow="Donor registration"
+      title="Become a LifeLink donor"
+      description="A unique donor ID is generated on the server. You stay in control of availability and whether an authorized coordinator may see your contact details."
+      asideTitle="Your blood type could be someone's only match."
+      asideBody="Register once, then switch availability on when you can donate. LifeLink only shares verified requests — never a public donor list or your precise address."
+    >
+      <div className="mb-4 rounded-xl border border-teal-200 bg-teal-50/70 p-3 text-[11px] leading-5 text-teal-900">
+        <span className="flex items-center gap-1.5 font-bold">
+          <ShieldCheck className="size-3.5" />
+          Email verified · passwordless
+        </span>
+        <p className="mt-1 text-teal-800/80">
+          {user?.email
+            ? `Your verified email is ${user.email}. `
+            : "Your secure guest session is active. "}
+          No password is stored. Add an email from your account settings later if needed.
+        </p>
+      </div>
+
+      {error && (
+        <Alert variant="destructive" role="alert" className="mb-4">
+          <AlertTriangle className="size-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
+      <form
+        className="space-y-4"
+        noValidate
+        onSubmit={async (event) => {
+          event.preventDefault();
+          setError(null);
+          if (!consent) {
+            setError("Confirm the donor declaration to continue.");
+            return;
+          }
+          if (!form.dateOfBirth) {
+            setError("Enter your date of birth.");
+            return;
+          }
+          if (!/^\+?\d{10,15}$/.test(form.phone.replace(/[\s()-]/g, ""))) {
+            setError("Enter a valid phone number (10–15 digits).");
+            return;
+          }
+          if (form.address.trim().length < 5) {
+            setError("Enter your address or locality (at least 5 characters).");
+            return;
+          }
+          setBusy(true);
+          try {
+            const result = await register({
+              fullName: form.fullName,
+              bloodGroup: form.bloodGroup as (typeof BLOOD_GROUPS)[number],
+              dateOfBirth: form.dateOfBirth,
+              gender: form.gender || undefined,
+              phone: form.phone,
+              address: form.address,
+              city: form.city,
+              area: form.area.trim() || undefined,
+              preferredCenter: form.preferredCenter.trim() || undefined,
+              lastDonationDate: form.lastDonationDate || undefined,
+              available: form.available,
+              shareContact: form.shareContact,
+              consent: true,
+            });
+            toast.success(`Donor profile created · ${result.donorId}`, {
+              description: "Your donor ID is generated by the server and is unique to your account.",
+            });
+            navigate("/donor/dashboard", { replace: true });
+          } catch (err) {
+            setError(err instanceof Error ? err.message : "Registration failed.");
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label htmlFor="donor-name">Full name</Label>
+            <Input id="donor-name" value={form.fullName} onChange={(e) => set("fullName", e.target.value)} placeholder="As on your ID" required />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="donor-dob">Date of birth</Label>
+            <Input id="donor-dob" type="date" min={limits.min} max={limits.max} value={form.dateOfBirth} onChange={(e) => set("dateOfBirth", e.target.value)} required />
+            <p className="text-[10px] text-muted-foreground">Registration is limited to ages 18–65; medical staff confirm eligibility.</p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="donor-gender">Gender (optional)</Label>
+            <Select value={form.gender} onValueChange={(v) => set("gender", v)}>
+              <SelectTrigger id="donor-gender" className="w-full"><SelectValue placeholder="Prefer not to say" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="female">Female</SelectItem>
+                <SelectItem value="male">Male</SelectItem>
+                <SelectItem value="other">Other</SelectItem>
+                <SelectItem value="prefer_not_to_say">Prefer not to say</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="donor-phone">Phone</Label>
+            <Input id="donor-phone" type="tel" value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder="+91 98765 43210" required />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="donor-blood">Blood group</Label>
+            <Select value={form.bloodGroup} onValueChange={(v) => set("bloodGroup", v)}>
+              <SelectTrigger id="donor-blood" className="w-full font-semibold"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {BLOOD_GROUPS.map((group) => <SelectItem key={group} value={group}>{group}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <p className="text-[10px] text-muted-foreground">Blood group changes require staff verification.</p>
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label htmlFor="donor-address">Address / locality</Label>
+            <Input id="donor-address" value={form.address} onChange={(e) => set("address", e.target.value)} placeholder="Building / street / area" required />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="donor-city">City</Label>
+            <Select value={form.city} onValueChange={(v) => set("city", v)}>
+              <SelectTrigger id="donor-city" className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {CITIES.map((city) => <SelectItem key={city} value={city}>{city}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="donor-area">Area (optional)</Label>
+            <Input id="donor-area" value={form.area} onChange={(e) => set("area", e.target.value)} placeholder="e.g. Kothrud" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="donor-center">Preferred donation center (optional)</Label>
+            <Input id="donor-center" value={form.preferredCenter} onChange={(e) => set("preferredCenter", e.target.value)} placeholder="Verified branch or blood bank" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="donor-last">Last donation date (optional)</Label>
+            <Input id="donor-last" type="date" max={limits.today} value={form.lastDonationDate} onChange={(e) => set("lastDonationDate", e.target.value)} />
+            <p className="text-[10px] text-muted-foreground">{guidance.label}.</p>
+          </div>
+        </div>
+
+        <div className="space-y-3 rounded-xl border border-border bg-muted/25 p-3.5">
+          <label className="flex cursor-pointer items-start gap-2.5">
+            <Checkbox checked={form.available} onCheckedChange={(v) => set("available", v === true)} className="mt-0.5" />
+            <span className="text-[11.5px] leading-5">
+              <strong>Available for matching.</strong>{" "}
+              <span className="text-muted-foreground">You can change this at any time from your dashboard.</span>
+            </span>
+          </label>
+          <label className="flex cursor-pointer items-start gap-2.5">
+            <Checkbox checked={form.shareContact} onCheckedChange={(v) => set("shareContact", v === true)} className="mt-0.5" />
+            <span className="text-[11.5px] leading-5">
+              <strong>Share my phone with authorized Red Cross coordinators.</strong>{" "}
+              <span className="text-muted-foreground">Hospitals and the public never see it. Your full address is never public.</span>
+            </span>
+          </label>
+        </div>
+
+        <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-primary/15 bg-primary/[0.035] p-3.5">
+          <Checkbox checked={consent} onCheckedChange={(v) => setConsent(v === true)} className="mt-0.5" />
+          <span className="text-[11px] leading-5 text-muted-foreground">
+            I confirm the details are accurate and I am 18–65 years old. I understand
+            that final donor eligibility, screening and donation decisions are made by
+            qualified medical personnel, not by LifeLink.
+          </span>
+        </label>
+
+        <Button type="submit" className="h-11 w-full gap-2" disabled={busy}>
+          {busy ? <Loader2 className="size-4 animate-spin" /> : <HeartHandshake className="size-4" />}
+          {busy ? "Creating your donor ID…" : "Create donor account"}
+        </Button>
+        <p className="text-center text-[10px] leading-5 text-muted-foreground">
+          You will go straight to your donor dashboard. Registration details are stored
+          once in the shared LifeLink database.
+        </p>
+      </form>
+    </SignupFrame>
+  );
+}

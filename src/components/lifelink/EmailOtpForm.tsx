@@ -226,7 +226,7 @@ export function EmailOtpForm({
         </div>
       )}
 
-      {!compact && (
+      {
         <>
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
@@ -246,12 +246,12 @@ export function EmailOtpForm({
             {guestBusy ? <Loader2 className="size-4 animate-spin" /> : <UserRound className="size-4" />}
             Continue as demo guest
           </Button>
-          <p className="text-center text-[11.5px] leading-5 text-muted-foreground">
+          <p className={cn("text-center text-[11.5px] leading-5 text-muted-foreground", compact && "text-[10.5px]")}>
             Guest access creates a real account. Choose a role next; staff roles still
             require an organization authorization code.
           </p>
         </>
-      )}
+      }
     </div>
   );
 }

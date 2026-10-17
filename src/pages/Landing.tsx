@@ -489,7 +489,7 @@ export default function Landing() {
                 </Link>
               </Button>
               <Button asChild size="lg" variant="outline" className="h-11 gap-2 px-5">
-                <Link to="/auth?returnTo=%2Frequestor%2Fdashboard">
+                <Link to="/signup/requestor">
                   <Siren className="size-4 text-primary" />
                   Request Blood
                 </Link>
@@ -580,7 +580,7 @@ export default function Landing() {
             </p>
             <div className="mt-7 flex flex-wrap gap-2.5">
               <Button asChild size="lg" className="h-11 gap-2 bg-primary text-primary-foreground hover:bg-primary/90">
-                <Link to="/auth?returnTo=%2Frequestor%2Fdashboard">
+                <Link to="/signup/requestor">
                   <Siren className="size-4" />
                   Start an emergency request
                 </Link>
@@ -673,7 +673,7 @@ export default function Landing() {
             <div className="flex items-center justify-between gap-3 border-b border-border pb-3">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Availability snapshot</p>
-                <p className="mt-0.5 text-[12px] text-muted-foreground">Verified sources, unexpired unexpired stock only</p>
+                <p className="mt-0.5 text-[12px] text-muted-foreground">Verified sources, unexpired unreserved stock only</p>
               </div>
               <Button asChild variant="ghost" size="sm" className="gap-1 text-[11px]">
                 <Link to="/blood-search">View all <ArrowRight className="size-3" /></Link>

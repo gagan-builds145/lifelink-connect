@@ -1,11 +1,12 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { requireUser } from "./lib/helpers";
+import { optionalUser, requireUser } from "./lib/helpers";
 
 export const listMine = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireUser(ctx);
+    const user = await optionalUser(ctx);
+    if (!user) return [];
     const rows = await ctx.db
       .query("notifications")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
@@ -29,7 +30,8 @@ export const listMine = query({
 export const unreadCount = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireUser(ctx);
+    const user = await optionalUser(ctx);
+    if (!user) return 0;
     const rows = await ctx.db
       .query("notifications")
       .withIndex("by_user", (q) => q.eq("userId", user._id).eq("read", false))

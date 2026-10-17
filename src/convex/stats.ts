@@ -172,9 +172,13 @@ export const staffAnalytics = query({
           (sum, i) => sum + i.unitsAvailable - i.unitsReserved,
           0,
         ),
-        pendingVerification: scopedRequests.filter((r) => r.status === "pending").length,
+        pendingVerification: scopedRequests.filter(
+          (r) => r.status === "pending" || r.status === "under_verification",
+        ).length,
         approved: scopedRequests.filter((r) => r.status === "approved").length,
-        fulfilled: scopedRequests.filter((r) => r.status === "fulfilled").length,
+        fulfilled: scopedRequests.filter(
+          (r) => r.status === "fulfilled" || r.status === "received",
+        ).length,
         emergency: scopedRequests.filter(
           (r) => r.urgency === "emergency" && !["fulfilled", "rejected", "cancelled"].includes(r.status),
         ).length,

@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import {
   audit,
+  enforceRateLimit,
   getDonorProfile,
   getRequestorProfile,
   nextSequentialId,
@@ -231,6 +232,7 @@ export const registerOrganization = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
+    await enforceRateLimit(ctx, `org-register:${user._id}`, 5);
     if (args.consent !== true) {
       throw new Error("Please confirm you are authorized to register this organization.");
     }

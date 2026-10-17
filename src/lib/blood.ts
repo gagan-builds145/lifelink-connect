@@ -144,16 +144,22 @@ const RED_CELL_TARGETS: Record<BloodGroup, BloodGroup[]> = {
   "AB+": ["AB+"],
 };
 
-/** Plasma compatibility runs the opposite way to red cells. */
+/**
+ * Plasma compatibility is driven by donor plasma antibodies, not recipient
+ * red-cell antigens, so it is not the red-cell table reversed. AB plasma has no
+ * anti-A/anti-B and is the universal plasma donor; O plasma has both and is
+ * only given to O recipients. Rh is not routinely matched for plasma, but the
+ * final decision remains with the transfusion service.
+ */
 const PLASMA_TARGETS: Record<BloodGroup, BloodGroup[]> = {
   "AB+": ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"],
-  "AB-": ["A-", "B-", "AB-", "O-"],
-  "A+": ["A+", "AB+"],
-  "A-": ["A-", "AB-"],
-  "B+": ["B+", "AB+"],
-  "B-": ["B-", "AB-"],
-  "O+": ["O+", "A+", "B+", "AB+"],
-  "O-": ["O-", "A-", "B-", "AB-"],
+  "AB-": ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"],
+  "A+": ["A+", "A-", "O+", "O-"],
+  "A-": ["A+", "A-", "O+", "O-"],
+  "B+": ["B+", "B-", "O+", "O-"],
+  "B-": ["B+", "B-", "O+", "O-"],
+  "O+": ["O+", "O-"],
+  "O-": ["O+", "O-"],
 };
 
 export type CompatibilityResult = {
@@ -178,8 +184,8 @@ export function compatibility(
       compatible: ok,
       basis: ok ? "component_specific" : "not_compatible",
       note: ok
-        ? "Plasma compatibility is ABO-reversed; final issue requires laboratory confirmation."
-        : "Plasma compatibility rules do not allow this direction.",
+        ? "Plasma compatibility follows donor-antibody rules; final issue requires laboratory confirmation."
+        : "Donor plasma antibodies are not compatible with this recipient group.",
     };
   }
   if (component === "platelets") {

@@ -471,7 +471,6 @@ export default function HospitalDashboard() {
                   </div>
                   <div className="mt-3 flex items-center justify-between border-t border-border pt-2.5">
                     <VerifiedBadge />
-                    <a href={`tel:${item.organizationId}`} className="hidden" aria-hidden />
                   </div>
                 </div>
               ))}

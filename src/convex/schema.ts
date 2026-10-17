@@ -156,6 +156,27 @@ const schema = defineSchema(
       .index("by_organization", ["organizationId"])
       .index("by_request", ["requestId"]),
 
+    // Per-request allocation of reserved units. Reservations are tracked against
+    // the exact inventory batch so dispatch consumes the units that were held
+    // for this request rather than unrelated free stock.
+    inventoryReservations: defineTable({
+      inventoryId: v.id("inventory"),
+      organizationId: v.id("organizations"),
+      requestId: v.id("bloodRequests"),
+      units: v.number(),
+      status: v.union(
+        v.literal("active"),
+        v.literal("consumed"),
+        v.literal("released"),
+      ),
+      actorUserId: v.id("users"),
+      createdAt: v.number(),
+      updatedAt: v.number(),
+    })
+      .index("by_request", ["requestId"])
+      .index("by_inventory", ["inventoryId"])
+      .index("by_status", ["status"]),
+
     bloodRequests: defineTable({
       requestId: v.string(),
       source: v.union(v.literal("requestor"), v.literal("hospital")),

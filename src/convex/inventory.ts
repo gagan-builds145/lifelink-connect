@@ -431,6 +431,7 @@ export const availableBatchesFor = query({
     const items = await ctx.db.query("inventory").collect();
     return items
       .filter((i) => {
+        if (!verified.has(i.organizationId)) return false;
         if (!i.verified || i.expiryDate < todayIso()) return false;
         if (i.bloodGroup !== args.bloodGroup || i.component !== args.component) return false;
         if (i.unitsAvailable - i.unitsReserved <= 0) return false;

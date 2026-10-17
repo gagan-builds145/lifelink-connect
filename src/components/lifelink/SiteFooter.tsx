@@ -9,7 +9,7 @@ const columns = [
       { label: "Find blood", href: "/blood-search" },
       { label: "Donation camps", href: "/donation-camps" },
       { label: "Become a donor", href: "/signup/donor" },
-      { label: "Request blood", href: "/auth?returnTo=%2Frequestor%2Fdashboard" },
+      { label: "Request blood", href: "/signup/requestor" },
     ],
   },
   {

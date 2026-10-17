@@ -6,6 +6,7 @@ import {
   enforceRateLimit,
   getDonorProfile,
   nextSequentialId,
+  normalizeEmail,
   notifyOrganization,
   notifyRole,
   notifyUser,
@@ -88,6 +89,37 @@ async function addHistory(
   });
 }
 
+/**
+ * Donor alerts are sent only after a request has been verified/approved, never
+ * while it is an unverified submission. The payload never contains patient
+ * identity, contact details or a precise address.
+ */
+async function notifyCompatibleDonors(
+  ctx: any,
+  request: Doc<"bloodRequests">,
+) {
+  const donors = await ctx.db
+    .query("donorProfiles")
+    .withIndex("by_availability", (q: any) => q.eq("available", true))
+    .collect();
+  let notified = 0;
+  for (const donor of donors) {
+    if (notified >= 25) break;
+    if (donor.city !== request.city) continue;
+    if (!compatibility(donor.bloodGroup, request.bloodGroup, request.component).compatible) {
+      continue;
+    }
+    await notifyUser(ctx, donor.userId, {
+      title: `Donor match near ${request.city}`,
+      body: `A verified ${URGENCY_LABELS[request.urgency].toLowerCase()} request needs ${request.component.replace("_", " ")} at a hospital in ${request.city}. Open your dashboard to view the masked request.`,
+      kind: "match",
+      requestId: request._id,
+      link: "/donor/dashboard",
+    });
+    notified += 1;
+  }
+}
+
 export const create = mutation({
   args: {
     source: v.union(v.literal("requestor"), v.literal("hospital")),
@@ -145,7 +177,10 @@ export const create = mutation({
     if (requiredBy > Date.now() + 90 * 86_400_000) {
       throw new Error("Required date must be within the next 90 days.");
     }
-    if (args.patientAge != null && (args.patientAge < 0 || args.patientAge > 120)) {
+    if (
+      args.patientAge != null &&
+      (!Number.isFinite(args.patientAge) || args.patientAge < 0 || args.patientAge > 120)
+    ) {
       throw new Error("Patient age must be between 0 and 120.");
     }
 
@@ -170,7 +205,7 @@ export const create = mutation({
       requestorName: requireText(args.requestorName, "Requestor name"),
       requestorType: args.requestorType,
       requesterPhone,
-      requesterEmail: args.requesterEmail,
+      requesterEmail: args.requesterEmail ? normalizeEmail(args.requesterEmail) : undefined,
       patientName,
       patientRef,
       patientAge: args.patientAge,
@@ -223,29 +258,6 @@ export const create = mutation({
         requestId: id,
         link: "/hospital/dashboard",
       });
-    }
-
-    // Notify only verified-available, compatible donors in the same city, with
-    // no patient identifiers in the payload.
-    const donors = await ctx.db
-      .query("donorProfiles")
-      .withIndex("by_availability", (q) => q.eq("available", true))
-      .collect();
-    let notified = 0;
-    for (const donor of donors) {
-      if (notified >= 25) break;
-      if (donor.city !== city) continue;
-      if (!compatibility(donor.bloodGroup, args.bloodGroup, args.component).compatible) {
-        continue;
-      }
-      await notifyUser(ctx, donor.userId, {
-        title: `Donor match near ${city}`,
-        body: `A verified ${URGENCY_LABELS[args.urgency].toLowerCase()} request needs ${args.component.replace("_", " ")} at a hospital in ${city}. Open your dashboard to view the masked request.`,
-        kind: "match",
-        requestId: id,
-        link: "/donor/dashboard",
-      });
-      notified += 1;
     }
 
     await audit(ctx, {
@@ -336,7 +348,7 @@ export const getDetail = query({
     const donorCompatible =
       donor != null &&
       compatibility(donor.bloodGroup, request.bloodGroup, request.component).compatible &&
-      ["pending", "under_verification", "approved"].includes(request.status);
+      request.status === "approved";
     if (!full && !donorCompatible) {
       return null;
     }
@@ -397,12 +409,22 @@ export const getDetail = query({
     const assignedOrg = request.assignedOrgId
       ? await ctx.db.get(request.assignedOrgId)
       : null;
+    const activeReservations = full
+      ? await ctx.db
+          .query("inventoryReservations")
+          .withIndex("by_request", (q) => q.eq("requestId", request._id))
+          .collect()
+      : [];
+    const reservedUnits = activeReservations
+      .filter((r) => r.status === "active")
+      .reduce((sum, r) => sum + r.units, 0);
 
     return {
       viewer: full ? ("full" as const) : ("donor" as const),
       request: {
         ...summaryFields(request),
         area: request.area ?? null,
+        requestorType: request.requestorType,
         patientName: full ? request.patientName : "Confidential",
         patientAge: full ? request.patientAge ?? null : null,
         patientRef: full ? request.patientRef : "Restricted",
@@ -417,6 +439,7 @@ export const getDetail = query({
         hospitalOrgId: request.hospitalOrgId ?? null,
         assignedOrgName: assignedOrg?.name ?? null,
         assignedOrgPhone: full ? assignedOrg?.phone ?? null : null,
+        reservedUnits,
         documentId: full ? request.documentId ?? null : null,
       },
       history: history
@@ -493,7 +516,7 @@ export const updateStatus = mutation({
       if (
         role !== "hospital" ||
         !user.organizationId ||
-        request.assignedOrgId !== user.organizationId
+        request.hospitalOrgId !== user.organizationId
       ) {
         throw new Error("Only the receiving hospital can record receipt.");
       }
@@ -501,6 +524,27 @@ export const updateStatus = mutation({
         throw new Error("Stock must be dispatched before receipt can be recorded.");
       }
       await ctx.db.patch(request._id, { status: "received", updatedAt: now });
+      // Close the ledger loop: the units already left stock at dispatch, so the
+      // receipt rows document custody without changing available units again.
+      const dispatchedRows = await ctx.db
+        .query("inventoryTransactions")
+        .withIndex("by_request", (q) => q.eq("requestId", request._id))
+        .collect();
+      for (const row of dispatchedRows.filter((t) => t.type === "dispatch")) {
+        await ctx.db.insert("inventoryTransactions", {
+          inventoryId: row.inventoryId,
+          organizationId: row.organizationId,
+          type: "receipt",
+          units: row.units,
+          bloodGroup: row.bloodGroup,
+          component: row.component,
+          requestId: request._id,
+          actorUserId: user._id,
+          actorRole: role,
+          note: `Receipt confirmed by hospital for ${request.requestId}`,
+          createdAt: now,
+        });
+      }
       await addHistory(ctx, request, "received", role, user._id, note ?? "Hospital recorded receipt.");
       if (request.createdByUserId) {
         await notifyUser(ctx, request.createdByUserId, {
@@ -511,13 +555,15 @@ export const updateStatus = mutation({
           link: `/requests/${request._id}`,
         });
       }
-      await notifyOrganization(ctx, user.organizationId, {
-        title: `Receipt confirmed for ${request.requestId}`,
-        body: "A hospital confirmed receipt. The shared inventory ledger has been updated.",
-        kind: "request",
-        requestId: request._id,
-        link: "/red-cross/dashboard",
-      });
+      if (request.assignedOrgId) {
+        await notifyOrganization(ctx, request.assignedOrgId, {
+          title: `Receipt confirmed for ${request.requestId}`,
+          body: "The receiving hospital confirmed receipt. The shared inventory ledger now includes the receipt entry.",
+          kind: "request",
+          requestId: request._id,
+          link: `/requests/${request._id}`,
+        });
+      }
       await audit(ctx, {
         actor: user,
         action: "request.received",
@@ -543,6 +589,17 @@ export const updateStatus = mutation({
     if (!allowed[request.status]?.includes(status)) {
       throw new Error(`Cannot move a request from ${request.status} to ${status}.`);
     }
+    if (status === "fulfilled") {
+      const reservations = await ctx.db
+        .query("inventoryReservations")
+        .withIndex("by_request", (q) => q.eq("requestId", request._id))
+        .collect();
+      if (reservations.some((r) => r.status === "active")) {
+        throw new Error(
+          "This request still has reserved stock. Dispatch it first or release the reservation before marking it fulfilled.",
+        );
+      }
+    }
 
     let assignedOrgId = request.assignedOrgId;
     if (status === "approved") {
@@ -567,6 +624,9 @@ export const updateStatus = mutation({
       ...(status === "rejected" ? { rejectionReason: note, updatedAt: now } : {}),
     });
     await addHistory(ctx, request, status, role, user._id, note);
+    if (status === "approved") {
+      await notifyCompatibleDonors(ctx, request);
+    }
 
     if (request.createdByUserId) {
       await notifyUser(ctx, request.createdByUserId, {
@@ -615,6 +675,9 @@ export const reserveStock = mutation({
     if (!["under_verification", "approved"].includes(request.status)) {
       throw new Error("Stock can only be reserved for a verified or approved request.");
     }
+    if (request.assignedOrgId && request.assignedOrgId !== org._id) {
+      throw new Error("This request is assigned to another Red Cross branch.");
+    }
     const item = await ctx.db.get(args.inventoryId);
     if (!item || item.organizationId !== org._id) {
       throw new Error("That inventory batch does not belong to your organization.");
@@ -628,6 +691,18 @@ export const reserveStock = mutation({
     const free = item.unitsAvailable - item.unitsReserved;
     if (units > free) {
       throw new Error(`Only ${free} unreserved unit(s) are available in this batch.`);
+    }
+    const existingReservations = await ctx.db
+      .query("inventoryReservations")
+      .withIndex("by_request", (q) => q.eq("requestId", request._id))
+      .collect();
+    const alreadyReserved = existingReservations
+      .filter((r) => r.status === "active")
+      .reduce((sum, r) => sum + r.units, 0);
+    if (alreadyReserved + units > request.units) {
+      throw new Error(
+        `This request already has ${alreadyReserved} unit(s) reserved and only needs ${request.units}.`,
+      );
     }
 
     const now = Date.now();
@@ -650,6 +725,16 @@ export const reserveStock = mutation({
       note: `Reserved for ${request.requestId}`,
       createdAt: now,
     });
+    await ctx.db.insert("inventoryReservations", {
+      inventoryId: item._id,
+      organizationId: org._id,
+      requestId: request._id,
+      units,
+      status: "active",
+      actorUserId: user._id,
+      createdAt: now,
+      updatedAt: now,
+    });
     await ctx.db.patch(request._id, {
       assignedOrgId: org._id,
       status: request.status === "under_verification" ? "approved" : request.status,
@@ -665,6 +750,9 @@ export const reserveStock = mutation({
       user._id,
       `${request.status === "under_verification" ? "Verified. " : ""}${units} unit(s) reserved from batch ${item.batchRef} at ${org.name}.`,
     );
+    if (request.status === "under_verification") {
+      await notifyCompatibleDonors(ctx, request);
+    }
     if (request.createdByUserId) {
       await notifyUser(ctx, request.createdByUserId, {
         title: `Stock reserved for ${request.requestId}`,
@@ -686,6 +774,85 @@ export const reserveStock = mutation({
   },
 });
 
+/**
+ * Release units held for a request so they return to general availability.
+ * Only the organization that made the reservation can release it, and only
+ * before dispatch.
+ */
+export const releaseReservation = mutation({
+  args: { id: v.id("bloodRequests"), note: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const user = await requireRedCross(ctx);
+    const org = await requireOrganization(ctx, user, ["red_cross", "blood_bank"]);
+    const request = await ctx.db.get(args.id);
+    if (!request) throw new Error("Request not found.");
+    if (!["under_verification", "approved"].includes(request.status)) {
+      throw new Error("Reserved stock can only be released before dispatch.");
+    }
+    if (request.assignedOrgId !== org._id) {
+      throw new Error("This request is assigned to another Red Cross branch.");
+    }
+
+    const reservations = await ctx.db
+      .query("inventoryReservations")
+      .withIndex("by_request", (q) => q.eq("requestId", request._id))
+      .collect();
+    const active = reservations.filter(
+      (r) => r.status === "active" && r.organizationId === org._id,
+    );
+    if (active.length === 0) {
+      throw new Error("This request has no reserved stock to release.");
+    }
+
+    const now = Date.now();
+    let released = 0;
+    for (const reservation of active) {
+      const batch = await ctx.db.get(reservation.inventoryId);
+      if (!batch || batch.organizationId !== org._id) {
+        throw new Error("A reserved inventory batch could not be found.");
+      }
+      const held = Math.min(batch.unitsReserved, reservation.units);
+      await ctx.db.patch(batch._id, {
+        unitsReserved: batch.unitsReserved - held,
+        lastUpdated: now,
+      });
+      await ctx.db.insert("inventoryTransactions", {
+        inventoryId: batch._id,
+        organizationId: org._id,
+        type: "release",
+        units: held,
+        bloodGroup: batch.bloodGroup,
+        component: batch.component,
+        requestId: request._id,
+        actorUserId: user._id,
+        actorRole: roleOf(user),
+        note: args.note ?? `Reservation released for ${request.requestId}`,
+        createdAt: now,
+      });
+      await ctx.db.patch(reservation._id, { status: "released", units: 0, updatedAt: now });
+      released += held;
+    }
+
+    await addHistory(
+      ctx,
+      request,
+      "approved",
+      roleOf(user),
+      user._id,
+      args.note ?? `Released ${released} reserved unit(s) back to available stock.`,
+    );
+    await audit(ctx, {
+      actor: user,
+      action: "inventory.reservation_released",
+      entityType: "bloodRequest",
+      entityId: request.requestId,
+      detail: `Released ${released} unit(s) reserved for ${request.requestId}.`,
+      organizationId: org._id,
+    });
+    return { released };
+  },
+});
+
 export const dispatch = mutation({
   args: { id: v.id("bloodRequests"), note: v.optional(v.string()) },
   handler: async (ctx, args) => {
@@ -699,41 +866,38 @@ export const dispatch = mutation({
     if (request.assignedOrgId !== org._id) {
       throw new Error("This request is not assigned to your organization.");
     }
-    const reserved = await ctx.db
-      .query("inventoryTransactions")
+    // Consume exactly the units that were reserved against specific batches for
+    // this request. This keeps the ledger correct even when a batch is fully
+    // reserved by several different requests.
+    const reservations = await ctx.db
+      .query("inventoryReservations")
       .withIndex("by_request", (q) => q.eq("requestId", request._id))
       .collect();
-    const reservedUnits = reserved
-      .filter((t) => t.type === "reserve")
-      .reduce((sum, t) => sum + t.units, 0);
+    const active = reservations
+      .filter((r) => r.status === "active" && r.organizationId === org._id)
+      .sort((a, b) => a.createdAt - b.createdAt);
+    const reservedUnits = active.reduce((sum, r) => sum + r.units, 0);
     if (reservedUnits < request.units) {
       throw new Error(
         `Reserve all ${request.units} unit(s) before dispatching (currently ${reservedUnits}).`,
       );
     }
 
-    // Consume the oldest verified batches with unreserved stock.
-    const batches = await ctx.db
-      .query("inventory")
-      .withIndex("by_organization", (q) => q.eq("organizationId", org._id))
-      .collect();
-    const candidates = batches
-      .filter(
-        (b) =>
-          b.verified &&
-          b.bloodGroup === request.bloodGroup &&
-          b.component === request.component &&
-          b.unitsAvailable - b.unitsReserved > 0,
-      )
-      .sort((a, b) => a.expiryDate.localeCompare(b.expiryDate));
-
     let remaining = request.units;
     const now = Date.now();
     const consumed: string[] = [];
-    for (const batch of candidates) {
+    for (const reservation of active) {
       if (remaining <= 0) break;
-      const free = batch.unitsAvailable - batch.unitsReserved;
-      const take = Math.min(free, remaining);
+      const batch = await ctx.db.get(reservation.inventoryId);
+      if (!batch || batch.organizationId !== org._id) {
+        throw new Error("A reserved inventory batch could not be found.");
+      }
+      const take = Math.min(reservation.units, remaining);
+      if (batch.unitsAvailable < take || batch.unitsReserved < take) {
+        throw new Error(
+          `Stock for batch ${batch.batchRef} is inconsistent. Refresh inventory before dispatching.`,
+        );
+      }
       await ctx.db.patch(batch._id, {
         unitsAvailable: batch.unitsAvailable - take,
         unitsReserved: batch.unitsReserved - take,
@@ -751,6 +915,11 @@ export const dispatch = mutation({
         actorRole: roleOf(user),
         note: args.note ?? `Dispatched for ${request.requestId}`,
         createdAt: now,
+      });
+      await ctx.db.patch(reservation._id, {
+        units: reservation.units - take,
+        status: reservation.units - take === 0 ? "consumed" : "active",
+        updatedAt: now,
       });
       consumed.push(`${batch.batchRef} (${take})`);
       remaining -= take;
@@ -812,8 +981,8 @@ export const createOffer = mutation({
     if (request.createdByUserId === user._id) {
       throw new Error("You cannot offer on your own request.");
     }
-    if (!["pending", "under_verification", "approved"].includes(request.status)) {
-      throw new Error("This request is no longer accepting donor offers.");
+    if (request.status !== "approved") {
+      throw new Error("Donor offers open only after a request has been verified and approved.");
     }
     const compat = compatibility(donor.bloodGroup, request.bloodGroup, request.component);
     if (!compat.compatible) {
@@ -850,6 +1019,14 @@ export const createOffer = mutation({
         kind: "match",
         requestId: request._id,
         link: `/requests/${request._id}`,
+      });
+    } else {
+      await notifyRole(ctx, "red_cross", {
+        title: `Donor offer for ${request.requestId}`,
+        body: `A compatible ${donor.bloodGroup} donor in ${donor.city} offered to help. Assign the request to a branch to coordinate.`,
+        kind: "match",
+        requestId: request._id,
+        link: "/red-cross/dashboard",
       });
     }
     if (request.createdByUserId) {
@@ -933,7 +1110,7 @@ export const donorNearby = query({
     return rows
       .filter(
         (r) =>
-          ["pending", "under_verification", "approved"].includes(r.status) &&
+          r.status === "approved" &&
           compatibility(donor.bloodGroup, r.bloodGroup, r.component).compatible,
       )
       .sort((a, b) => {

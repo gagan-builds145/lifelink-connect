@@ -1,0 +1,17 @@
+{
+  "name": "LifeLink — Smart Blood Donation Management",
+  "short_name": "LifeLink",
+  "description": "Donate Blood, Save Lives. Every Second Matters. A verified blood donation and emergency matching network.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fbfaf8",
+  "theme_color": "#b21f34",
+  "icons": [
+    {
+      "src": "/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

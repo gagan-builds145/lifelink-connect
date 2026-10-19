@@ -5,7 +5,7 @@ import { RequireRole } from "@/components/lifelink/RequireRole";
 import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexReactClient } from "convex/react";
-import React, { StrictMode, useEffect, lazy, Suspense } from "react";
+import React, { StrictMode, createContext, useContext, useEffect, lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router";
 import { Loader2 } from "lucide-react";
@@ -63,6 +63,14 @@ class ToolbarErrorBoundary extends React.Component<
   }
 }
 
+/**
+ * Lets the error boundary soft-reset when the route changes (see
+ * BoundaryRouteWatcher) so one transient failure — e.g. a lazy chunk that
+ * failed to load while the dev server was restarting — cannot wedge every
+ * later navigation onto the error screen.
+ */
+const BoundaryResetContext = createContext<() => void>(() => {});
+
 /** Hard guard so runtime errors never leave the preview as a blank page. */
 class RootErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -79,6 +87,12 @@ class RootErrorBoundary extends React.Component<
   componentDidCatch(err: Error) {
     console.error("[Preview] Root crash:", err);
   }
+  /** Soft recovery: clear the error state and re-render the current route. */
+  handleReset = () => {
+    if (this.state.hasError) {
+      this.setState({ hasError: false, message: "", stack: "" });
+    }
+  };
   render() {
     if (this.state.hasError) {
       return (
@@ -93,17 +107,34 @@ class RootErrorBoundary extends React.Component<
                 {this.state.stack}
               </pre>
             )}
-            <a
-              href="/"
-              className="mt-4 inline-flex rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground"
-            >
-              Return to home
-            </a>
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+              <button
+                type="button"
+                onClick={this.handleReset}
+                className="inline-flex rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+              >
+                Try again
+              </button>
+              <a
+                href="/"
+                className="inline-flex rounded-lg border border-border bg-card px-4 py-2 text-xs font-semibold text-foreground transition-colors hover:bg-muted"
+              >
+                Return to home
+              </a>
+            </div>
+            <p className="mt-3 text-[11px] leading-5 text-muted-foreground/80">
+              Try again re-opens the page you were on. If the error keeps coming
+              back, use Return to home for a full reload.
+            </p>
           </div>
         </div>
       );
     }
-    return this.props.children;
+    return (
+      <BoundaryResetContext.Provider value={this.handleReset}>
+        {this.props.children}
+      </BoundaryResetContext.Provider>
+    );
   }
 }
 
@@ -137,6 +168,19 @@ function RouteSyncer() {
   return null;
 }
 
+/**
+ * Resets the root error boundary after in-app navigation so a failure on one
+ * route (or a one-off load glitch) does not block every other page.
+ */
+function BoundaryRouteWatcher() {
+  const location = useLocation();
+  const resetBoundary = useContext(BoundaryResetContext);
+  useEffect(() => {
+    resetBoundary();
+  }, [location.pathname, resetBoundary]);
+  return null;
+}
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <RootErrorBoundary>
@@ -146,6 +190,7 @@ createRoot(document.getElementById("root")!).render(
       <ConvexAuthProvider client={convex}>
         <BrowserRouter>
           <RouteSyncer />
+          <BoundaryRouteWatcher />
           <Suspense fallback={<RouteLoading />}>
             <Routes>
               <Route path="/" element={<Landing />} />

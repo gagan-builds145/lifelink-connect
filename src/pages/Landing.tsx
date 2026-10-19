@@ -1164,6 +1164,50 @@ export default function Landing() {
         </motion.div>
       </section>
 
+      {/* MEET THE MAKERS */}
+      <section id="makers" className="border-t border-border bg-muted/25">
+        <div className="mx-auto w-full max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-20">
+          <motion.div {...fadeUp} className="text-center">
+            <SectionHeading
+              eyebrow="The team"
+              title="Meet the Makers"
+              description="The team behind LifeLink."
+            />
+          </motion.div>
+
+          <motion.div
+            {...fadeUp}
+            className="mx-auto mt-10 grid w-full max-w-3xl gap-4 sm:grid-cols-2 sm:gap-5"
+          >
+            {[
+              { name: "Gagan V", Icon: HeartPulse },
+              { name: "C Dhanushree", Icon: Droplets },
+            ].map(({ name, Icon }) => (
+              <motion.div
+                key={name}
+                whileHover={{ y: -6 }}
+                transition={{ type: "spring", stiffness: 320, damping: 22 }}
+                className="group relative overflow-hidden rounded-3xl border border-border bg-card p-8 text-center shadow-[0_1px_0_oklch(1_0_0/0.6)_inset] transition-colors hover:border-primary/35"
+              >
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute inset-x-0 -top-16 h-32 bg-[radial-gradient(closest-side,oklch(0.72_0.16_18/0.10),transparent)] opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+                />
+                <div className="relative mx-auto flex size-14 items-center justify-center rounded-2xl border border-primary/15 bg-primary/[0.06] transition-all duration-500 group-hover:scale-105 group-hover:bg-primary/[0.1]">
+                  <Icon className="size-6 text-primary" aria-hidden />
+                </div>
+                <h3 className="relative mt-5 font-display text-[22px] font-extrabold leading-tight text-foreground sm:text-[24px]">
+                  {name}
+                </h3>
+                <p className="relative mt-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
+                  Maker
+                </p>
+              </motion.div>
+            ))}
+          </motion.div>
+        </div>
+      </section>
+
       <SiteFooter />
     </div>
   );

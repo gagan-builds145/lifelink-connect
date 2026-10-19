@@ -412,7 +412,6 @@ function ContactForm() {
 
 export default function Landing() {
   const { isAuthenticated } = useAuth();
-  const navigate = useNavigate();
   const location = useLocation();
   const stats = useQuery(api.stats.publicOverview);
   const stock = useQuery(api.inventory.publicStock, {});

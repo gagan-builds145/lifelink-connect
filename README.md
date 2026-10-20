@@ -99,7 +99,7 @@ src/
 
 - Roles are assigned **only** by server mutations:
   - Donor and requestor registration are self-service.
-  - Red Cross / hospital registration requires an authorization code checked in `profiles.registerOrganization`. The selected browser role is never trusted.
+  - Red Cross / hospital registration is self-service: `profiles.registerOrganization` links the verified account to a new organization and assigns the staff role. The selected browser role is never trusted.
   - There is no mutation that lets a user change their own role.
 - Role and organization are re-checked on every protected query/mutation (`requireUser`, `requireRole`, `requireOrganization`).
 - Hospitals see only their own or assigned requests. Requestors see only their own requests. Donors see masked compatible requests.
@@ -126,12 +126,8 @@ The seed currently includes verified demo branches/hospitals, batches for multip
 
 1. Open `/signup` and choose a role, or `/login`.
 2. Enter an email and request the 6-digit code. OTP delivery uses the configured Freebuff email gateway.
-3. If email delivery is unavailable in your environment, use **Continue as demo guest**. This creates a real anonymous Convex Auth account; you can then complete a donor/requestor profile or use an organization code.
-4. Staff registration codes:
-   - In demo mode (no env override): Red Cross `REDCROSS-DEMO`, hospital `HOSPITAL-DEMO`.
-   - For any shared/public deployment set `REDCROSS_AUTHORIZATION_CODE` and `HOSPITAL_AUTHORIZATION_CODE` on the Convex deployment and do not publish the values.
-
-> Never treat these demo codes as production access control. Rotate them before deployment.
+3. If email delivery is unavailable in your environment, use **Continue as demo guest**. This creates a real anonymous Convex Auth account; you can then complete a donor/requestor profile or register an organization.
+4. Red Cross and hospital sign-up need no organization code — the role form links the organization to your verified account on the server.
 
 ---
 
@@ -170,13 +166,6 @@ CONVEX_SITE_URL=https://<your-deployment>.convex.site
 
 > Use the exact deployment URLs Convex prints. `CONVEX_SITE_URL` is the HTTP-actions URL (`.convex.site`), **not** the dashboard URL and not the Vite dev URL. Convex Auth also needs its generated `JWT_PRIVATE_KEY`, `JWKS` and `SITE_URL` values on the deployment; these are normally created by the Convex Auth setup already present in this project.
 
-Set server-only variables on the deployment (never in Vite):
-
-```powershell
-bunx convex env set REDCROSS_AUTHORIZATION_CODE "replace-with-a-long-random-value"
-bunx convex env set HOSPITAL_AUTHORIZATION_CODE "replace-with-a-long-random-value"
-```
-
 ### Start locally
 
 Run Convex and Vite in two terminals:
@@ -198,7 +187,7 @@ bunx convex deploy
 bun run build
 ```
 
-Deploy only after setting production authorization codes and reviewing the privacy/security limitations below.
+Deploy only after reviewing the privacy/security limitations below.
 
 ---
 
@@ -285,7 +274,7 @@ The only automated code-level check is `bun run check:blood`, which asserts the 
 - Server-side RBAC on every mutation; role changes are impossible through profile edits.
 - Security-sensitive endpoints use a database-backed rate limiter (`requests.create`, `offers`, uploads, contact form).
 - Documents: PDF/JPEG/PNG only, ≤ 5 MB, storage metadata checked against the uploaded object, signed URL generated only after an access check.
-- Inputs are validated on both client and server (phone, units, required date, age, expiry dates, capacity, authorization code, etc.).
+- Inputs are validated on both client and server (phone, units, required date, age, expiry dates, capacity, etc.).
 - Patient identity, prescriptions, donor contacts and precise addresses are never exposed in public search.
 - Inventory changes and request status changes are audit logged.
 - Demo Data is always labelled.
@@ -295,17 +284,15 @@ The only automated code-level check is `bun run check:blood`, which asserts the 
 
 1. **No outbound email/SMS notification service.** In-app notifications work. The contact form is stored but not emailed. OTP email depends on the Freebuff gateway.
 2. **No trained ML model.** Matching is a deterministic baseline; the UI says so. Demand forecasting and shortage prediction are not implemented.
-3. **No admin approval dashboard.** Staff access uses server-checked organization authorization codes. A production deployment should add administrator approval, code rotation and invitation expiry.
+3. **No admin approval dashboard.** Staff registration is self-service and bound to a verified email. A production deployment should add an administrator approval workflow for staff organizations.
 4. **No automated retention/deletion job.** Define legal retention schedules and implement them before production.
 5. **Bundled background video is a generated abstract loop**, not licensed stock footage. Replace it with your own licensed MP4 if desired; the CSS fallback is always available.
-6. **Demo authorization codes are documented.** Replace them via Convex env variables before any public deployment.
-7. **Photos/illustrations are CSS/SVG only.** No externally hosted medical images are required, avoiding broken remote assets.
-8. **Single-region prototype.** Convex handles concurrency, but load, disaster recovery, backups and healthcare compliance were not load-tested.
-9. **No automated test suite.** See the manual acceptance path above.
+6. **Photos/illustrations are CSS/SVG only.** No externally hosted medical images are required, avoiding broken remote assets.
+7. **Single-region prototype.** Convex handles concurrency, but load, disaster recovery, backups and healthcare compliance were not load-tested.
+8. **No automated test suite.** See the manual acceptance path above.
 
 ### Configuration checklist before production
 
-- [ ] Replace demo authorization codes with strong secret values.
 - [ ] Configure a monitored contact email/phone.
 - [ ] Review privacy policy, terms and retention with legal/clinical governance.
 - [ ] Connect an email/SMS provider if outbound notifications are required.

@@ -52,6 +52,18 @@ const summaryFields = (r: Doc<"bloodRequests">) => ({
   patientRef: r.patientRef,
 });
 
+/**
+ * Requests a donor may still help with: awaiting verification, in review, or
+ * approved. Donors see the request (with its status) as soon as it is created
+ * instead of only after Red Cross approval; coordinators still control
+ * verification, reservation and dispatch.
+ */
+const OPEN_REQUEST_STATUSES: ReadonlySet<Doc<"bloodRequests">["status"]> = new Set([
+  "pending",
+  "under_verification",
+  "approved",
+]);
+
 async function isFullViewer(
   ctx: any,
   user: Doc<"users">,
@@ -348,7 +360,7 @@ export const getDetail = query({
     const donorCompatible =
       donor != null &&
       compatibility(donor.bloodGroup, request.bloodGroup, request.component).compatible &&
-      request.status === "approved";
+      OPEN_REQUEST_STATUSES.has(request.status);
     if (!full && !donorCompatible) {
       return null;
     }
@@ -981,8 +993,8 @@ export const createOffer = mutation({
     if (request.createdByUserId === user._id) {
       throw new Error("You cannot offer on your own request.");
     }
-    if (request.status !== "approved") {
-      throw new Error("Donor offers open only after a request has been verified and approved.");
+    if (!OPEN_REQUEST_STATUSES.has(request.status)) {
+      throw new Error("This request is no longer accepting donor offers.");
     }
     const compat = compatibility(donor.bloodGroup, request.bloodGroup, request.component);
     if (!compat.compatible) {
@@ -1110,7 +1122,10 @@ export const donorNearby = query({
     return rows
       .filter(
         (r) =>
-          r.status === "approved" &&
+          // Every open request a donor can still help with — including ones
+          // still awaiting Red Cross verification. Terminal states (dispatched,
+          // received, fulfilled, rejected, cancelled) stay hidden.
+          OPEN_REQUEST_STATUSES.has(r.status) &&
           compatibility(donor.bloodGroup, r.bloodGroup, r.component).compatible,
       )
       .sort((a, b) => {
@@ -1119,14 +1134,14 @@ export const donorNearby = query({
           sameCity: a.city === donor.city,
           distanceKm: null,
           urgency: a.urgency,
-          verified: a.status !== "pending",
+          verified: a.status === "approved",
         }).score;
         const scoreB = scoreMatch({
           compatible: true,
           sameCity: b.city === donor.city,
           distanceKm: null,
           urgency: b.urgency,
-          verified: b.status !== "pending",
+          verified: b.status === "approved",
         }).score;
         return scoreB - scoreA;
       })

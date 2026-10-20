@@ -38,7 +38,7 @@ export default function Terms() {
           {[
             {
               title: "1. Accounts and roles",
-              body: "You must provide accurate information and only create an account for yourself or an organization you are authorized to represent. Donor and requestor roles are self-service. Red Cross and hospital roles require an organization authorization code validated by the server. LifeLink may suspend accounts that misrepresent identity, authorization or clinical need.",
+              body: "You must provide accurate information and only create an account for yourself or an organization you are authorized to represent. Donor and requestor roles are self-service. Red Cross and hospital roles are linked to a registered organization on the server. LifeLink may suspend accounts that misrepresent identity, authorization or clinical need.",
             },
             {
               title: "2. Genuine requests only",
@@ -62,7 +62,7 @@ export default function Terms() {
             },
             {
               title: "7. Demo Data",
-              body: "Sample records are visibly marked Demo Data. They are not live verified inventory and must not be used for real clinical coordination. Demo credentials or authorization codes must be replaced before production deployment.",
+              body: "Sample records are visibly marked Demo Data. They are not live verified inventory and must not be used for real clinical coordination. Demo credentials must be replaced before production deployment.",
             },
             {
               title: "8. Availability and limitation of liability",

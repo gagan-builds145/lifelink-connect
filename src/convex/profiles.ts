@@ -24,17 +24,6 @@ import { ageFromDob } from "../lib/blood";
 
 const orgTypeArg = v.union(v.literal("red_cross"), v.literal("hospital"));
 
-function authorizationCodeFor(type: "red_cross" | "hospital") {
-  const configured =
-    type === "red_cross"
-      ? process.env.REDCROSS_AUTHORIZATION_CODE
-      : process.env.HOSPITAL_AUTHORIZATION_CODE;
-  // Demo fallback keeps the buildathon flow testable. Configure the env vars in
-  // production so these documented codes stop working.
-  const demo = type === "red_cross" ? "REDCROSS-DEMO" : "HOSPITAL-DEMO";
-  return (configured ?? demo).trim().toUpperCase();
-}
-
 /** Everything the app needs to route and personalize a signed-in account. */
 export const me = query({
   args: {},
@@ -213,9 +202,9 @@ export const registerRequestor = mutation({
 });
 
 /**
- * Staff accounts are never self-approved by the browser role. The registration
- * form must present an authorization code that is checked here, server-side,
- * and the organization is created already verified against that check.
+ * Staff registration is self-service: the signed-in account is linked to a new
+ * organization server-side, and the staff role can only be attached here — the
+ * browser can never set a role by itself.
  */
 export const registerOrganization = mutation({
   args: {
@@ -227,7 +216,8 @@ export const registerOrganization = mutation({
     address: v.string(),
     city: v.string(),
     area: v.optional(v.string()),
-    authorizationCode: v.string(),
+    // Accepted for compatibility with older clients; no longer checked.
+    authorizationCode: v.optional(v.string()),
     consent: v.boolean(),
   },
   handler: async (ctx, args) => {
@@ -241,13 +231,6 @@ export const registerOrganization = mutation({
     }
     if (["donor", "requestor"].includes(roleOf(user))) {
       throw new Error("This account already has a personal profile.");
-    }
-
-    const expected = authorizationCodeFor(args.type);
-    if ((args.authorizationCode ?? "").trim().toUpperCase() !== expected) {
-      throw new Error(
-        "The organization authorization code is invalid. Contact the LifeLink administrator for a code.",
-      );
     }
 
     const name = requireText(args.name, "Organization name", 3, 160);
@@ -275,7 +258,7 @@ export const registerOrganization = mutation({
       area: args.area,
       status: "verified",
       verifiedAt: now,
-      verifiedBy: "Server authorization code",
+      verifiedBy: "Email-verified self-service registration",
       createdByUserId: user._id,
       createdAt: now,
       updatedAt: now,

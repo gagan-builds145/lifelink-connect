@@ -39,6 +39,22 @@ export function isStaffRole(role?: string | null) {
   return role === "red_cross" || role === "hospital" || role === "admin";
 }
 
+/**
+ * True only when the account has finished sign-up and owns a dashboard
+ * workspace. A session without a role (an abandoned or in-progress sign-up)
+ * must keep showing "Log in / Create account", not a Dashboard button that
+ * just bounces back to the role picker.
+ */
+export function hasDashboardRole(role?: string | null): boolean {
+  return (
+    role === "donor" ||
+    role === "requestor" ||
+    role === "red_cross" ||
+    role === "hospital" ||
+    role === "admin"
+  );
+}
+
 export const ROLE_CARDS = [
   {
     role: "donor",

@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
-import { dashboardPathForRole, ROLE_LABELS, type AppRole } from "@/lib/roles";
+import { dashboardPathForRole, hasDashboardRole, ROLE_LABELS, type AppRole } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 import { ArrowUpRight, Menu, X } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -33,6 +33,10 @@ export function SiteHeader() {
   }, [location.pathname]);
 
   const role = (user?.role ?? undefined) as AppRole | undefined;
+  // A signed-in session without a finished role still has no dashboard, so it
+  // must keep the signed-out actions instead of a Dashboard button that loops
+  // back to the role picker.
+  const signedInWithWorkspace = isAuthenticated && hasDashboardRole(role);
 
   return (
     <header
@@ -59,7 +63,7 @@ export function SiteHeader() {
         </nav>
 
         <div className="hidden items-center gap-2 sm:flex">
-          {isAuthenticated ? (
+          {signedInWithWorkspace ? (
             <>
               <div className="mr-1 hidden flex-col items-end leading-tight md:flex">
                 <span className="max-w-[150px] truncate text-[12px] font-semibold">
@@ -116,7 +120,7 @@ export function SiteHeader() {
             ))}
           </nav>
           <div className="mt-4 grid gap-2 border-t border-border pt-4">
-            {isAuthenticated ? (
+            {signedInWithWorkspace ? (
               <Button asChild className="w-full">
                 <Link to={dashboardPathForRole(role)}>Open dashboard</Link>
               </Button>

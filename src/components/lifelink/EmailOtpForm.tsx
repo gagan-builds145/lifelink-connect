@@ -247,8 +247,8 @@ export function EmailOtpForm({
             Continue as demo guest
           </Button>
           <p className={cn("text-center text-[11.5px] leading-5 text-muted-foreground", compact && "text-[10.5px]")}>
-            Guest access creates a real account. Choose a role next; staff roles still
-            require an organization authorization code.
+            Guest access creates a real account. Choose a role next to finish setting
+            up your workspace.
           </p>
         </>
       }

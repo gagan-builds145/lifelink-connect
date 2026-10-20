@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/use-auth";
+import { hasDashboardRole } from "@/lib/roles";
 import {
   BLOOD_GROUPS,
   CITIES,
@@ -411,7 +412,10 @@ function ContactForm() {
 }
 
 export default function Landing() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
+  // Dashboard actions are only offered once sign-up finished and a role exists;
+  // a half-finished session must still see Log in / Create account.
+  const canOpenDashboard = isAuthenticated && hasDashboardRole(user?.role);
   const location = useLocation();
   const stats = useQuery(api.stats.publicOverview);
   const stock = useQuery(api.inventory.publicStock, {});
@@ -502,7 +506,7 @@ export default function Landing() {
             </div>
 
             <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 text-[12px]">
-              {isAuthenticated ? (
+              {canOpenDashboard ? (
                 <Link to="/dashboard" className="inline-flex items-center gap-1 font-semibold text-foreground hover:text-primary">
                   Open my dashboard <ArrowRight className="size-3.5" />
                 </Link>
@@ -1144,14 +1148,14 @@ export default function Landing() {
               </h2>
               <p className="mt-2 max-w-xl text-[12.5px] leading-6 text-muted-foreground">
                 Choose your role and get a secure, role-specific workspace on the same
-                shared database. Staff registration requires an organization
-                authorization code.
+                shared database. Red Cross and hospital accounts register their
+                organization as part of sign-up — no extra codes needed.
               </p>
             </div>
             <div className="flex flex-wrap gap-2.5">
               <Button asChild size="lg" className="h-11 gap-2">
-                <Link to={isAuthenticated ? "/dashboard" : "/signup"}>
-                  {isAuthenticated ? "Open my dashboard" : "Create an account"}
+                <Link to={canOpenDashboard ? "/dashboard" : "/signup"}>
+                  {canOpenDashboard ? "Open my dashboard" : "Create an account"}
                   <ArrowRight className="size-4" />
                 </Link>
               </Button>

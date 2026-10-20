@@ -2,7 +2,7 @@ import { SiteFooter } from "@/components/lifelink/SiteFooter";
 import { SiteHeader } from "@/components/lifelink/SiteHeader";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
-import { dashboardPathForRole, ROLE_CARDS } from "@/lib/roles";
+import { dashboardPathForRole, hasDashboardRole, ROLE_CARDS } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import {
@@ -63,15 +63,22 @@ export default function SignupRole() {
             <div className="mt-4 flex items-center gap-2 rounded-xl border border-border bg-card p-3 text-[11.5px] leading-5 text-muted-foreground">
               <LockKeyhole className="size-4 shrink-0 text-primary" />
               Donor and requestor accounts are self-service. Red Cross and hospital
-              accounts require an organization authorization code checked on the server.
+              accounts register their organization during sign-up, linked on the server
+              to your verified email.
             </div>
             {isAuthenticated && (
               <p className="mt-3 text-[11.5px] text-muted-foreground">
-                Signed in as <strong className="text-foreground">{user?.name ?? user?.email ?? "your account"}</strong>.
-                You can continue with a role, or{" "}
-                <Link to={dashboardPathForRole(user?.role)} className="font-semibold text-primary hover:underline">
-                  open your dashboard
-                </Link>.
+                Signed in as <strong className="text-foreground">{user?.name ?? user?.email ?? "your account"}</strong>.{" "}
+                {hasDashboardRole(user?.role) ? (
+                  <>
+                    You can continue with a role, or{" "}
+                    <Link to={dashboardPathForRole(user?.role)} className="font-semibold text-primary hover:underline">
+                      open your dashboard
+                    </Link>.
+                  </>
+                ) : (
+                  "Choose a role below to finish setting up your account."
+                )}
               </p>
             )}
           </motion.div>

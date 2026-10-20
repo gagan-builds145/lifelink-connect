@@ -15,14 +15,7 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import { CITIES } from "@/lib/blood";
 import { useMutation } from "convex/react";
-import {
-  AlertTriangle,
-  Building2,
-  KeyRound,
-  Loader2,
-  LockKeyhole,
-  ShieldCheck,
-} from "lucide-react";
+import { AlertTriangle, Building2, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
@@ -43,7 +36,6 @@ export function OrganizationSignup({ type }: { type: "red_cross" | "hospital" })
     address: "",
     city: user?.city ?? "Pune",
     area: "",
-    authorizationCode: "",
   });
 
   const set = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) =>
@@ -67,20 +59,10 @@ export function OrganizationSignup({ type }: { type: "red_cross" | "hospital" })
       }
       asideBody={
         isRedCross
-          ? "The authorization code is validated on the server. The browser cannot promote an account to Red Cross, hospital or admin."
+          ? "Your role is attached server-side to this verified organization account. Every inventory or status change you make is recorded in the audit log."
           : "A hospital account is linked to one organization and can only see its own requests or requests assigned to it. Receipt confirmation is restricted to the receiving hospital."
       }
     >
-      <div className="mb-4 flex items-start gap-2 rounded-xl border border-primary/15 bg-primary/[0.04] p-3 text-[11px] leading-5 text-muted-foreground">
-        <LockKeyhole className="mt-0.5 size-4 shrink-0 text-primary" />
-        <span>
-          <strong className="text-foreground">Authorization required.</strong> Enter the
-          code issued by the LifeLink administrator. Demo codes are documented in the
-          README and must be replaced with environment-configured codes in production.
-          Codes are never displayed publicly on this form.
-        </span>
-      </div>
-
       {error && (
         <Alert variant="destructive" role="alert" className="mb-4">
           <AlertTriangle className="size-4" />
@@ -94,10 +76,6 @@ export function OrganizationSignup({ type }: { type: "red_cross" | "hospital" })
         onSubmit={async (event) => {
           event.preventDefault();
           setError(null);
-          if (!form.authorizationCode.trim()) {
-            setError("An organization authorization code is required.");
-            return;
-          }
           if (!consent) {
             setError("Confirm you are authorized to register this organization.");
             return;
@@ -113,7 +91,6 @@ export function OrganizationSignup({ type }: { type: "red_cross" | "hospital" })
               address: form.address,
               city: form.city,
               area: form.area.trim() || undefined,
-              authorizationCode: form.authorizationCode,
               consent: true,
             });
             toast.success(`${isRedCross ? "Branch" : "Hospital"} registered · ${result.orgId}`, {
@@ -162,25 +139,6 @@ export function OrganizationSignup({ type }: { type: "red_cross" | "hospital" })
             <Label htmlFor="org-area">Area (optional)</Label>
             <Input id="org-area" value={form.area} onChange={(e) => set("area", e.target.value)} placeholder="Locality" />
           </div>
-          <div className="space-y-1.5 sm:col-span-2">
-            <Label htmlFor="org-code" className="flex items-center gap-1.5">
-              <KeyRound className="size-3.5 text-primary" />
-              Organization authorization code
-            </Label>
-            <Input
-              id="org-code"
-              type="password"
-              autoComplete="off"
-              value={form.authorizationCode}
-              onChange={(e) => set("authorizationCode", e.target.value)}
-              placeholder="Issued by the LifeLink administrator"
-              required
-            />
-            <p className="flex items-center gap-1 text-[10px] text-muted-foreground">
-              <ShieldCheck className="size-3 text-teal-600" />
-              Checked server-side. An incorrect code cannot create a staff role.
-            </p>
-          </div>
         </div>
 
         <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-primary/15 bg-primary/[0.035] p-3.5">
@@ -195,7 +153,7 @@ export function OrganizationSignup({ type }: { type: "red_cross" | "hospital" })
 
         <Button type="submit" className="h-11 w-full gap-2" disabled={busy}>
           {busy ? <Loader2 className="size-4 animate-spin" /> : <Building2 className="size-4" />}
-          {busy ? "Verifying authorization…" : `Register ${isRedCross ? "branch" : "hospital"}`}
+          {busy ? "Registering…" : `Register ${isRedCross ? "branch" : "hospital"}`}
         </Button>
         <p className="text-center text-[10px] leading-5 text-muted-foreground">
           Already registered your organization?{" "}

@@ -212,7 +212,8 @@ export default function BloodSearch() {
                 {demoBusy ? <Loader2 className="size-3 animate-spin" /> : <FlaskConical className="size-3" />}
                 Load demo network
               </Button>
-              <Button asChild size="sm" className="h-8 gap-1.5 text-[10.5px]">                  <Link to="/signup/requestor">Request this blood <ArrowRight className="size-3" /></Link>
+              <Button asChild size="sm" className="h-8 gap-1.5 text-[10.5px]">
+                <Link to="/signup/requestor">Request this blood <ArrowRight className="size-3" /></Link>
               </Button>
             </div>
           </div>

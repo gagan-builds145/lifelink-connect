@@ -1085,7 +1085,7 @@ export default function Landing() {
               {[
                 { icon: Mail, label: "Email", value: CONTACT_EMAIL, href: `mailto:${CONTACT_EMAIL}` },
                 { icon: Phone, label: "Phone", value: CONTACT_PHONE, href: `tel:${CONTACT_PHONE.replace(/\s/g, "")}` },
-                { icon: MapPin, label: "Base", value: "Pune & Mumbai, Maharashtra, India" },
+                { icon: MapPin, label: "Base", value: "Bengaluru, Karnataka, India" },
               ].map((item) => (
                 <div key={item.label} className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
                   <span className="flex size-9 items-center justify-center rounded-lg bg-primary/8 text-primary">

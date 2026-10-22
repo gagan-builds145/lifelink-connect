@@ -1,4 +1,4 @@
-import { ArrowUpRight, HeartPulse, MapPin, Phone, ShieldCheck } from "lucide-react";
+import { ArrowUpRight, MapPin, Phone, ShieldCheck } from "lucide-react";
 import { Link } from "react-router";
 import { LifeLinkLogo } from "./Logo";
 
@@ -50,11 +50,7 @@ export function SiteFooter() {
               </p>
               <p className="flex items-center gap-2.5 text-white/70">
                 <MapPin className="size-4 text-primary" />
-                Pune &amp; Mumbai, Maharashtra, India
-              </p>
-              <p className="flex items-center gap-2.5 text-white/70">
-                <HeartPulse className="size-4 text-primary" />
-                Emergency coordination: contact the nearest verified hospital
+                Bengaluru, Karnataka, India
               </p>
             </div>
           </div>

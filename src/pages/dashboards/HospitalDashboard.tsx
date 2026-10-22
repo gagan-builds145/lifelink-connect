@@ -43,6 +43,7 @@ import {
 } from "@/lib/blood";
 import { useMutation, useQuery } from "convex/react";
 import {
+  AlertTriangle,
   ArrowRight,
   Building2,
   CalendarPlus,
@@ -55,6 +56,7 @@ import {
   Loader2,
   MapPin,
   PackageCheck,
+  PackagePlus,
   Plus,
   RefreshCw,
   Search,
@@ -68,7 +70,11 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import { toast } from "sonner";
 
-type Tab = "overview" | "requests" | "new" | "availability" | "profile";
+type Tab = "overview" | "requests" | "new" | "storage" | "availability" | "profile";
+
+const today = () => new Date().toISOString().slice(0, 10);
+const plusDays = (days: number) =>
+  new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
 
 export default function HospitalDashboard() {
   const { user } = useAuth();
@@ -77,10 +83,25 @@ export default function HospitalDashboard() {
   const requests = useQuery(api.requests.mine);
   const analytics = useQuery(api.stats.staffAnalytics, { windowDays: 30 });
   const stock = useQuery(api.inventory.publicStock, {});
+  const myStock = useQuery(api.inventory.listForOrg, {});
+  const stockAlerts = useQuery(api.inventory.openStockAlerts, {});
+  const inboundAlerts = useQuery(api.inventory.inboundStockAlerts, {});
+  const addStock = useMutation(api.inventory.addStock);
   const updateStatus = useMutation(api.requests.updateStatus);
   const updateOrganization = useMutation(api.profiles.updateMyOrganization);
 
   const [cancelBusy, setCancelBusy] = useState<string | null>(null);
+  const [batchBusy, setBatchBusy] = useState(false);
+  const [batchError, setBatchError] = useState<string | null>(null);
+  const [batchForm, setBatchForm] = useState({
+    bloodGroup: "O+",
+    component: "red_cells" as Component,
+    unitsAvailable: "4",
+    collectionDate: today(),
+    expiryDate: plusDays(35),
+    storageLocation: "Hospital blood bank · 2–6 °C",
+    lowStockThreshold: "3",
+  });
   const [stockGroup, setStockGroup] = useState("all");
   const [stockCity, setStockCity] = useState("all");
   const [profileBusy, setProfileBusy] = useState(false);
@@ -119,6 +140,68 @@ export default function HospitalDashboard() {
     };
   }, [requests]);
 
+  const openAlerts = useMemo(
+    () => (stockAlerts ?? []).filter((a) => a.status === "open"),
+    [stockAlerts],
+  );
+
+  const groupedStorage = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        bloodGroup: string;
+        component: Component;
+        free: number;
+        threshold: number;
+        earliestExpiry: string;
+      }
+    >();
+    for (const batch of myStock ?? []) {
+      const key = `${batch.bloodGroup}:${batch.component}`;
+      const existing = map.get(key);
+      if (existing) {
+        existing.free += Math.max(0, batch.free);
+        existing.threshold = Math.max(existing.threshold, batch.lowStockThreshold);
+        if (batch.expiryDate < existing.earliestExpiry) existing.earliestExpiry = batch.expiryDate;
+      } else {
+        map.set(key, {
+          bloodGroup: batch.bloodGroup,
+          component: batch.component as Component,
+          free: Math.max(0, batch.free),
+          threshold: batch.lowStockThreshold,
+          earliestExpiry: batch.expiryDate,
+        });
+      }
+    }
+    return [...map.values()].sort(
+      (a, b) => a.bloodGroup.localeCompare(b.bloodGroup) || a.component.localeCompare(b.component),
+    );
+  }, [myStock]);
+
+  const submitBatch = async () => {
+    setBatchError(null);
+    setBatchBusy(true);
+    try {
+      await addStock({
+        bloodGroup: batchForm.bloodGroup as (typeof BLOOD_GROUPS)[number],
+        component: batchForm.component,
+        unitsAvailable: Number(batchForm.unitsAvailable),
+        collectionDate: batchForm.collectionDate,
+        expiryDate: batchForm.expiryDate,
+        storageLocation: batchForm.storageLocation,
+        lowStockThreshold: Number(batchForm.lowStockThreshold),
+      });
+      toast("Units added to hospital storage", {
+        description:
+          "The batch was written to the shared ledger. If a group is at its threshold, the network request is raised automatically.",
+      });
+    } catch (err) {
+      setBatchError(err instanceof Error ? err.message : "Could not record the batch.");
+    } finally {
+      setBatchBusy(false);
+    }
+  };
+
   const filteredStock = useMemo(
     () =>
       (stock ?? [])
@@ -143,6 +226,7 @@ export default function HospitalDashboard() {
     { key: "overview", label: "Overview", icon: Hospital },
     { key: "requests", label: "Hospital requests", icon: ClipboardList, badge: stats.current },
     { key: "new", label: "New request", icon: Plus },
+    { key: "storage", label: "Blood storage", icon: Droplets, badge: openAlerts.length },
     { key: "availability", label: "Partner availability", icon: Search },
     { key: "profile", label: "Hospital profile", icon: Settings2 },
   ];
@@ -193,6 +277,29 @@ export default function HospitalDashboard() {
               </Button>
             </div>
           </section>
+
+          {openAlerts.length > 0 && (
+            <section className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <h2 className="flex items-center gap-1.5 text-[12px] font-bold uppercase tracking-[0.1em] text-amber-900">
+                  <AlertTriangle className="size-3.5" /> Automatic stock alerts
+                </h2>
+                <Button size="sm" variant="outline" className="h-7 w-fit gap-1 border-amber-300 bg-white/60 text-[10.5px] text-amber-900" onClick={() => setTab("storage")}>
+                  Open blood storage <ArrowRight className="size-3" />
+                </Button>
+              </div>
+              <div className="mt-2.5 space-y-1.5">
+                {openAlerts.slice(0, 3).map((a) => (
+                  <p key={a._id} className="flex flex-wrap items-center gap-2 rounded-lg bg-white/70 px-2.5 py-1.5 text-[11px]">
+                    <BloodGroupChip group={a.bloodGroup} size="sm" />
+                    <span className="font-semibold text-amber-950">{COMPONENT_LABELS[a.component as Component]}</span>
+                    <span className="text-amber-800">{a.freeUnits} free / threshold {a.threshold}</span>
+                    <span className="text-amber-900/70">· request sent to {a.hospitalsRequested} hospital(s), {a.redCrossRequested} Red Cross source(s), {a.donorsNotified} donor(s)</span>
+                  </p>
+                ))}
+              </div>
+            </section>
+          )}
 
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard label="Current requests" value={stats.current} hint="Pending through dispatched" icon={ClipboardList} tone="primary" />
@@ -416,6 +523,182 @@ export default function HospitalDashboard() {
               </p>
             </div>
           </aside>
+        </div>
+      )}
+
+      {tab === "storage" && (
+        <div className="mt-4 space-y-4">
+          <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr] lg:items-start">
+            <section className="rounded-2xl border border-border bg-card p-5">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h2 className="text-[14px] font-bold">Hospital blood storage</h2>
+                  <p className="mt-0.5 text-[11.5px] leading-5 text-muted-foreground">
+                    Unreserved units per group and component. Each group is re-checked against
+                    its threshold every time stock changes.
+                  </p>
+                </div>
+                <span className="w-fit shrink-0 rounded-full border border-border bg-muted/40 px-2.5 py-1 text-[10px] font-semibold text-muted-foreground">
+                  {org?.city ?? "—"} region
+                </span>
+              </div>
+              <div className="mt-3 space-y-2">
+                {myStock === undefined ? (
+                  <div className="flex items-center justify-center gap-2 py-10 text-[12px] text-muted-foreground"><Loader2 className="size-4 animate-spin" /> Loading storage…</div>
+                ) : groupedStorage.length === 0 ? (
+                  <EmptyState
+                    icon={Droplets}
+                    title="No hospital stock recorded yet"
+                    description="Record received units to start monitoring this hospital's storage. Threshold alerts raise themselves as soon as a group runs low."
+                  />
+                ) : (
+                  groupedStorage.map((row) => {
+                    const low = row.free <= row.threshold;
+                    return (
+                      <div key={`${row.bloodGroup}:${row.component}`} className="flex flex-col gap-2 rounded-xl border border-border bg-background p-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex items-center gap-3">
+                          <BloodGroupChip group={row.bloodGroup} size="sm" />
+                          <div>
+                            <p className="text-[12px] font-semibold">{COMPONENT_LABELS[row.component]}</p>
+                            <p className="text-[10.5px] text-muted-foreground">Earliest expiry {formatDate(row.earliestExpiry)}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 text-[11px]">
+                          <span className={low ? "font-semibold text-amber-700" : "font-semibold text-teal-700"}>{row.free} free</span>
+                          <span className="text-muted-foreground">/ threshold {row.threshold}</span>
+                          {low && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-[0.08em] text-amber-800">Low</span>}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </section>
+
+            <section className="rounded-2xl border border-border bg-card p-5">
+              <h2 className="text-[14px] font-bold">Record received units</h2>
+              <p className="mt-0.5 text-[11.5px] leading-5 text-muted-foreground">
+                Every batch is written to the shared inventory ledger. Recording a low batch
+                triggers the automatic network request immediately.
+              </p>
+              <form
+                className="mt-4 space-y-3.5"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void submitBatch();
+                }}
+              >
+                {batchError && <Alert variant="destructive"><AlertDescription>{batchError}</AlertDescription></Alert>}
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label>Blood group</Label>
+                    <Select value={batchForm.bloodGroup} onValueChange={(v) => setBatchForm((p) => ({ ...p, bloodGroup: v }))}>
+                      <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                      <SelectContent>{BLOOD_GROUPS.map((g) => <SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Component</Label>
+                    <Select value={batchForm.component} onValueChange={(v) => setBatchForm((p) => ({ ...p, component: v as Component }))}>
+                      <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                      <SelectContent>{COMPONENTS.map((c) => <SelectItem key={c} value={c}>{COMPONENT_LABELS[c]}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="hosp-stock-units">Units received</Label>
+                    <Input id="hosp-stock-units" type="number" min={1} max={20} value={batchForm.unitsAvailable} onChange={(e) => setBatchForm((p) => ({ ...p, unitsAvailable: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="hosp-stock-threshold">Low-stock threshold</Label>
+                    <Input id="hosp-stock-threshold" type="number" min={0} value={batchForm.lowStockThreshold} onChange={(e) => setBatchForm((p) => ({ ...p, lowStockThreshold: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="hosp-stock-collected">Collection date</Label>
+                    <Input id="hosp-stock-collected" type="date" max={today()} value={batchForm.collectionDate} onChange={(e) => setBatchForm((p) => ({ ...p, collectionDate: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="hosp-stock-expiry">Expiry date</Label>
+                    <Input id="hosp-stock-expiry" type="date" min={today()} value={batchForm.expiryDate} onChange={(e) => setBatchForm((p) => ({ ...p, expiryDate: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <Label htmlFor="hosp-stock-location">Storage location</Label>
+                    <Input id="hosp-stock-location" value={batchForm.storageLocation} onChange={(e) => setBatchForm((p) => ({ ...p, storageLocation: e.target.value }))} />
+                  </div>
+                </div>
+                <Button type="submit" className="h-10 w-full gap-2" disabled={batchBusy}>
+                  {batchBusy ? <Loader2 className="size-4 animate-spin" /> : <PackagePlus className="size-4" />}
+                  Add batch to storage
+                </Button>
+              </form>
+            </section>
+          </div>
+
+          <section className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4">
+            <h2 className="flex items-center gap-1.5 text-[12px] font-bold uppercase tracking-[0.1em] text-amber-900">
+              <AlertTriangle className="size-3.5" /> Automatic network requests
+            </h2>
+            <p className="mt-1 text-[11px] leading-5 text-amber-900/80">
+              Before this hospital runs out, the alert reaches your own staff, every other verified
+              hospital in {org?.city ?? "the region"}, the Red Cross sources in the city, and compatible
+              donors. No one has to raise it manually.
+            </p>
+            <div className="mt-2.5 space-y-2">
+              {openAlerts.length === 0 ? (
+                <p className="text-[11px] text-amber-800">No group is at its threshold, so nothing is being requested.</p>
+              ) : (
+                openAlerts.map((a) => (
+                  <div key={a._id} className="rounded-lg bg-white/70 px-3 py-2">
+                    <p className="flex flex-wrap items-center gap-2 text-[11px] font-semibold text-amber-950">
+                      <BloodGroupChip group={a.bloodGroup} size="sm" />
+                      {COMPONENT_LABELS[a.component as Component]}
+                      <span className="font-normal text-amber-800">{a.freeUnits} free / threshold {a.threshold}</span>
+                      <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em] text-amber-800">
+                        {a.level === "out" ? "Stock-out" : a.level}
+                      </span>
+                    </p>
+                    <p className="mt-1 text-[10.5px] leading-4 text-amber-900/80">
+                      Automatic request for {a.requestedUnits} unit(s) sent to {a.hospitalsRequested} hospital(s),{" "}
+                      {a.redCrossRequested} Red Cross source(s) and {a.donorsNotified} donor(s).
+                    </p>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-border bg-card p-4">
+            <h2 className="flex items-center gap-1.5 text-[12px] font-bold uppercase tracking-[0.1em] text-muted-foreground">
+              <RefreshCw className="size-3.5 text-primary" /> Requests from other hospitals
+            </h2>
+            <p className="mt-1 text-[11px] leading-5 text-muted-foreground">
+              Shared region: these hospitals in {org?.city ?? "your city"} are low on stock and the
+              network asked your hospital to help if you can spare compatible units.
+            </p>
+            <div className="mt-2.5 space-y-2">
+              {inboundAlerts === undefined ? (
+                <div className="flex items-center gap-2 py-3 text-[11px] text-muted-foreground"><Loader2 className="size-3.5 animate-spin" /> Loading network requests…</div>
+              ) : inboundAlerts.length === 0 ? (
+                <p className="text-[11px] text-muted-foreground">No other hospital in your region is currently asking for help.</p>
+              ) : (
+                inboundAlerts.map((a) => (
+                  <div key={a._id} className="flex flex-col gap-2 rounded-xl border border-border bg-background p-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-3">
+                      <BloodGroupChip group={a.bloodGroup} size="sm" />
+                      <div>
+                        <p className="text-[12px] font-semibold">{a.organizationName}</p>
+                        <p className="text-[10.5px] text-muted-foreground">
+                          {COMPONENT_LABELS[a.component as Component]} · {a.freeUnits} free · needs about {a.requestedUnits} unit(s)
+                        </p>
+                      </div>
+                    </div>
+                    <span className="w-fit rounded-full bg-amber-100 px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-[0.08em] text-amber-800">
+                      {a.level === "out" ? "Stock-out" : a.level}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
         </div>
       )}
 

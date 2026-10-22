@@ -27,6 +27,7 @@ import {
   urgencyValidator,
 } from "./validators";
 import { compatibility, scoreMatch, URGENCY_LABELS } from "../lib/blood";
+import { evaluateStockLevel } from "./lib/stockWatch";
 
 const MAX_DOC_BYTES = 5 * 1024 * 1024;
 const ALLOWED_DOC_TYPES = ["application/pdf", "image/jpeg", "image/png"];
@@ -747,6 +748,9 @@ export const reserveStock = mutation({
       createdAt: now,
       updatedAt: now,
     });
+    // Reserving stock lowers free availability, so re-check the threshold and
+    // escalate to donors automatically if the branch is now running low.
+    await evaluateStockLevel(ctx, org, item.bloodGroup, item.component);
     await ctx.db.patch(request._id, {
       assignedOrgId: org._id,
       status: request.status === "under_verification" ? "approved" : request.status,
@@ -941,6 +945,9 @@ export const dispatch = mutation({
     }
 
     await ctx.db.patch(request._id, { status: "dispatched", updatedAt: now });
+    // Dispatching removes units from the branch ledger; escalate the shortfall
+    // automatically (donor alerts only for Red Cross origin stock).
+    await evaluateStockLevel(ctx, org, request.bloodGroup, request.component);
     await addHistory(
       ctx,
       request,

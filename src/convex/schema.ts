@@ -177,6 +177,30 @@ const schema = defineSchema(
       .index("by_inventory", ["inventoryId"])
       .index("by_status", ["status"]),
 
+    // Automatic low-stock escalation. When an organization's unreserved stock
+    // for a group/component falls to its threshold, the record below captures
+    // the alert and every recipient the network request was pushed to.
+    stockAlerts: defineTable({
+      organizationId: v.id("organizations"),
+      organizationType: orgTypeValidator,
+      city: v.string(),
+      bloodGroup: bloodGroupValidator,
+      component: componentValidator,
+      freeUnits: v.number(),
+      threshold: v.number(),
+      requestedUnits: v.number(),
+      level: v.union(v.literal("low"), v.literal("critical"), v.literal("out")),
+      status: v.union(v.literal("open"), v.literal("resolved")),
+      hospitalOrgIds: v.array(v.id("organizations")),
+      redCrossOrgIds: v.array(v.id("organizations")),
+      donorsNotified: v.number(),
+      createdAt: v.number(),
+      updatedAt: v.number(),
+      resolvedAt: v.optional(v.number()),
+    })
+      .index("by_organization", ["organizationId"])
+      .index("by_status", ["status"]),
+
     bloodRequests: defineTable({
       requestId: v.string(),
       source: v.union(v.literal("requestor"), v.literal("hospital")),

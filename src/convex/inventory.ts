@@ -3,9 +3,8 @@ import { mutation, query } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 import {
   audit,
-  notifyOrganization,
   requireOrganization,
-  requireRedCross,
+  requireRole,
   requireStaff,
   requireText,
   requireUnits,
@@ -17,6 +16,7 @@ import {
   componentValidator,
   transactionTypeValidator,
 } from "./validators";
+import { evaluateStockLevel } from "./lib/stockWatch";
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
@@ -78,6 +78,86 @@ export const alerts = query({
   },
 });
 
+/**
+ * Automatic low-stock escalations raised for this organization. Each row shows
+ * how many nearby hospitals, Red Cross sources and donors the request reached.
+ */
+export const openStockAlerts = query({
+  args: {},
+  handler: async (ctx) => {
+    const user = await requireStaff(ctx);
+    const organizationId = user.organizationId;
+    if (!organizationId) return [];
+    const rows = await ctx.db
+      .query("stockAlerts")
+      .withIndex("by_organization", (q) => q.eq("organizationId", organizationId))
+      .collect();
+    return rows
+      .sort((a, b) => Number(b.status === "open") - Number(a.status === "open") || b.updatedAt - a.updatedAt)
+      .slice(0, 20)
+      .map((a) => ({
+        _id: a._id,
+        bloodGroup: a.bloodGroup,
+        component: a.component,
+        freeUnits: a.freeUnits,
+        threshold: a.threshold,
+        requestedUnits: a.requestedUnits,
+        level: a.level,
+        status: a.status,
+        city: a.city,
+        hospitalsRequested: a.hospitalOrgIds.length,
+        redCrossRequested: a.redCrossOrgIds.length,
+        donorsNotified: a.donorsNotified,
+        createdAt: a.createdAt,
+        updatedAt: a.updatedAt,
+      }));
+  },
+});
+
+/**
+ * Open network requests this organization was asked to help with: hospitals see
+ * requests raised by other hospitals, Red Cross sources see requests raised by
+ * hospitals. Red Cross shortfalls never appear here.
+ */
+export const inboundStockAlerts = query({
+  args: {},
+  handler: async (ctx) => {
+    const user = await requireStaff(ctx);
+    const organizationId = user.organizationId;
+    const role = roleOf(user);
+    if (!organizationId) return [];
+    if (role !== "hospital" && role !== "red_cross") return [];
+    const rows = await ctx.db
+      .query("stockAlerts")
+      .withIndex("by_status", (q) => q.eq("status", "open"))
+      .collect();
+    const relevant = rows.filter(
+      (a) =>
+        a.organizationId !== organizationId &&
+        (role === "hospital"
+          ? a.hospitalOrgIds.includes(organizationId)
+          : a.redCrossOrgIds.includes(organizationId)),
+    );
+    const orgs = await ctx.db.query("organizations").collect();
+    const names = new Map(orgs.map((o) => [o._id, o.name]));
+    return relevant
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .slice(0, 20)
+      .map((a) => ({
+        _id: a._id,
+        organizationName: names.get(a.organizationId) ?? "Network organization",
+        city: a.city,
+        bloodGroup: a.bloodGroup,
+        component: a.component,
+        freeUnits: a.freeUnits,
+        threshold: a.threshold,
+        requestedUnits: a.requestedUnits,
+        level: a.level,
+        updatedAt: a.updatedAt,
+      }));
+  },
+});
+
 export const addStock = mutation({
   args: {
     bloodGroup: bloodGroupValidator,
@@ -90,8 +170,10 @@ export const addStock = mutation({
     lowStockThreshold: v.number(),
   },
   handler: async (ctx, args) => {
-    const user = await requireRedCross(ctx);
-    const org = await requireOrganization(ctx, user, ["red_cross", "blood_bank"]);
+    // Hospitals record their own storage so a shortfall can be detected before
+    // the ward runs out, not only at Red Cross branches.
+    const user = await requireRole(ctx, ["red_cross", "hospital", "admin"]);
+    const org = await requireOrganization(ctx, user, ["red_cross", "blood_bank", "hospital"]);
     const units = requireUnits(args.unitsAvailable);
     if (!Number.isFinite(args.lowStockThreshold) || args.lowStockThreshold < 0) {
       throw new Error("Low stock threshold must be zero or more.");
@@ -140,6 +222,7 @@ export const addStock = mutation({
       detail: `${units} unit(s) of ${args.bloodGroup} ${args.component} added, expiry ${args.expiryDate}.`,
       organizationId: org._id,
     });
+    await evaluateStockLevel(ctx, org, args.bloodGroup, args.component);
     return { id };
   },
 });
@@ -155,8 +238,8 @@ export const updateStock = mutation({
     note: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const user = await requireRedCross(ctx);
-    const org = await requireOrganization(ctx, user, ["red_cross", "blood_bank"]);
+    const user = await requireRole(ctx, ["red_cross", "hospital", "admin"]);
+    const org = await requireOrganization(ctx, user, ["red_cross", "blood_bank", "hospital"]);
     const item = await ctx.db.get(args.inventoryId);
     if (!item || item.organizationId !== org._id) {
       throw new Error("Inventory batch not found for your organization.");
@@ -212,6 +295,7 @@ export const updateStock = mutation({
       detail: `Batch ${item.batchRef} updated${delta ? ` (${delta > 0 ? "+" : ""}${delta} units)` : ""}.`,
       organizationId: org._id,
     });
+    await evaluateStockLevel(ctx, org, item.bloodGroup, item.component);
     return { ok: true };
   },
 });
@@ -224,8 +308,8 @@ export const recordMovement = mutation({
     note: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const user = await requireRedCross(ctx);
-    const org = await requireOrganization(ctx, user, ["red_cross", "blood_bank"]);
+    const user = await requireRole(ctx, ["red_cross", "hospital", "admin"]);
+    const org = await requireOrganization(ctx, user, ["red_cross", "blood_bank", "hospital"]);
     const item = await ctx.db.get(args.inventoryId);
     if (!item || item.organizationId !== org._id) {
       throw new Error("Inventory batch not found for your organization.");
@@ -267,15 +351,7 @@ export const recordMovement = mutation({
       detail: `${units} unit(s) ${args.type} for batch ${item.batchRef}.`,
       organizationId: org._id,
     });
-    const free = (args.type === "collection" ? item.unitsAvailable + units : item.unitsAvailable - units) - item.unitsReserved;
-    if (free <= item.lowStockThreshold) {
-      await notifyOrganization(ctx, org._id, {
-        title: "Low stock alert",
-        body: `${item.bloodGroup} ${item.component.replace("_", " ")} at ${org.name} has ${free} unreserved unit(s).`,
-        kind: "inventory",
-        link: "/red-cross/dashboard",
-      });
-    }
+    await evaluateStockLevel(ctx, org, item.bloodGroup, item.component);
     return { ok: true };
   },
 });

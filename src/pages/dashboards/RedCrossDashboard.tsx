@@ -74,6 +74,7 @@ import {
   MapPin,
   PackagePlus,
   Plus,
+  RefreshCw,
   Search,
   ShieldCheck,
   Siren,
@@ -570,6 +571,8 @@ export default function RedCrossDashboard() {
   const me = useQuery(api.profiles.me);
   const analytics = useQuery(api.stats.staffAnalytics, { windowDays });
   const alerts = useQuery(api.inventory.alerts);
+  const autoAlerts = useQuery(api.inventory.openStockAlerts);
+  const inboundAlerts = useQuery(api.inventory.inboundStockAlerts);
   const requests = useQuery(api.requests.listForStaff, {});
   const inventory = useQuery(api.inventory.listForOrg, {});
   const transactions = useQuery(api.inventory.transactions, {});
@@ -662,6 +665,19 @@ export default function RedCrossDashboard() {
                   ))}
                   {alerts.lowStock.length === 0 && <p className="text-[11px] text-amber-800">No low-stock batches.</p>}
                 </div>
+                {(autoAlerts ?? []).filter((a) => a.status === "open").length > 0 && (
+                  <div className="mt-2 space-y-1 border-t border-amber-200/70 pt-2">
+                    {(autoAlerts ?? [])
+                      .filter((a) => a.status === "open")
+                      .slice(0, 3)
+                      .map((a) => (
+                        <p key={a._id} className="text-[10.5px] leading-4 text-amber-900/80">
+                          <span className="font-semibold">{a.bloodGroup} · {COMPONENT_LABELS[a.component as Component]}</span>: automatic request sent to {a.donorsNotified} compatible donor(s).
+                          Red Cross shortfalls are never routed to hospitals.
+                        </p>
+                      ))}
+                  </div>
+                )}
               </section>
               <section className="rounded-2xl border border-rose-200 bg-rose-50/50 p-4">
                 <h2 className="flex items-center gap-1.5 text-[12px] font-bold uppercase tracking-[0.1em] text-rose-900">
@@ -678,6 +694,36 @@ export default function RedCrossDashboard() {
                 </div>
               </section>
             </div>
+          )}
+
+          {(inboundAlerts ?? []).length > 0 && (
+            <section className="rounded-2xl border border-border bg-card p-4">
+              <h2 className="flex items-center gap-1.5 text-[12px] font-bold uppercase tracking-[0.1em] text-muted-foreground">
+                <RefreshCw className="size-3.5 text-primary" /> Hospital requests for this branch
+              </h2>
+              <p className="mt-1 text-[11px] leading-5 text-muted-foreground">
+                Hospitals in your region dropped to their low-stock threshold. The network request
+                was raised automatically — this branch can reserve compatible stock for them.
+              </p>
+              <div className="mt-2.5 space-y-2">
+                {(inboundAlerts ?? []).slice(0, 4).map((a) => (
+                  <div key={a._id} className="flex flex-col gap-2 rounded-xl border border-border bg-background p-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-3">
+                      <BloodGroupChip group={a.bloodGroup} size="sm" />
+                      <div>
+                        <p className="text-[12px] font-semibold">{a.organizationName}</p>
+                        <p className="text-[10.5px] text-muted-foreground">
+                          {COMPONENT_LABELS[a.component as Component]} · {a.freeUnits} free · needs about {a.requestedUnits} unit(s)
+                        </p>
+                      </div>
+                    </div>
+                    <span className="w-fit rounded-full bg-amber-100 px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-[0.08em] text-amber-800">
+                      {a.level === "out" ? "Stock-out" : a.level}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </section>
           )}
 
           <div className="grid gap-4 lg:grid-cols-[1.35fr_0.65fr]">

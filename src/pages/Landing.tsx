@@ -457,18 +457,7 @@ export default function Landing() {
         <div aria-hidden className="absolute inset-0 bg-grid opacity-40 [mask-image:linear-gradient(to_bottom,black,transparent_92%)]" />
         <div className="relative mx-auto grid w-full max-w-7xl items-center gap-10 px-4 pb-16 pt-12 sm:px-6 lg:grid-cols-[1.08fr_0.92fr] lg:gap-6 lg:px-8 lg:pb-24 lg:pt-16">
           <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/[0.055] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-primary">
-                <Sparkles className="size-3" />
-                Buildathon · shared verified network
-              </span>
-              <span className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2.5 py-1.5 text-[10px] font-semibold text-muted-foreground">
-                <ShieldCheck className="size-3 text-teal-600" />
-                Role-verified staff
-              </span>
-            </div>
-
-            <h1 className="mt-6 max-w-[660px] text-balance font-display text-[42px] font-extrabold leading-[1.02] tracking-[-0.045em] sm:text-[56px] lg:text-[62px]">
+            <h1 className="max-w-[660px] text-balance font-display text-[42px] font-extrabold leading-[1.02] tracking-[-0.045em] sm:text-[56px] lg:text-[62px]">
               LifeLink
               <span className="block text-[27px] font-bold leading-[1.15] tracking-[-0.03em] text-muted-foreground sm:text-[34px]">
                 Smart Blood Donation Management System

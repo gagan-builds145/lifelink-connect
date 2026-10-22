@@ -20,7 +20,7 @@ import {
   orgTypeValidator,
   requestorTypeValidator,
 } from "./validators";
-import { ageFromDob } from "../lib/blood";
+import { ageFromDob, citiesInState, stateOfCity } from "../lib/blood";
 
 const orgTypeArg = v.union(v.literal("red_cross"), v.literal("hospital"));
 
@@ -402,15 +402,34 @@ export const updateMyOrganization = mutation({
   },
 });
 
-/** Verified, public-safe organization directory. Never returns staff emails. */
+/**
+ * Verified, public-safe organization directory. Never returns staff emails.
+ * `scope` mirrors the blood search: a single city unless an emergency widens
+ * the search to the state or the whole country.
+ */
 export const publicOrganizations = query({
-  args: { type: v.optional(orgTypeValidator), city: v.optional(v.string()) },
+  args: {
+    type: v.optional(orgTypeValidator),
+    city: v.optional(v.string()),
+    scope: v.optional(
+      v.union(v.literal("city"), v.literal("state"), v.literal("country")),
+    ),
+  },
   handler: async (ctx, args) => {
     const rows = await ctx.db.query("organizations").collect();
+    const scope = args.scope ?? "city";
+    const allowedCities = (() => {
+      if (scope === "country" || !args.city) return null;
+      if (scope === "state") {
+        const cities = citiesInState(stateOfCity(args.city));
+        return new Set(cities.length > 0 ? cities : [args.city]);
+      }
+      return new Set([args.city]);
+    })();
     return rows
       .filter((o) => o.status === "verified")
       .filter((o) => (args.type ? o.type === args.type : true))
-      .filter((o) => (args.city ? o.city === args.city : true))
+      .filter((o) => (allowedCities ? allowedCities.has(o.city) : true))
       .map((o) => ({
         _id: o._id,
         orgId: o.orgId,

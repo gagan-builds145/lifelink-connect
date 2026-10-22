@@ -2,6 +2,10 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { DashboardShell } from "@/components/lifelink/DashboardShell";
 import {
+  BatchDeadlineEditor,
+  BloodTypeCoverage,
+} from "@/components/lifelink/StockWatchPanels";
+import {
   BloodGroupChip,
   DemoBadge,
   DemoDataBanner,
@@ -573,6 +577,7 @@ export default function RedCrossDashboard() {
   const alerts = useQuery(api.inventory.alerts);
   const autoAlerts = useQuery(api.inventory.openStockAlerts);
   const inboundAlerts = useQuery(api.inventory.inboundStockAlerts);
+  const coverage = useQuery(api.inventory.typeCoverage, {});
   const requests = useQuery(api.requests.listForStaff, {});
   const inventory = useQuery(api.inventory.listForOrg, {});
   const transactions = useQuery(api.inventory.transactions, {});
@@ -672,8 +677,10 @@ export default function RedCrossDashboard() {
                       .slice(0, 3)
                       .map((a) => (
                         <p key={a._id} className="text-[10.5px] leading-4 text-amber-900/80">
-                          <span className="font-semibold">{a.bloodGroup} · {COMPONENT_LABELS[a.component as Component]}</span>: automatic request sent to {a.donorsNotified} compatible donor(s).
-                          Red Cross shortfalls are never routed to hospitals.
+                          <span className="font-semibold">{a.bloodGroup} · {COMPONENT_LABELS[a.component as Component]}</span>
+                          {a.reason === "deadline" ? " passed its storage deadline" : " is low"}: automatic
+                          request sent to {a.donorsNotified} compatible donor(s). Red Cross shortfalls are
+                          never routed to hospitals.
                         </p>
                       ))}
                   </div>
@@ -695,6 +702,8 @@ export default function RedCrossDashboard() {
               </section>
             </div>
           )}
+
+          <BloodTypeCoverage coverage={coverage} city={org?.city} roleLabel="Red Cross" />
 
           {(inboundAlerts ?? []).length > 0 && (
             <section className="rounded-2xl border border-border bg-card p-4">
@@ -941,6 +950,8 @@ export default function RedCrossDashboard() {
 
       {tab === "inventory" && (
         <div className="mt-4 space-y-4">
+          <BloodTypeCoverage coverage={coverage} city={org?.city} roleLabel="Red Cross" />
+
           <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-[14px] font-bold">Shared blood inventory</h2>
@@ -1012,6 +1023,8 @@ export default function RedCrossDashboard() {
               </div>
             )}
           </div>
+
+          <BatchDeadlineEditor batches={inventory} roleLabel="Red Cross" />
 
           <div className="overflow-hidden rounded-2xl border border-border bg-card">
             <div className="border-b border-border p-4">

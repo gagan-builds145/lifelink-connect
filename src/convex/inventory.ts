@@ -1,6 +1,7 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
+import { BLOOD_GROUPS, COMPONENTS, citiesInState, stateOfCity } from "../lib/blood";
 import {
   audit,
   requireOrganization,
@@ -103,6 +104,7 @@ export const openStockAlerts = query({
         threshold: a.threshold,
         requestedUnits: a.requestedUnits,
         level: a.level,
+        reason: a.reason ?? "low_stock",
         status: a.status,
         city: a.city,
         hospitalsRequested: a.hospitalOrgIds.length,
@@ -111,6 +113,108 @@ export const openStockAlerts = query({
         createdAt: a.createdAt,
         updatedAt: a.updatedAt,
       }));
+  },
+});
+
+/**
+ * What is usable on the shelf right now: how many of the eight blood groups
+ * and four components hold units, the next storage deadline, and the batches
+ * whose deadline has already passed. Drives the "types available" panel on
+ * the hospital and Red Cross dashboards.
+ */
+export const typeCoverage = query({
+  args: {},
+  handler: async (ctx) => {
+    const user = await requireStaff(ctx);
+    const organizationId = user.organizationId;
+    if (!organizationId) return null;
+    const rows = await ctx.db
+      .query("inventory")
+      .withIndex("by_organization", (q) => q.eq("organizationId", organizationId))
+      .collect();
+    const today = todayIso();
+    const usable = rows.filter((r) => r.verified && r.expiryDate >= today);
+    const freeOf = (r: Doc<"inventory">) => Math.max(0, r.unitsAvailable - r.unitsReserved);
+
+    const byGroup = BLOOD_GROUPS.map((group) => {
+      const batches = usable.filter((r) => r.bloodGroup === group);
+      const free = batches.reduce((sum, r) => sum + freeOf(r), 0);
+      const components = COMPONENTS.filter((component) =>
+        batches.some((r) => r.component === component && freeOf(r) > 0),
+      );
+      return {
+        bloodGroup: group,
+        free,
+        components,
+        inStock: free > 0,
+        batches: batches.length,
+      };
+    });
+
+    const withStock = usable.filter((r) => freeOf(r) > 0).sort((a, b) => a.expiryDate.localeCompare(b.expiryDate));
+    const expired = rows.filter((r) => r.expiryDate < today && freeOf(r) > 0);
+    const dueSoon = withStock.filter((r) => daysUntil(r.expiryDate) <= 7);
+
+    return {
+      bloodGroupCount: BLOOD_GROUPS.length,
+      groupsInStock: byGroup.filter((g) => g.inStock).length,
+      componentCount: COMPONENTS.length,
+      componentsInStock: new Set(usable.filter((r) => freeOf(r) > 0).map((r) => r.component)).size,
+      totalFree: byGroup.reduce((sum, g) => sum + g.free, 0),
+      byGroup,
+      nextDeadline: withStock[0]?.expiryDate ?? null,
+      dueSoonBatches: dueSoon.length,
+      expiredBatches: expired.length,
+      expiredUnits: expired.reduce((sum, r) => sum + freeOf(r), 0),
+    };
+  },
+});
+
+/**
+ * Daily storage-deadline sweep, scheduled from crons.ts. Batches whose
+ * deadline has passed stop counting as usable stock, so re-checking each
+ * group here raises the automatic network request even on days when nobody
+ * touches the inventory. Returns a small summary for the scheduler log.
+ */
+export const expirySweep = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const today = todayIso();
+    const orgs = (await ctx.db.query("organizations").collect()).filter(
+      (o) => o.status === "verified",
+    );
+    let groupsSwept = 0;
+    let openAlerts = 0;
+    for (const org of orgs) {
+      const batches = await ctx.db
+        .query("inventory")
+        .withIndex("by_organization", (q) => q.eq("organizationId", org._id))
+        .collect();
+      if (batches.length === 0) continue;
+      const pairs = new Map<
+        string,
+        { group: Doc<"inventory">["bloodGroup"]; component: Doc<"inventory">["component"] }
+      >();
+      for (const batch of batches) {
+        pairs.set(`${batch.bloodGroup}:${batch.component}`, {
+          group: batch.bloodGroup,
+          component: batch.component,
+        });
+      }
+      for (const pair of pairs.values()) {
+        const passedDeadline = batches.some(
+          (b) =>
+            b.bloodGroup === pair.group &&
+            b.component === pair.component &&
+            b.expiryDate < today,
+        );
+        if (!passedDeadline) continue;
+        await evaluateStockLevel(ctx, org, pair.group, pair.component, "deadline");
+        groupsSwept += 1;
+        openAlerts += 1;
+      }
+    }
+    return { organizationsChecked: orgs.length, groupsSwept, openAlerts };
   },
 });
 
@@ -260,7 +364,10 @@ export const updateStock = mutation({
     }
     if (args.expiryDate !== undefined) {
       const d = new Date(args.expiryDate);
-      if (Number.isNaN(d.getTime())) throw new Error("Expiry date is invalid.");
+      if (Number.isNaN(d.getTime())) throw new Error("Deadline must be a valid date.");
+      if (d < new Date(item.collectionDate)) {
+        throw new Error("Deadline cannot be before the collection date of this batch.");
+      }
       patch.expiryDate = d.toISOString().slice(0, 10);
     }
     if (args.storageLocation !== undefined) {
@@ -395,12 +502,26 @@ export const publicStock = query({
     bloodGroup: v.optional(bloodGroupValidator),
     component: v.optional(componentValidator),
     city: v.optional(v.string()),
+    // City-first by default. "state" and "country" widen the same search and
+    // are intended for emergency requests only.
+    scope: v.optional(
+      v.union(v.literal("city"), v.literal("state"), v.literal("country")),
+    ),
   },
   handler: async (ctx, args) => {
     const orgs = await ctx.db.query("organizations").collect();
     const verified = new Map(
       orgs.filter((o) => o.status === "verified").map((o) => [o._id, o]),
     );
+    const scope = args.scope ?? "city";
+    const allowedCities = (() => {
+      if (scope === "country" || !args.city) return null;
+      if (scope === "state") {
+        const cities = citiesInState(stateOfCity(args.city));
+        return new Set(cities.length > 0 ? cities : [args.city]);
+      }
+      return new Set([args.city]);
+    })();
     const items = await ctx.db.query("inventory").collect();
     const filtered = items.filter((item) => {
       const org = verified.get(item.organizationId);
@@ -410,7 +531,7 @@ export const publicStock = query({
       if (item.expiryDate < todayIso()) return false;
       if (args.bloodGroup && item.bloodGroup !== args.bloodGroup) return false;
       if (args.component && item.component !== args.component) return false;
-      if (args.city && org.city !== args.city) return false;
+      if (allowedCities && !allowedCities.has(org.city)) return false;
       return true;
     });
 

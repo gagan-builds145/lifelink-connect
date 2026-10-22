@@ -4,11 +4,14 @@ import { compatibility } from "../../lib/blood";
 import { notifyOrganization, notifyUser } from "./helpers";
 
 /**
- * Automatic low-stock escalation.
+ * Automatic low-stock and deadline escalation.
  *
- * Whenever an organization's unreserved stock for a group/component drops to
- * its low-stock threshold - i.e. before it actually runs out - the network is
- * asked for help without staff having to press anything:
+ * Whenever an organization's usable (unreserved, unexpired) stock for a
+ * group/component drops to its low-stock threshold - i.e. before it actually
+ * runs out - the network is asked for help without staff having to press
+ * anything. Units that pass the storage deadline written on their batch stop
+ * counting as usable stock, so a passed deadline raises the same request on its
+ * own (the daily sweep in crons.ts re-checks every branch and hospital):
  *
  *  - the organization's own staff are alerted immediately;
  *  - if the organization is a hospital, the request is pushed to the other
@@ -19,6 +22,7 @@ import { notifyOrganization, notifyUser } from "./helpers";
  *    routed to hospitals.
  */
 export type StockLevel = "low" | "critical" | "out";
+export type StockAlertReason = "low_stock" | "deadline";
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const label = (component: string) => component.replace(/_/g, " ");
@@ -51,19 +55,15 @@ export async function evaluateStockLevel(
   org: Doc<"organizations">,
   bloodGroup: Group,
   component: Component,
+  reason: StockAlertReason = "low_stock",
 ) {
-  const batches = (
+  const today = todayIso();
+  const scoped = (
     await ctx.db
       .query("inventory")
       .withIndex("by_organization", (q) => q.eq("organizationId", org._id))
       .collect()
-  ).filter(
-    (b) =>
-      b.bloodGroup === bloodGroup &&
-      b.component === component &&
-      b.verified &&
-      b.expiryDate >= todayIso(),
-  );
+  ).filter((b) => b.bloodGroup === bloodGroup && b.component === component);
 
   const existing = (
     await ctx.db
@@ -74,16 +74,21 @@ export async function evaluateStockLevel(
     (a) => a.bloodGroup === bloodGroup && a.component === component && a.status === "open",
   );
 
-  if (batches.length === 0) {
+  // Nothing tracked for this group/component yet: never invent a shortfall.
+  if (scoped.length === 0) {
     if (existing) await resolveAlert(ctx, existing, 0);
     return null;
   }
 
-  const free = batches.reduce(
+  const usable = scoped.filter((b) => b.verified && b.expiryDate >= today);
+  const free = usable.reduce(
     (sum, b) => sum + Math.max(0, b.unitsAvailable - b.unitsReserved),
     0,
   );
-  const threshold = Math.max(1, ...batches.map((b) => b.lowStockThreshold));
+  const expiredUnits = scoped
+    .filter((b) => b.expiryDate < today)
+    .reduce((sum, b) => sum + Math.max(0, b.unitsAvailable - b.unitsReserved), 0);
+  const threshold = Math.max(1, ...scoped.map((b) => b.lowStockThreshold));
 
   if (free > threshold) {
     if (existing) await resolveAlert(ctx, existing, free);
@@ -92,13 +97,20 @@ export async function evaluateStockLevel(
 
   const now = Date.now();
   const level = levelFor(free, threshold);
+  const effectiveReason: StockAlertReason =
+    expiredUnits > 0 && free <= threshold ? "deadline" : reason;
   const requestedUnits = Math.min(20, Math.max(1, threshold * 2 - free));
 
   // An open alert is refreshed in place. Only a new alert, or an escalation to
   // a complete stock-out, re-notifies the network so nobody is spammed.
   const shouldNotify = !existing || (existing.level !== "out" && level === "out");
   if (!shouldNotify) {
-    await ctx.db.patch(existing!._id, { freeUnits: free, level, updatedAt: now });
+    await ctx.db.patch(existing!._id, {
+      freeUnits: free,
+      level,
+      reason: effectiveReason,
+      updatedAt: now,
+    });
     return existing!;
   }
 
@@ -130,10 +142,20 @@ export async function evaluateStockLevel(
   const route = isHospitalShortfall
     ? `${hospitals.length} nearby hospital(s), ${redCrossSources.length} Red Cross source(s) and ${donorsNotifiedTargets.length} compatible donor(s)`
     : `${donorsNotifiedTargets.length} compatible donor(s). Red Cross shortfalls are not routed to hospitals`;
+  const deadlineNote =
+    expiredUnits > 0
+      ? ` ${expiredUnits} unit(s) passed their storage deadline and can no longer be issued.`
+      : "";
+  const headline =
+    level === "out"
+      ? "Stock-out"
+      : effectiveReason === "deadline"
+        ? "Storage deadline reached"
+        : "Low stock";
 
   await notifyOrganization(ctx, org._id, {
-    title: `${level === "out" ? "Stock-out" : "Low stock"}: ${supply}`,
-    body: `${free} unreserved unit(s) left at ${org.name} (threshold ${threshold}). An automatic request for ${requestedUnits} unit(s) was sent to ${route}.`,
+    title: `${headline}: ${supply}`,
+    body: `${free} usable unit(s) left at ${org.name} (threshold ${threshold}).${deadlineNote} An automatic request for ${requestedUnits} unit(s) was sent to ${route}.`,
     kind: "inventory",
     link: org.type === "hospital" ? "/hospital/dashboard" : "/red-cross/dashboard",
   });
@@ -141,7 +163,7 @@ export async function evaluateStockLevel(
   for (const target of hospitals) {
     await notifyOrganization(ctx, target._id, {
       title: `Blood assistance request: ${supply}`,
-      body: `${org.name} in ${org.city} is down to ${free} unreserved unit(s) and needs about ${requestedUnits} unit(s). If you can spare compatible stock, coordinate through your dashboard.`,
+      body: `${org.name} in ${org.city} is down to ${free} usable unit(s) and needs about ${requestedUnits} unit(s).${deadlineNote} If you can spare compatible stock, coordinate through your dashboard.`,
       kind: "request",
       link: "/hospital/dashboard",
     });
@@ -150,7 +172,7 @@ export async function evaluateStockLevel(
   for (const target of redCrossSources) {
     await notifyOrganization(ctx, target._id, {
       title: `Blood assistance request: ${supply}`,
-      body: `${org.name} in ${org.city} is down to ${free} unreserved unit(s). Automatic network request raised for about ${requestedUnits} unit(s) of ${supply}.`,
+      body: `${org.name} in ${org.city} is down to ${free} usable unit(s). Automatic network request raised for about ${requestedUnits} unit(s) of ${supply}.${deadlineNote}`,
       kind: "request",
       link: "/red-cross/dashboard",
     });
@@ -161,7 +183,7 @@ export async function evaluateStockLevel(
       title: `Donor request near ${org.city}: ${supply}`,
       body:
         level === "out"
-          ? `A ${org.type === "hospital" ? "hospital" : "blood centre"} in ${org.city} has run out of ${supply}. Eligible donors are being asked to donate now.`
+          ? `A ${org.type === "hospital" ? "hospital" : "blood centre"} in ${org.city} has no usable ${supply} left. Eligible donors are being asked to donate now.`
           : `A ${org.type === "hospital" ? "hospital" : "blood centre"} in ${org.city} is low on ${supply}. Eligible donors nearby are being asked to donate.`,
       kind: "match",
       link: "/donor/dashboard",
@@ -178,6 +200,7 @@ export async function evaluateStockLevel(
     threshold,
     requestedUnits,
     level,
+    reason: effectiveReason,
     status: "open" as const,
     hospitalOrgIds: hospitals.map((o) => o._id),
     redCrossOrgIds: redCrossSources.map((o) => o._id),

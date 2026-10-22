@@ -16,14 +16,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useAuth } from "@/hooks/use-auth";
 import {
   BLOOD_GROUPS,
   CITIES,
   COMPONENTS,
   COMPONENT_LABELS,
+  COUNTRY_LABEL,
   formatDateTime,
+  stateOfCity,
   type Component,
+  type SearchScope,
 } from "@/lib/blood";
+import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "convex/react";
 import { motion } from "framer-motion";
 import {
@@ -42,33 +47,52 @@ import {
   Siren,
   X,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { toast } from "sonner";
 
 export default function BloodSearch() {
   const [params, setParams] = useSearchParams();
+  const { user } = useAuth();
   const [group, setGroup] = useState(params.get("group") ?? "all");
   const [component, setComponent] = useState(params.get("component") ?? "all");
-  const [city, setCity] = useState(params.get("city") ?? "all");
+  const [city, setCity] = useState(params.get("city") ?? "Pune");
+  const [scope, setScope] = useState<SearchScope>(() => {
+    const raw = params.get("scope");
+    return raw === "state" || raw === "country" ? raw : "city";
+  });
   const [demoBusy, setDemoBusy] = useState(false);
 
+  // A signed-in account starts from the city stored on the profile; visitors
+  // start from the network's home city and can change it.
+  useEffect(() => {
+    if (params.get("city")) return;
+    const home = (user as { city?: string | null } | null | undefined)?.city;
+    if (home && CITIES.includes(home)) setCity(home);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.city]);
+
+  const scopeCity = scope === "country" ? undefined : city;
   const stock = useQuery(api.inventory.publicStock, {
     bloodGroup: group === "all" ? undefined : (group as (typeof BLOOD_GROUPS)[number]),
     component: component === "all" ? undefined : (component as Component),
-    city: city === "all" ? undefined : city,
+    city: scopeCity,
+    scope,
   });
   const organizations = useQuery(api.profiles.publicOrganizations, {
     type: "red_cross",
-    city: city === "all" ? undefined : city,
+    city: scopeCity,
+    scope,
   });
   const banks = useQuery(api.profiles.publicOrganizations, {
     type: "blood_bank",
-    city: city === "all" ? undefined : city,
+    city: scopeCity,
+    scope,
   });
   const hospitals = useQuery(api.profiles.publicOrganizations, {
     type: "hospital",
-    city: city === "all" ? undefined : city,
+    city: scopeCity,
+    scope,
   });
   const seedDemo = useMutation(api.demo.seed);
 
@@ -78,19 +102,30 @@ export default function BloodSearch() {
   );
   const demoPresent = (stock ?? []).some((s) => s.isDemo);
 
+  const scopeLabel =
+    scope === "city"
+      ? `${city} only`
+      : scope === "state"
+        ? `all of ${stateOfCity(city) ?? city}`
+        : `all of ${COUNTRY_LABEL}`;
+  const emergencyScope = scope !== "city";
+
   const apply = () => {
     const next = new URLSearchParams();
     if (group !== "all") next.set("group", group);
     if (component !== "all") next.set("component", component);
-    if (city !== "all") next.set("city", city);
+    next.set("city", city);
+    if (scope !== "city") next.set("scope", scope);
     setParams(next, { replace: true });
   };
 
   const clear = () => {
     setGroup("all");
     setComponent("all");
-    setCity("all");
-    setParams({}, { replace: true });
+    setScope("city");
+    const next = new URLSearchParams();
+    next.set("city", city);
+    setParams(next, { replace: true });
   };
 
   const loadDemo = async () => {
@@ -111,7 +146,7 @@ export default function BloodSearch() {
     }
   };
 
-  const hasFilters = group !== "all" || component !== "all" || city !== "all";
+  const hasFilters = group !== "all" || component !== "all" || scope !== "city";
   const activeOrganizations = (organizations ?? []).length + (banks ?? []).length + (hospitals ?? []).length;
 
   return (
@@ -133,7 +168,8 @@ export default function BloodSearch() {
               <p className="mt-4 max-w-2xl text-[14px] leading-7 text-muted-foreground">
                 Search verified Red Cross branches, participating blood banks and hospitals
                 sharing the LifeLink database. Every result shows when stock was last
-                updated. Reported availability is confirmed by the organization before issue.
+                updated. Searches start inside your own city — state and country-wide
+                coverage opens only for emergencies.
               </p>
               <div className="mt-5 flex flex-wrap gap-2.5">
                 <Button asChild className="gap-2">
@@ -179,7 +215,6 @@ export default function BloodSearch() {
                 <Select value={city} onValueChange={setCity}>
                   <SelectTrigger className="h-10 w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All cities</SelectItem>
                     {CITIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                   </SelectContent>
                 </Select>
@@ -195,10 +230,59 @@ export default function BloodSearch() {
                 )}
               </div>
             </div>
+
+            <div className="mt-3 flex flex-col gap-2.5 border-t border-border pt-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.13em] text-muted-foreground">Search radius</p>
+                <p className="mt-0.5 text-[10.5px] leading-5 text-muted-foreground">
+                  Stock is searched inside one city. State-wide and country-wide results are
+                  reserved for emergency requests.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {(
+                  [
+                    { key: "city", label: `This city only`, emergency: false },
+                    { key: "state", label: `Whole ${stateOfCity(city) ?? "state"}`, emergency: true },
+                    { key: "country", label: `Whole ${COUNTRY_LABEL}`, emergency: true },
+                  ] as const
+                ).map((option) => (
+                  <Button
+                    key={option.key}
+                    type="button"
+                    size="sm"
+                    variant={scope === option.key ? "default" : "outline"}
+                    className={cn(
+                      "h-8 gap-1.5 text-[10.5px]",
+                      option.emergency && scope !== option.key && "border-amber-300 text-amber-900",
+                      option.emergency && scope === option.key && "bg-amber-600 text-white hover:bg-amber-700",
+                    )}
+                    onClick={() => setScope(option.key)}
+                  >
+                    {option.emergency ? <Siren className="size-3" /> : <MapPin className="size-3" />}
+                    {option.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            {emergencyScope && (
+              <p className="mt-2.5 flex items-start gap-2 rounded-xl border border-amber-300/70 bg-amber-50/70 px-3 py-2 text-[10.5px] leading-5 text-amber-900">
+                <Siren className="mt-0.5 size-3.5 shrink-0" />
+                <span>
+                  <strong>Emergency search.</strong> Results now include every verified source in {scopeLabel}.
+                  Keep the radius at <strong>{city}</strong> for routine requests so local stock is reserved first.
+                </span>
+              </p>
+            )}
           </div>
 
           <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-border bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-wrap items-center gap-4 text-[11px] text-muted-foreground">
+              <span className="inline-flex items-center gap-1.5">
+                <MapPin className={emergencyScope ? "size-3.5 text-amber-600" : "size-3.5 text-primary"} />
+                <strong className={emergencyScope ? "text-amber-800" : "text-foreground"}>{scopeLabel}</strong>
+              </span>
               <span className="inline-flex items-center gap-1.5"><Droplets className="size-3.5 text-primary" /> <strong className="text-foreground">{stock ? totalUnits : "—"}</strong> units reported</span>
               <span className="inline-flex items-center gap-1.5"><Building2 className="size-3.5 text-primary" /> <strong className="text-foreground">{activeOrganizations}</strong> verified organization(s)</span>
               {demoPresent && (
@@ -221,7 +305,8 @@ export default function BloodSearch() {
           <div className="mt-5">
             <h2 className="text-[15px] font-bold">Reported stock by verified source</h2>
             <p className="mt-0.5 text-[11px] text-muted-foreground">
-              Verified, unexpired batches with at least one unreserved unit. Public-safe fields only.
+              Verified, unexpired batches in {scopeLabel} with at least one unreserved unit.
+              Public-safe fields only.
             </p>
 
             {stock === undefined ? (
@@ -231,9 +316,24 @@ export default function BloodSearch() {
             ) : stock.length === 0 ? (
               <EmptyState
                 icon={Droplets}
-                title="No verified stock matches this search"
-                description="LifeLink never invents availability. Try another city or component, or load the labelled demo network to preview the workflow."
-                action={<Button size="sm" variant="outline" className="gap-1.5" onClick={() => void loadDemo()} disabled={demoBusy}><FlaskConical className="size-3.5" /> Load demo network</Button>}
+                title={`No verified stock matches this search in ${scopeLabel}`}
+                description={
+                  scope === "city"
+                    ? "LifeLink never invents availability. Try another group or component, or widen to the whole state only if this is an emergency."
+                    : "LifeLink never invents availability. Try another group or component, or load the labelled demo network to preview the workflow."
+                }
+                action={
+                  <div className="flex flex-wrap justify-center gap-2">
+                    {scope === "city" && (
+                      <Button size="sm" variant="outline" className="gap-1.5 border-amber-300 text-amber-900" onClick={() => setScope("state")}>
+                        <Siren className="size-3.5" /> Emergency: widen to {stateOfCity(city) ?? "state"}
+                      </Button>
+                    )}
+                    <Button size="sm" variant="outline" className="gap-1.5" onClick={() => void loadDemo()} disabled={demoBusy}>
+                      {demoBusy ? <Loader2 className="size-3.5 animate-spin" /> : <FlaskConical className="size-3.5" />} Load demo network
+                    </Button>
+                  </div>
+                }
                 className="mt-4 bg-card"
               />
             ) : (

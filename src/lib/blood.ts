@@ -108,6 +108,45 @@ export const CITY_COORDS: Record<string, { lat: number; lng: number }> = {
 
 export const CITIES = Object.keys(CITY_COORDS).sort();
 
+/**
+ * State grouping for the cities LifeLink serves. Blood search starts inside a
+ * single city and only widens to the state or the whole country for an
+ * emergency, so the scope is derived from stored data rather than guessed.
+ */
+export const CITY_STATES: Record<string, string> = {
+  Pune: "Maharashtra",
+  Mumbai: "Maharashtra",
+  Nashik: "Maharashtra",
+  Nagpur: "Maharashtra",
+  "New Delhi": "Delhi",
+  Gurugram: "Haryana",
+  Bengaluru: "Karnataka",
+  Hyderabad: "Telangana",
+  Chennai: "Tamil Nadu",
+  Kolkata: "West Bengal",
+  Ahmedabad: "Gujarat",
+  Jaipur: "Rajasthan",
+  Lucknow: "Uttar Pradesh",
+  Bhopal: "Madhya Pradesh",
+  Kochi: "Kerala",
+  Chandigarh: "Chandigarh",
+};
+
+export const COUNTRY_LABEL = "India";
+
+export const SEARCH_SCOPES = ["city", "state", "country"] as const;
+export type SearchScope = (typeof SEARCH_SCOPES)[number];
+
+export function stateOfCity(city?: string | null) {
+  if (!city) return null;
+  return CITY_STATES[city] ?? null;
+}
+
+export function citiesInState(state?: string | null): string[] {
+  if (!state) return [];
+  return CITIES.filter((city) => CITY_STATES[city] === state);
+}
+
 export function cityCoords(city?: string | null) {
   if (!city) return null;
   return CITY_COORDS[city] ?? null;

@@ -190,6 +190,9 @@ const schema = defineSchema(
       threshold: v.number(),
       requestedUnits: v.number(),
       level: v.union(v.literal("low"), v.literal("critical"), v.literal("out")),
+      // "deadline" marks a shortfall caused by units passing their storage
+      // deadline, which is raised by the daily sweep without any staff action.
+      reason: v.optional(v.union(v.literal("low_stock"), v.literal("deadline"))),
       status: v.union(v.literal("open"), v.literal("resolved")),
       hospitalOrgIds: v.array(v.id("organizations")),
       redCrossOrgIds: v.array(v.id("organizations")),

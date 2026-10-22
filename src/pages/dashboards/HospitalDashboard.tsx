@@ -3,6 +3,10 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { DashboardShell } from "@/components/lifelink/DashboardShell";
 import { RequestForm } from "@/components/lifelink/RequestForm";
 import {
+  BatchDeadlineEditor,
+  BloodTypeCoverage,
+} from "@/components/lifelink/StockWatchPanels";
+import {
   BloodGroupChip,
   DemoBadge,
   DemoDataBanner,
@@ -86,6 +90,7 @@ export default function HospitalDashboard() {
   const myStock = useQuery(api.inventory.listForOrg, {});
   const stockAlerts = useQuery(api.inventory.openStockAlerts, {});
   const inboundAlerts = useQuery(api.inventory.inboundStockAlerts, {});
+  const coverage = useQuery(api.inventory.typeCoverage, {});
   const addStock = useMutation(api.inventory.addStock);
   const updateStatus = useMutation(api.requests.updateStatus);
   const updateOrganization = useMutation(api.profiles.updateMyOrganization);
@@ -278,6 +283,8 @@ export default function HospitalDashboard() {
             </div>
           </section>
 
+          <BloodTypeCoverage coverage={coverage} city={org?.city} roleLabel="Hospital" />
+
           {openAlerts.length > 0 && (
             <section className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -293,8 +300,10 @@ export default function HospitalDashboard() {
                   <p key={a._id} className="flex flex-wrap items-center gap-2 rounded-lg bg-white/70 px-2.5 py-1.5 text-[11px]">
                     <BloodGroupChip group={a.bloodGroup} size="sm" />
                     <span className="font-semibold text-amber-950">{COMPONENT_LABELS[a.component as Component]}</span>
-                    <span className="text-amber-800">{a.freeUnits} free / threshold {a.threshold}</span>
-                    <span className="text-amber-900/70">· request sent to {a.hospitalsRequested} hospital(s), {a.redCrossRequested} Red Cross source(s), {a.donorsNotified} donor(s)</span>
+                    <span className="text-amber-800">{a.freeUnits} free / threshold {a.threshold}</span>                      <span className="text-amber-900/70">· request sent to {a.hospitalsRequested} hospital(s), {a.redCrossRequested} Red Cross source(s), {a.donorsNotified} donor(s)</span>
+                      {a.reason === "deadline" && (
+                        <span className="rounded-full bg-rose-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em] text-rose-800">deadline</span>
+                      )}
                   </p>
                 ))}
               </div>
@@ -528,6 +537,8 @@ export default function HospitalDashboard() {
 
       {tab === "storage" && (
         <div className="mt-4 space-y-4">
+          <BloodTypeCoverage coverage={coverage} city={org?.city} roleLabel="Hospital" />
+
           <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr] lg:items-start">
             <section className="rounded-2xl border border-border bg-card p-5">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -633,6 +644,8 @@ export default function HospitalDashboard() {
             </section>
           </div>
 
+          <BatchDeadlineEditor batches={myStock} roleLabel="Hospital" />
+
           <section className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4">
             <h2 className="flex items-center gap-1.5 text-[12px] font-bold uppercase tracking-[0.1em] text-amber-900">
               <AlertTriangle className="size-3.5" /> Automatic network requests
@@ -640,7 +653,8 @@ export default function HospitalDashboard() {
             <p className="mt-1 text-[11px] leading-5 text-amber-900/80">
               Before this hospital runs out, the alert reaches your own staff, every other verified
               hospital in {org?.city ?? "the region"}, the Red Cross sources in the city, and compatible
-              donors. No one has to raise it manually.
+              donors. A batch that passes its storage deadline counts as unusable stock, so that
+              raises the same request automatically — no one has to raise it by hand.
             </p>
             <div className="mt-2.5 space-y-2">
               {openAlerts.length === 0 ? (
@@ -655,6 +669,9 @@ export default function HospitalDashboard() {
                       <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em] text-amber-800">
                         {a.level === "out" ? "Stock-out" : a.level}
                       </span>
+                      {a.reason === "deadline" && (
+                        <span className="rounded-full bg-rose-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em] text-rose-800">deadline</span>
+                      )}
                     </p>
                     <p className="mt-1 text-[10.5px] leading-4 text-amber-900/80">
                       Automatic request for {a.requestedUnits} unit(s) sent to {a.hospitalsRequested} hospital(s),{" "}

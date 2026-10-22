@@ -72,11 +72,13 @@ import {
   Clock3,
   Droplets,
   FileClock,
+  HeartHandshake,
   History,
   Info,
   Loader2,
   MapPin,
   PackagePlus,
+  Phone,
   Plus,
   RefreshCw,
   Search,
@@ -571,6 +573,7 @@ export default function RedCrossDashboard() {
   const [donationDonor, setDonationDonor] = useState<{ _id: Id<"donorProfiles">; donorId: string; fullName: string; bloodGroup: string } | null>(null);
   const [donorGroup, setDonorGroup] = useState("all");
   const [verifyBusy, setVerifyBusy] = useState<string | null>(null);
+  const [helpBusy, setHelpBusy] = useState<string | null>(null);
 
   const me = useQuery(api.profiles.me);
   const analytics = useQuery(api.stats.staffAnalytics, { windowDays });
@@ -588,6 +591,7 @@ export default function RedCrossDashboard() {
   const audit = useQuery(api.stats.auditTrail, { limit: 60 });
   const updateStatus = useMutation(api.requests.updateStatus);
   const updateCampStatus = useMutation(api.camps.updateCampStatus);
+  const offerStockHelp = useMutation(api.inventory.offerStockHelp);
 
   const org = me?.organization;
   const demoPresent = analytics?.demoDataPresent || (requests ?? []).some((r) => r.isDemo);
@@ -608,6 +612,23 @@ export default function RedCrossDashboard() {
     { key: "donors", label: "Donors & donations", icon: Users },
     { key: "audit", label: "Audit trail", icon: FileClock },
   ];
+
+  const offerHelpOnAlert = async (alertId: Id<"stockAlerts">) => {
+    setHelpBusy(alertId);
+    try {
+      await offerStockHelp({ alertId });
+      toast.success("Offer sent", {
+        description:
+          "The requesting organization has your branch's contact details, and theirs is unlocked for you here.",
+      });
+    } catch (err) {
+      toast.error("Could not send your offer", {
+        description: err instanceof Error ? err.message : "Try again.",
+      });
+    } finally {
+      setHelpBusy(null);
+    }
+  };
 
   const startReview = async (id: Id<"bloodRequests">, requestId: string) => {
     setVerifyBusy(id);
@@ -716,19 +737,55 @@ export default function RedCrossDashboard() {
               </p>
               <div className="mt-2.5 space-y-2">
                 {(inboundAlerts ?? []).slice(0, 4).map((a) => (
-                  <div key={a._id} className="flex flex-col gap-2 rounded-xl border border-border bg-background p-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex items-center gap-3">
-                      <BloodGroupChip group={a.bloodGroup} size="sm" />
-                      <div>
-                        <p className="text-[12px] font-semibold">{a.organizationName}</p>
-                        <p className="text-[10.5px] text-muted-foreground">
-                          {COMPONENT_LABELS[a.component as Component]} · {a.freeUnits} free · needs about {a.requestedUnits} unit(s)
+                  <div key={a._id} className="rounded-xl border border-border bg-background p-3">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex items-center gap-3">
+                        <BloodGroupChip group={a.bloodGroup} size="sm" />
+                        <div>
+                          <p className="text-[12px] font-semibold">{a.organizationName}</p>
+                          <p className="text-[10.5px] text-muted-foreground">
+                            {COMPONENT_LABELS[a.component as Component]} · {a.freeUnits} free · needs about {a.requestedUnits} unit(s) · {a.city}
+                          </p>
+                        </div>
+                      </div>
+                      <span className="w-fit rounded-full bg-amber-100 px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-[0.08em] text-amber-800">
+                        {a.level === "out" ? "Stock-out" : a.level}
+                      </span>
+                    </div>
+                    {a.offeredHelp ? (
+                      <div className="mt-2 rounded-lg border border-teal-200 bg-teal-50/70 px-2.5 py-2 text-[10.5px] leading-5 text-teal-900">
+                        <p className="font-semibold">You offered to help · coordinating contact</p>
+                        <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+                          <span className="inline-flex items-center gap-1">
+                            <UserRound className="size-3" />
+                            {a.contactPerson ?? "Contact person not listed"}
+                          </span>
+                          <span className="inline-flex items-center gap-1">
+                            <Phone className="size-3" />
+                            {a.phone ? (
+                              <a className="hover:underline" href={`tel:${a.phone}`}>{a.phone}</a>
+                            ) : (
+                              "Phone not listed"
+                            )}
+                          </span>
+                          <span className="inline-flex items-center gap-1">
+                            <MapPin className="size-3" />
+                            {a.address ?? "Address not listed"}, {a.city}
+                          </span>
                         </p>
                       </div>
-                    </div>
-                    <span className="w-fit rounded-full bg-amber-100 px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-[0.08em] text-amber-800">
-                      {a.level === "out" ? "Stock-out" : a.level}
-                    </span>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="mt-2 h-7 w-fit gap-1 text-[10px]"
+                        disabled={helpBusy === a._id}
+                        onClick={() => void offerHelpOnAlert(a._id)}
+                      >
+                        {helpBusy === a._id ? <Loader2 className="size-3 animate-spin" /> : <HeartHandshake className="size-3" />}
+                        Offer help
+                      </Button>
+                    )}
                   </div>
                 ))}
               </div>

@@ -422,6 +422,9 @@ export const getDetail = query({
     const assignedOrg = request.assignedOrgId
       ? await ctx.db.get(request.assignedOrgId)
       : null;
+    const hospitalOrg = request.hospitalOrgId
+      ? await ctx.db.get(request.hospitalOrgId)
+      : null;
     const activeReservations = full
       ? await ctx.db
           .query("inventoryReservations")
@@ -432,17 +435,26 @@ export const getDetail = query({
       .filter((r) => r.status === "active")
       .reduce((sum, r) => sum + r.units, 0);
 
+    // Pressing "Offer to help" unlocks the requestor's basic coordination
+    // details (name, phone, hospital location) for that responder. Patient
+    // identity, prescriptions and documents stay restricted to staff.
+    const contactUnlocked =
+      full || (myOffer != null && myOffer.status !== "withdrawn");
+
     return {
       viewer: full ? ("full" as const) : ("donor" as const),
+      contactUnlocked,
       request: {
         ...summaryFields(request),
-        area: request.area ?? null,
+        area: contactUnlocked ? request.area ?? null : null,
         requestorType: request.requestorType,
         patientName: full ? request.patientName : "Confidential",
         patientAge: full ? request.patientAge ?? null : null,
         patientRef: full ? request.patientRef : "Restricted",
-        requesterPhone: full ? request.requesterPhone : null,
-        requesterEmail: full ? request.requesterEmail ?? null : null,
+        requesterPhone: contactUnlocked ? request.requesterPhone : null,
+        requesterEmail: contactUnlocked ? request.requesterEmail ?? null : null,
+        hospitalPhone: contactUnlocked ? hospitalOrg?.phone ?? null : null,
+        hospitalAddress: contactUnlocked ? hospitalOrg?.address ?? null : null,
         reason: full ? request.reason : "Clinical details are restricted to authorized staff.",
         doctorName: full ? request.doctorName ?? null : null,
         doctorContact: full ? request.doctorContact ?? null : null,
@@ -1125,6 +1137,16 @@ export const donorNearby = query({
     const user = await requireUser(ctx);
     const donor = await getDonorProfile(ctx, user._id);
     if (!donor) return [];
+    const offers = await ctx.db
+      .query("donorOffers")
+      .withIndex("by_donor", (q) => q.eq("donorUserId", user._id))
+      .collect();
+    // An active offer unlocks the requestor's basic coordination details.
+    const myOffers = new Map(
+      offers
+        .filter((o) => o.status !== "withdrawn")
+        .map((o) => [String(o.requestId), o.status] as const),
+    );
     const rows = await ctx.db.query("bloodRequests").collect();
     return rows
       .filter(
@@ -1153,11 +1175,19 @@ export const donorNearby = query({
         return scoreB - scoreA;
       })
       .slice(0, 30)
-      .map((r) => ({
-        ...summaryFields(r),
-        requestorName: "Verified requestor",
-        patientRef: "Restricted",
-        nearby: r.city === donor.city,
-      }));
+      .map((r) => {
+        const offer = myOffers.get(String(r._id));
+        const contactUnlocked = offer != null;
+        return {
+          ...summaryFields(r),
+          requestorName: contactUnlocked ? r.requestorName : "Verified requestor",
+          patientRef: "Restricted",
+          nearby: r.city === donor.city,
+          contactUnlocked,
+          myOfferStatus: offer ?? null,
+          requesterPhone: contactUnlocked ? r.requesterPhone : null,
+          area: contactUnlocked ? r.area ?? null : null,
+        };
+      });
   },
 });

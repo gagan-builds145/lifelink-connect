@@ -55,12 +55,14 @@ import {
   ClipboardList,
   Clock3,
   Droplets,
+  HeartHandshake,
   Hospital,
   Info,
   Loader2,
   MapPin,
   PackageCheck,
   PackagePlus,
+  Phone,
   Plus,
   RefreshCw,
   Search,
@@ -69,6 +71,7 @@ import {
   Siren,
   Stethoscope,
   Truck,
+  UserRound,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
@@ -92,10 +95,12 @@ export default function HospitalDashboard() {
   const inboundAlerts = useQuery(api.inventory.inboundStockAlerts, {});
   const coverage = useQuery(api.inventory.typeCoverage, {});
   const addStock = useMutation(api.inventory.addStock);
+  const offerStockHelp = useMutation(api.inventory.offerStockHelp);
   const updateStatus = useMutation(api.requests.updateStatus);
   const updateOrganization = useMutation(api.profiles.updateMyOrganization);
 
   const [cancelBusy, setCancelBusy] = useState<string | null>(null);
+  const [helpBusy, setHelpBusy] = useState<string | null>(null);
   const [batchBusy, setBatchBusy] = useState(false);
   const [batchError, setBatchError] = useState<string | null>(null);
   const [batchForm, setBatchForm] = useState({
@@ -214,6 +219,23 @@ export default function HospitalDashboard() {
         .filter((s) => (stockCity === "all" ? true : s.city === stockCity)),
     [stock, stockGroup, stockCity],
   );
+
+  const offerHelpOnAlert = async (alertId: Id<"stockAlerts">) => {
+    setHelpBusy(alertId);
+    try {
+      await offerStockHelp({ alertId });
+      toast.success("Offer sent", {
+        description:
+          "The requesting hospital has your organization's contact details, and theirs is unlocked for you here.",
+      });
+    } catch (err) {
+      toast.error("Could not send your offer", {
+        description: err instanceof Error ? err.message : "Try again.",
+      });
+    } finally {
+      setHelpBusy(null);
+    }
+  };
 
   const cancel = async (id: Id<"bloodRequests">, requestId: string) => {
     setCancelBusy(id);
@@ -698,19 +720,55 @@ export default function HospitalDashboard() {
                 <p className="text-[11px] text-muted-foreground">No other hospital in your region is currently asking for help.</p>
               ) : (
                 inboundAlerts.map((a) => (
-                  <div key={a._id} className="flex flex-col gap-2 rounded-xl border border-border bg-background p-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex items-center gap-3">
-                      <BloodGroupChip group={a.bloodGroup} size="sm" />
-                      <div>
-                        <p className="text-[12px] font-semibold">{a.organizationName}</p>
-                        <p className="text-[10.5px] text-muted-foreground">
-                          {COMPONENT_LABELS[a.component as Component]} · {a.freeUnits} free · needs about {a.requestedUnits} unit(s)
+                  <div key={a._id} className="rounded-xl border border-border bg-background p-3">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex items-center gap-3">
+                        <BloodGroupChip group={a.bloodGroup} size="sm" />
+                        <div>
+                          <p className="text-[12px] font-semibold">{a.organizationName}</p>
+                          <p className="text-[10.5px] text-muted-foreground">
+                            {COMPONENT_LABELS[a.component as Component]} · {a.freeUnits} free · needs about {a.requestedUnits} unit(s) · {a.city}
+                          </p>
+                        </div>
+                      </div>
+                      <span className="w-fit rounded-full bg-amber-100 px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-[0.08em] text-amber-800">
+                        {a.level === "out" ? "Stock-out" : a.level}
+                      </span>
+                    </div>
+                    {a.offeredHelp ? (
+                      <div className="mt-2 rounded-lg border border-teal-200 bg-teal-50/70 px-2.5 py-2 text-[10.5px] leading-5 text-teal-900">
+                        <p className="font-semibold">You offered to help · coordinating contact</p>
+                        <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+                          <span className="inline-flex items-center gap-1">
+                            <UserRound className="size-3" />
+                            {a.contactPerson ?? "Contact person not listed"}
+                          </span>
+                          <span className="inline-flex items-center gap-1">
+                            <Phone className="size-3" />
+                            {a.phone ? (
+                              <a className="hover:underline" href={`tel:${a.phone}`}>{a.phone}</a>
+                            ) : (
+                              "Phone not listed"
+                            )}
+                          </span>
+                          <span className="inline-flex items-center gap-1">
+                            <MapPin className="size-3" />
+                            {a.address ?? "Address not listed"}, {a.city}
+                          </span>
                         </p>
                       </div>
-                    </div>
-                    <span className="w-fit rounded-full bg-amber-100 px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-[0.08em] text-amber-800">
-                      {a.level === "out" ? "Stock-out" : a.level}
-                    </span>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="mt-2 h-7 w-fit gap-1 text-[10px]"
+                        disabled={helpBusy === a._id}
+                        onClick={() => void offerHelpOnAlert(a._id)}
+                      >
+                        {helpBusy === a._id ? <Loader2 className="size-3 animate-spin" /> : <HeartHandshake className="size-3" />}
+                        Offer help
+                      </Button>
+                    )}
                   </div>
                 ))
               )}

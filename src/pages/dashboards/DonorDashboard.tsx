@@ -64,6 +64,7 @@ import {
   Info,
   Loader2,
   MapPin,
+  Phone,
   Settings2,
   ShieldCheck,
   Sparkles,
@@ -160,7 +161,8 @@ export default function DonorDashboard() {
         note: offerNote.trim() || undefined,
       });
       toast.success("Offer sent to the coordinating team", {
-        description: "Your contact details stay protected unless Red Cross staff accept the offer.",
+        description:
+          "The requestor's name, phone and location are now unlocked for you. Your own contact details stay protected unless staff accept the offer.",
       });
       setOfferTarget(null);
       setOfferNote("");
@@ -471,6 +473,29 @@ export default function DonorDashboard() {
                     <p className="flex items-center gap-1.5"><Droplets className="size-3" /> {request.units} unit(s) requested</p>
                     <p className="flex items-center gap-1.5"><Clock3 className="size-3" /> Needed by {formatDateTime(request.requiredBy)}</p>
                   </div>
+                  {request.contactUnlocked ? (
+                    <div className="mt-2.5 rounded-xl border border-teal-200 bg-teal-50/70 p-2.5 text-[10.5px] leading-5 text-teal-900">
+                      <p className="font-semibold">Contact: {request.requestorName}</p>
+                      <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+                        <span className="inline-flex items-center gap-1">
+                          <Phone className="size-3" />
+                          {request.requesterPhone ? (
+                            <a className="hover:underline" href={`tel:${request.requesterPhone}`}>{request.requesterPhone}</a>
+                          ) : (
+                            "Phone not provided"
+                          )}
+                        </span>
+                        <span className="inline-flex items-center gap-1">
+                          <MapPin className="size-3" />
+                          {request.city}{request.area ? ` · ${request.area}` : ""}
+                        </span>
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-[10px] text-muted-foreground">
+                      Requestor contact details unlock when you offer to help.
+                    </p>
+                  )}
                   <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
                     <StatusBadge status={request.status} />
                     {request.isDemo && <DemoBadge />}
@@ -478,14 +503,20 @@ export default function DonorDashboard() {
                       <Button asChild size="sm" variant="ghost" className="h-8 text-[11px]">
                         <Link to={`/requests/${request._id}`}>Details</Link>
                       </Button>
-                      <Button
-                        size="sm"
-                        className="h-8 gap-1 text-[11px]"
-                        onClick={() => setOfferTarget({ id: request._id as Id<"bloodRequests">, group: request.bloodGroup })}
-                      >
-                        <HeartHandshake className="size-3" />
-                        Offer to help
-                      </Button>
+                      {request.myOfferStatus ? (
+                        <span className="inline-flex h-8 items-center gap-1 rounded-md border border-teal-200 bg-teal-50 px-2.5 text-[10.5px] font-semibold text-teal-800">
+                          <CheckCircle2 className="size-3" /> Offer {request.myOfferStatus}
+                        </span>
+                      ) : (
+                        <Button
+                          size="sm"
+                          className="h-8 gap-1 text-[11px]"
+                          onClick={() => setOfferTarget({ id: request._id as Id<"bloodRequests">, group: request.bloodGroup })}
+                        >
+                          <HeartHandshake className="size-3" />
+                          Offer to help
+                        </Button>
+                      )}
                     </span>
                   </div>
                 </div>

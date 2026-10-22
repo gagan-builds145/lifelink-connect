@@ -53,7 +53,9 @@ import {
   Hospital,
   Info,
   Loader2,
+  Mail,
   MapPin,
+  Phone,
   ShieldCheck,
   Siren,
   Truck,
@@ -239,7 +241,8 @@ export default function RequestDetail() {
     try {
       await createOffer({ id: request._id, note: offerNote.trim() || undefined });
       toast.success("Offer submitted", {
-        description: "The coordinating team has been notified. Your contact details stay protected.",
+        description:
+          "The requestor's name, phone and location are now unlocked below so you can coordinate. Your own contact details stay protected.",
       });
       setDialog(null);
       setOfferNote("");
@@ -299,7 +302,7 @@ export default function RequestDetail() {
               <StatusBadge status={status} />
               {!full && (
                 <span className="rounded-full border border-border bg-muted/50 px-2.5 py-1 text-[9.5px] font-bold uppercase tracking-[0.08em] text-muted-foreground">
-                  Donor view · masked
+                  {detail.contactUnlocked ? "Donor view · contact unlocked" : "Donor view · masked"}
                 </span>
               )}
             </div>
@@ -441,6 +444,75 @@ export default function RequestDetail() {
 
           <aside className="space-y-4">
             {full && <MatchingPanel requestId={request._id} />}
+
+            {!full && detail.contactUnlocked && (
+              <section className="rounded-2xl border border-teal-200 bg-teal-50/60 p-4">
+                <h2 className="flex items-center gap-1.5 text-[13px] font-bold text-teal-900">
+                  <Phone className="size-4" /> Coordination contact
+                </h2>
+                <p className="mt-1 text-[10.5px] leading-5 text-teal-900/80">
+                  You offered to help, so the requestor's basic details are unlocked for this
+                  request. Patient identity, prescriptions and documents stay confidential.
+                </p>
+                <dl className="mt-2.5 space-y-2 text-[11px]">
+                  <div className="flex items-start justify-between gap-3">
+                    <dt className="shrink-0 text-teal-900/70">Requestor</dt>
+                    <dd className="text-right font-semibold text-teal-950">{request.requestorName}</dd>
+                  </div>
+                  <div className="flex items-start justify-between gap-3">
+                    <dt className="shrink-0 text-teal-900/70">Phone</dt>
+                    <dd className="text-right font-semibold text-teal-950">
+                      {request.requesterPhone ? (
+                        <a className="hover:underline" href={`tel:${request.requesterPhone}`}>
+                          {request.requesterPhone}
+                        </a>
+                      ) : (
+                        "Not provided"
+                      )}
+                    </dd>
+                  </div>
+                  {request.requesterEmail && (
+                    <div className="flex items-start justify-between gap-3">
+                      <dt className="shrink-0 text-teal-900/70">Email</dt>
+                      <dd className="flex items-center gap-1 text-right font-semibold text-teal-950">
+                        <Mail className="size-3 shrink-0" />
+                        <a className="break-all hover:underline" href={`mailto:${request.requesterEmail}`}>
+                          {request.requesterEmail}
+                        </a>
+                      </dd>
+                    </div>
+                  )}
+                  <div className="flex items-start justify-between gap-3">
+                    <dt className="shrink-0 text-teal-900/70">Location</dt>
+                    <dd className="flex items-center gap-1 text-right font-semibold text-teal-950">
+                      <MapPin className="size-3 shrink-0" />
+                      {request.city}
+                      {request.area ? ` · ${request.area}` : ""}
+                    </dd>
+                  </div>
+                  <div className="flex items-start justify-between gap-3">
+                    <dt className="shrink-0 text-teal-900/70">Hospital</dt>
+                    <dd className="text-right font-semibold text-teal-950">{request.hospitalName}</dd>
+                  </div>
+                  {request.hospitalPhone && (
+                    <div className="flex items-start justify-between gap-3">
+                      <dt className="shrink-0 text-teal-900/70">Hospital phone</dt>
+                      <dd className="text-right font-semibold text-teal-950">
+                        <a className="hover:underline" href={`tel:${request.hospitalPhone}`}>
+                          {request.hospitalPhone}
+                        </a>
+                      </dd>
+                    </div>
+                  )}
+                  {request.hospitalAddress && (
+                    <div className="flex items-start justify-between gap-3">
+                      <dt className="shrink-0 text-teal-900/70">Hospital address</dt>
+                      <dd className="text-right text-teal-950">{request.hospitalAddress}</dd>
+                    </div>
+                  )}
+                </dl>
+              </section>
+            )}
 
             <section className="rounded-2xl border border-border bg-card p-5">
               <h2 className="flex items-center gap-1.5 text-[13px] font-bold">
@@ -640,7 +712,7 @@ export default function RequestDetail() {
                   ? "Cancelling closes the request and releases any pending coordination. You cannot undo this."
                   : dialog === "release"
                     ? "The reserved units return to general availability. This is recorded in the inventory ledger and the request timeline."
-                    : "This notifies the coordinating team. Your contact details remain protected unless authorized staff accept the offer."}
+                    : "This notifies the coordinating team and unlocks the requestor's name, phone and location so you can coordinate. Your own contact details remain protected unless authorized staff accept the offer."}
             </DialogDescription>
           </DialogHeader>
           {dialog === "offer" ? (

@@ -196,6 +196,9 @@ const schema = defineSchema(
       status: v.union(v.literal("open"), v.literal("resolved")),
       hospitalOrgIds: v.array(v.id("organizations")),
       redCrossOrgIds: v.array(v.id("organizations")),
+      // Organizations that pressed "Offer help" on this request. Members see
+      // the requesting organization's contact details from that point on.
+      helpOrgIds: v.optional(v.array(v.id("organizations"))),
       donorsNotified: v.number(),
       createdAt: v.number(),
       updatedAt: v.number(),

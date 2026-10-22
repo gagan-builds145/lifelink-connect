@@ -4,6 +4,7 @@ import type { Doc } from "./_generated/dataModel";
 import { BLOOD_GROUPS, COMPONENTS, citiesInState, stateOfCity } from "../lib/blood";
 import {
   audit,
+  notifyOrganization,
   requireOrganization,
   requireRole,
   requireStaff,
@@ -243,22 +244,84 @@ export const inboundStockAlerts = query({
           : a.redCrossOrgIds.includes(organizationId)),
     );
     const orgs = await ctx.db.query("organizations").collect();
-    const names = new Map(orgs.map((o) => [o._id, o.name]));
+    const byId = new Map(orgs.map((o) => [o._id, o]));
     return relevant
       .sort((a, b) => b.updatedAt - a.updatedAt)
       .slice(0, 20)
-      .map((a) => ({
-        _id: a._id,
-        organizationName: names.get(a.organizationId) ?? "Network organization",
-        city: a.city,
-        bloodGroup: a.bloodGroup,
-        component: a.component,
-        freeUnits: a.freeUnits,
-        threshold: a.threshold,
-        requestedUnits: a.requestedUnits,
-        level: a.level,
-        updatedAt: a.updatedAt,
-      }));
+      .map((a) => {
+        const requester = byId.get(a.organizationId);
+        // Contact details unlock once this organization pressed "Offer help".
+        const offeredHelp = (a.helpOrgIds ?? []).includes(organizationId);
+        return {
+          _id: a._id,
+          organizationName: requester?.name ?? "Network organization",
+          organizationType: a.organizationType,
+          city: a.city,
+          bloodGroup: a.bloodGroup,
+          component: a.component,
+          freeUnits: a.freeUnits,
+          threshold: a.threshold,
+          requestedUnits: a.requestedUnits,
+          level: a.level,
+          updatedAt: a.updatedAt,
+          offeredHelp,
+          contactPerson: offeredHelp ? requester?.contactPerson ?? null : null,
+          phone: offeredHelp ? requester?.phone ?? null : null,
+          email: offeredHelp ? requester?.email ?? null : null,
+          address: offeredHelp ? requester?.address ?? null : null,
+        };
+      });
+  },
+});
+
+/**
+ * "Offer help" on an automatic network request. The responding hospital or
+ * Red Cross branch is recorded on the alert and sees the requesting
+ * organization's name, contact person, phone and address from then on; the
+ * requesting organization is notified with the responder's own contact
+ * details so either side can coordinate. Only organizations the request was
+ * sent to can respond, and only while it is still open.
+ */
+export const offerStockHelp = mutation({
+  args: { alertId: v.id("stockAlerts") },
+  handler: async (ctx, args) => {
+    const user = await requireRole(ctx, ["hospital", "red_cross", "admin"]);
+    const org = await requireOrganization(ctx, user);
+    const alert = await ctx.db.get(args.alertId);
+    if (!alert) throw new Error("That network request could not be found.");
+    if (alert.organizationId === org._id) {
+      throw new Error("You cannot offer help on your own organization's request.");
+    }
+    const invited =
+      alert.hospitalOrgIds.includes(org._id) || alert.redCrossOrgIds.includes(org._id);
+    if (!invited) {
+      throw new Error("This request was not sent to your organization.");
+    }
+    if (alert.status !== "open") {
+      throw new Error("This request has already been resolved.");
+    }
+    const helped = alert.helpOrgIds ?? [];
+    if (!helped.includes(org._id)) {
+      await ctx.db.patch(alert._id, {
+        helpOrgIds: [...helped, org._id],
+        updatedAt: Date.now(),
+      });
+      await notifyOrganization(ctx, alert.organizationId, {
+        title: `${org.name} offered to help`,
+        body: `${org.name} can help with ${alert.bloodGroup} ${alert.component.replace("_", " ")}. Contact ${org.contactPerson} · ${org.phone} · ${org.address}, ${org.city}.`,
+        kind: "request",
+        link: alert.organizationType === "hospital" ? "/hospital/dashboard" : "/red-cross/dashboard",
+      });
+      await audit(ctx, {
+        actor: user,
+        action: "stockAlert.helpOffered",
+        entityType: "stockAlert",
+        entityId: String(alert._id),
+        detail: `${org.name} offered to help with ${alert.bloodGroup} ${alert.component}.`,
+        organizationId: org._id,
+      });
+    }
+    return { ok: true };
   },
 });
 

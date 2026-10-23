@@ -34,10 +34,10 @@ const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 function RouteLoading() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background">
-      <div className="relative flex size-16 items-center justify-center" role="status" aria-live="polite">
+      <div className="relative flex size-24 items-center justify-center" role="status" aria-live="polite">
         {/* One cheap transform-only pulse ring */}
-        <span aria-hidden className="pulse-ring absolute size-14 rounded-full" />
-        <svg viewBox="0 0 48 48" aria-hidden className="animate-heartbeat relative size-9">
+        <span aria-hidden className="pulse-ring absolute size-20 rounded-full" />
+        <svg viewBox="0 0 48 48" aria-hidden className="animate-heartbeat relative size-14">
           <defs>
             <linearGradient
               id="route-loader-drop"
@@ -67,7 +67,7 @@ function RouteLoading() {
         {[0, 1, 2].map((i) => (
           <span
             key={i}
-            className="size-1.5 animate-pulse rounded-full bg-primary/70"
+            className="size-2 animate-pulse rounded-full bg-primary/70"
             style={{ animationDelay: `${i * 220}ms` }}
           />
         ))}

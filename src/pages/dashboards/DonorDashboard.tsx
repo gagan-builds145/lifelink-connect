@@ -427,10 +427,10 @@ export default function DonorDashboard() {
           <div className="rounded-2xl border border-border bg-card p-4">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h2 className="text-[14px] font-bold">Compatible verified requests</h2>
-                <p className="mt-0.5 text-[11.5px] text-muted-foreground">
-                  Ranked by same-city availability, urgency and verification state. Patient identities are withheld.
-                </p>
+                <h2 className="text-[14px] font-bold">Compatible verified requests</h2>                  <p className="mt-0.5 text-[11.5px] text-muted-foreground">
+                    Blood group, state and country must match your profile. Routine requests stay inside your city;
+                    only emergency requests can reach you from elsewhere in the state. Patient identities are withheld.
+                  </p>
               </div>
               <div className="flex items-center gap-2 text-[10.5px] text-muted-foreground">
                 <ShieldCheck className="size-3.5 text-teal-600" />

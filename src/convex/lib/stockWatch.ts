@@ -1,6 +1,6 @@
 import type { Doc } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
-import { compatibility } from "../../lib/blood";
+import { compatibility, locationRule } from "../../lib/blood";
 import { notifyOrganization, notifyUser } from "./helpers";
 
 /**
@@ -115,9 +115,16 @@ export async function evaluateStockLevel(
   }
 
   const isHospitalShortfall = org.type === "hospital";
+  // Same blood group rules as every other match: the state must always agree.
+  // The city must agree too, so only a complete stock-out — an emergency — can
+  // widen the request to other cities inside the same state.
+  const widening = level === "out" ? "emergency" : "routine";
   const orgs = await ctx.db.query("organizations").collect();
   const nearby = orgs.filter(
-    (o) => o.status === "verified" && o._id !== org._id && o.city === org.city,
+    (o) =>
+      o.status === "verified" &&
+      o._id !== org._id &&
+      locationRule(o.city, org.city, widening).ok,
   );
   const hospitals = isHospitalShortfall
     ? nearby.filter((o) => o.type === "hospital")
@@ -133,7 +140,7 @@ export async function evaluateStockLevel(
     .collect();
   for (const donor of donors) {
     if (donorsNotifiedTargets.length >= 25) break;
-    if (donor.city !== org.city) continue;
+    if (!locationRule(donor.city, org.city, widening).ok) continue;
     if (!compatibility(donor.bloodGroup, bloodGroup, component).compatible) continue;
     donorsNotifiedTargets.push(donor);
   }

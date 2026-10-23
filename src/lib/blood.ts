@@ -147,6 +147,45 @@ export function citiesInState(state?: string | null): string[] {
   return CITIES.filter((city) => CITY_STATES[city] === state);
 }
 
+export type LocationRuleResult = {
+  /** True when this source may be matched with the request. */
+  ok: boolean;
+  sameCity: boolean;
+  sameState: boolean;
+};
+
+/**
+ * Regional matching rule used by donors, Red Cross branches and hospitals.
+ *
+ * Blood-group compatibility is checked separately; this only answers the
+ * geography question:
+ *  - the state (and therefore the country) must always match;
+ *  - the city must match too, except for an emergency request, where a
+ *    compatible source elsewhere in the same state is allowed.
+ */
+export function locationRule(
+  sourceCity?: string | null,
+  requestCity?: string | null,
+  urgency?: Urgency | string,
+): LocationRuleResult {
+  const source = (sourceCity ?? "").trim();
+  const request = (requestCity ?? "").trim();
+  if (!source || !request) return { ok: false, sameCity: false, sameState: false };
+
+  const sameCity = source.toLowerCase() === request.toLowerCase();
+  const sourceState = stateOfCity(source);
+  const requestState = stateOfCity(request);
+  // An identical city name is the same state by definition, even if the city
+  // is not in the known list. Otherwise both states must be known and equal.
+  const sameState =
+    sourceState != null && requestState != null
+      ? sourceState === requestState
+      : sameCity;
+  const isEmergency = String(urgency ?? "") === "emergency";
+
+  return { ok: sameState && (sameCity || isEmergency), sameCity, sameState };
+}
+
 export function cityCoords(city?: string | null) {
   if (!city) return null;
   return CITY_COORDS[city] ?? null;

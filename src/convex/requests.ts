@@ -26,7 +26,7 @@ import {
   requestorTypeValidator,
   urgencyValidator,
 } from "./validators";
-import { compatibility, scoreMatch, URGENCY_LABELS } from "../lib/blood";
+import { compatibility, locationRule, scoreMatch, stateOfCity, URGENCY_LABELS } from "../lib/blood";
 import { evaluateStockLevel } from "./lib/stockWatch";
 
 const MAX_DOC_BYTES = 5 * 1024 * 1024;
@@ -115,16 +115,25 @@ async function notifyCompatibleDonors(
     .query("donorProfiles")
     .withIndex("by_availability", (q: any) => q.eq("available", true))
     .collect();
+  const requestState = stateOfCity(request.city);
   let notified = 0;
   for (const donor of donors) {
     if (notified >= 25) break;
-    if (donor.city !== request.city) continue;
+    // Blood group, state and country must match; only an emergency may widen
+    // the area beyond the request's own city.
+    const location = locationRule(donor.city, request.city, request.urgency);
+    if (!location.ok) continue;
     if (!compatibility(donor.bloodGroup, request.bloodGroup, request.component).compatible) {
       continue;
     }
+    const area = location.sameCity
+      ? request.city
+      : `${request.city}, ${requestState ?? "same state"}`;
     await notifyUser(ctx, donor.userId, {
-      title: `Donor match near ${request.city}`,
-      body: `A verified ${URGENCY_LABELS[request.urgency].toLowerCase()} request needs ${request.component.replace("_", " ")} at a hospital in ${request.city}. Open your dashboard to view the masked request.`,
+      title: location.sameCity
+        ? `Donor match near ${request.city}`
+        : `Emergency donor match · ${area}`,
+      body: `A verified ${URGENCY_LABELS[request.urgency].toLowerCase()} request needs ${request.component.replace("_", " ")} at a hospital in ${area}. Open your dashboard to view the masked request.`,
       kind: "match",
       requestId: request._id,
       link: "/donor/dashboard",
@@ -1155,7 +1164,10 @@ export const donorNearby = query({
           // still awaiting Red Cross verification. Terminal states (dispatched,
           // received, fulfilled, rejected, cancelled) stay hidden.
           OPEN_REQUEST_STATUSES.has(r.status) &&
-          compatibility(donor.bloodGroup, r.bloodGroup, r.component).compatible,
+          compatibility(donor.bloodGroup, r.bloodGroup, r.component).compatible &&
+          // Same blood group rules, same state and country; a different city is
+          // only surfaced when the request is an emergency.
+          locationRule(donor.city, r.city, r.urgency).ok,
       )
       .sort((a, b) => {
         const scoreA = scoreMatch({

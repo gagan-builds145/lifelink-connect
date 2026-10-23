@@ -9,6 +9,7 @@ import {
   compatibility,
   daysSince,
   haversineKm,
+  locationRule,
   scoreMatch,
 } from "../lib/blood";
 
@@ -52,6 +53,8 @@ export const forRequest = query({
         if (free <= 0) return null;
         const compat = compatibility(item.bloodGroup, request.bloodGroup, request.component);
         if (!compat.compatible) return null;
+        // Same state always; the same city unless this is an emergency.
+        if (!locationRule(org.city, request.city, request.urgency).ok) return null;
         const coords = cityCoords(org.city);
         const distanceKm =
           requestCity && coords ? Math.round(haversineKm(requestCity, coords) * 10) / 10 : null;
@@ -95,6 +98,8 @@ export const forRequest = query({
         if (!donor.available) return null;
         const compat = compatibility(donor.bloodGroup, request.bloodGroup, request.component);
         if (!compat.compatible) return null;
+        // Same state always; the same city unless this is an emergency.
+        if (!locationRule(donor.city, request.city, request.urgency).ok) return null;
         const coords = cityCoords(donor.city);
         const distanceKm =
           requestCity && coords ? Math.round(haversineKm(requestCity, coords) * 10) / 10 : null;

@@ -213,6 +213,24 @@
   .mask-fade-b {
     mask-image: linear-gradient(to bottom, black 70%, transparent 100%);
   }
+  /* Transform-only sweep used by the route loading bar. */
+  .animate-loader-slide {
+    animation: loader-slide 1.5s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  }
+  .animate-loader-orbit {
+    animation: loader-orbit 2.6s linear infinite;
+  }
+  .animate-loader-orbit-slow {
+    animation: loader-orbit 4s linear infinite reverse;
+  }
+  .loader-halo {
+    background: radial-gradient(
+      circle,
+      oklch(0.525 0.205 24 / 0.14),
+      oklch(0.525 0.205 24 / 0.05) 46%,
+      transparent 68%
+    );
+  }
 }
 
 @keyframes float-slow {
@@ -259,6 +277,21 @@
   100% {
     stroke-dashoffset: 0;
     opacity: 0;
+  }
+}
+
+@keyframes loader-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes loader-slide {
+  0% {
+    transform: translateX(-110%);
+  }
+  100% {
+    transform: translateX(210%);
   }
 }
 

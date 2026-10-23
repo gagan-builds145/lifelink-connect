@@ -33,47 +33,64 @@ const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
 function RouteLoading() {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background">
-      <div className="relative flex size-24 items-center justify-center" role="status" aria-live="polite">
-        {/* One cheap transform-only pulse ring */}
-        <span aria-hidden className="pulse-ring absolute size-20 rounded-full" />
-        <svg viewBox="0 0 48 48" aria-hidden className="animate-heartbeat relative size-14">
-          <defs>
-            <linearGradient
-              id="route-loader-drop"
-              x1="8"
-              y1="6"
-              x2="40"
-              y2="44"
-              gradientUnits="userSpaceOnUse"
-            >
-              <stop stopColor="#d4293f" />
-              <stop offset="1" stopColor="#8d1024" />
-            </linearGradient>
-          </defs>
-          <path
-            d="M24 4.5c5.6 8.1 14.5 17.3 14.5 26.1a14.5 14.5 0 1 1-29 0C9.5 21.8 18.4 12.6 24 4.5Z"
-            fill="url(#route-loader-drop)"
-          />
-          <path
-            d="M20.4 26.2h2.6v-2.6h2.6v2.6h2.6v2.6h-2.6v2.6h-2.6v-2.6h-2.6v-2.6Z"
-            fill="#fff"
-          />
-        </svg>
-      </div>
-
-      {/* Opacity-only dots keep the loading state light on low-end devices */}
-      <div className="flex items-center gap-1.5" aria-hidden>
-        {[0, 1, 2].map((i) => (
+    <div className="flex min-h-screen flex-col items-center justify-center bg-background">
+      <div
+        className="relative flex flex-col items-center gap-6 px-6"
+        role="status"
+        aria-live="polite"
+      >
+        {/* Emblem — static gradients and transform-only motion, so it stays smooth */}
+        <div className="relative flex size-28 items-center justify-center">
+          <span aria-hidden className="loader-halo absolute size-28 rounded-full" />
+          <span aria-hidden className="absolute size-28 rounded-full border border-primary/10" />
           <span
-            key={i}
-            className="size-2 animate-pulse rounded-full bg-primary/70"
-            style={{ animationDelay: `${i * 220}ms` }}
+            aria-hidden
+            className="animate-loader-orbit absolute size-24 rounded-full border-2 border-transparent border-t-primary/45 border-r-primary/20"
           />
-        ))}
-      </div>
+          <span
+            aria-hidden
+            className="animate-loader-orbit-slow absolute size-[104px] rounded-full border border-transparent border-b-primary/25 border-l-primary/10"
+          />
+          <span aria-hidden className="pulse-ring absolute size-14 rounded-full" />
+          <svg viewBox="0 0 48 48" aria-hidden className="animate-heartbeat relative size-12">
+            <defs>
+              <linearGradient
+                id="route-loader-drop"
+                x1="8"
+                y1="6"
+                x2="40"
+                y2="44"
+                gradientUnits="userSpaceOnUse"
+              >
+                <stop stopColor="#d4293f" />
+                <stop offset="1" stopColor="#8d1024" />
+              </linearGradient>
+            </defs>
+            <path
+              d="M24 4.5c5.6 8.1 14.5 17.3 14.5 26.1a14.5 14.5 0 1 1-29 0C9.5 21.8 18.4 12.6 24 4.5Z"
+              fill="url(#route-loader-drop)"
+            />
+            <path
+              d="M20.4 26.2h2.6v-2.6h2.6v2.6h2.6v2.6h-2.6v2.6h-2.6v-2.6h-2.6v-2.6Z"
+              fill="#fff"
+            />
+          </svg>
+        </div>
 
-      <p className="sr-only">Loading LifeLink</p>
+        <div className="flex flex-col items-center gap-3">
+          <p className="font-display text-[17px] font-extrabold leading-none tracking-tight text-foreground">
+            Life<span className="text-primary">Link</span>
+          </p>
+          <div className="relative h-1 w-40 overflow-hidden rounded-full bg-primary/10">
+            <span className="animate-loader-slide absolute inset-y-0 left-0 w-1/2 rounded-full bg-gradient-to-r from-primary/0 via-primary to-primary/0" />
+          </div>
+          <p className="text-[9.5px] font-bold uppercase tracking-[0.24em] text-muted-foreground">
+            Connecting the network
+          </p>
+        </div>
+
+        <p className="sr-only">Loading LifeLink</p>
+      </div>
     </div>
   );
 }

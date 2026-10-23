@@ -33,85 +33,47 @@ const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
 function RouteLoading() {
   return (
-    <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-background">
-      {/* Soft themed backdrop */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_38%,oklch(0.96_0.035_22),transparent_46%)]"
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 bg-grid opacity-40 [mask-image:radial-gradient(circle_at_center,black,transparent_72%)]"
-      />
-
-      <div className="relative flex flex-col items-center" role="status" aria-live="polite">
-        {/* Heartbeat drop with expanding pulses */}
-        <div className="relative flex size-24 items-center justify-center">
-          <span aria-hidden className="absolute size-16 rounded-full bg-primary/10 blur-xl" />
-          <span aria-hidden className="pulse-ring absolute size-16 rounded-full" />
-          <span
-            aria-hidden
-            className="absolute size-16 rounded-full border border-primary/25"
-          />
-          <span
-            aria-hidden
-            className="absolute size-[88px] rounded-full border border-primary/10"
-          />
-          <svg
-            viewBox="0 0 48 48"
-            aria-hidden
-            className="animate-heartbeat relative size-11 drop-shadow-[0_10px_20px_oklch(0.525_0.205_24/0.28)]"
-          >
-            <defs>
-              <linearGradient
-                id="route-loader-drop"
-                x1="8"
-                y1="6"
-                x2="40"
-                y2="44"
-                gradientUnits="userSpaceOnUse"
-              >
-                <stop stopColor="#d4293f" />
-                <stop offset="1" stopColor="#8d1024" />
-              </linearGradient>
-            </defs>
-            <path
-              d="M24 4.5c5.6 8.1 14.5 17.3 14.5 26.1a14.5 14.5 0 1 1-29 0C9.5 21.8 18.4 12.6 24 4.5Z"
-              fill="url(#route-loader-drop)"
-            />
-            <path
-              d="M20.4 26.2h2.6v-2.6h2.6v2.6h2.6v2.6h-2.6v2.6h-2.6v-2.6h-2.6v-2.6Z"
-              fill="#fff"
-            />
-          </svg>
-        </div>
-
-        {/* Tracing pulse line */}
-        <svg viewBox="0 0 220 40" aria-hidden className="mt-3 w-40 text-primary">
+    <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background">
+      <div className="relative flex size-16 items-center justify-center" role="status" aria-live="polite">
+        {/* One cheap transform-only pulse ring */}
+        <span aria-hidden className="pulse-ring absolute size-14 rounded-full" />
+        <svg viewBox="0 0 48 48" aria-hidden className="animate-heartbeat relative size-9">
+          <defs>
+            <linearGradient
+              id="route-loader-drop"
+              x1="8"
+              y1="6"
+              x2="40"
+              y2="44"
+              gradientUnits="userSpaceOnUse"
+            >
+              <stop stopColor="#d4293f" />
+              <stop offset="1" stopColor="#8d1024" />
+            </linearGradient>
+          </defs>
           <path
-            className="ecg-line"
-            d="M0 24h44l7-14 9 28 8-22 6 8h46l6-7 8 14 6-10 5 3h65"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
+            d="M24 4.5c5.6 8.1 14.5 17.3 14.5 26.1a14.5 14.5 0 1 1-29 0C9.5 21.8 18.4 12.6 24 4.5Z"
+            fill="url(#route-loader-drop)"
+          />
+          <path
+            d="M20.4 26.2h2.6v-2.6h2.6v2.6h2.6v2.6h-2.6v2.6h-2.6v-2.6h-2.6v-2.6Z"
+            fill="#fff"
           />
         </svg>
-
-        {/* Bouncing dots */}
-        <div className="mt-3 flex items-center gap-1.5" aria-hidden>
-          {[0, 1, 2].map((i) => (
-            <span
-              key={i}
-              className="size-1.5 animate-bounce rounded-full bg-primary/70"
-              style={{ animationDelay: `${i * 160}ms` }}
-            />
-          ))}
-        </div>
-
-        <p className="sr-only">Loading LifeLink</p>
       </div>
+
+      {/* Opacity-only dots keep the loading state light on low-end devices */}
+      <div className="flex items-center gap-1.5" aria-hidden>
+        {[0, 1, 2].map((i) => (
+          <span
+            key={i}
+            className="size-1.5 animate-pulse rounded-full bg-primary/70"
+            style={{ animationDelay: `${i * 220}ms` }}
+          />
+        ))}
+      </div>
+
+      <p className="sr-only">Loading LifeLink</p>
     </div>
   );
 }

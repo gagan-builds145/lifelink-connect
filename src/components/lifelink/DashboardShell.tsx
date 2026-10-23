@@ -21,6 +21,7 @@ import {
   Loader2,
   LogOut,
   Menu,
+  Settings2,
   ShieldCheck,
   Sparkles,
   type LucideIcon,
@@ -160,6 +161,8 @@ export function DashboardShell({
   items,
   active,
   onSelect,
+  onProfile,
+  profileLabel = "Profile & privacy",
   quickLinks = [],
   children,
   demoData = false,
@@ -172,6 +175,10 @@ export function DashboardShell({
   items: DashNavItem[];
   active: string;
   onSelect: (key: string) => void;
+  /** Opens the role's profile & privacy screen from the header account menu. */
+  onProfile?: () => void;
+  /** Label for the profile entry in the header account menu. */
+  profileLabel?: string;
   quickLinks?: { label: string; href: string; icon?: LucideIcon }[];
   children: ReactNode;
   demoData?: boolean;
@@ -180,6 +187,7 @@ export function DashboardShell({
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
 
   const handleSignOut = async () => {
     try {
@@ -350,9 +358,63 @@ export function DashboardShell({
               </span>
             )}
             <NotificationCenter />
-            <span className="flex size-9 items-center justify-center rounded-full bg-foreground text-[11px] font-bold text-background">
-              {initials(user?.name ?? user?.email)}
-            </span>
+
+            {/* Account menu — profile & privacy lives here, next to notifications */}
+            <Popover open={accountOpen} onOpenChange={setAccountOpen}>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  aria-label="Account menu"
+                  className="flex size-9 items-center justify-center rounded-full bg-foreground text-[11px] font-bold text-background outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2"
+                >
+                  {initials(user?.name ?? user?.email)}
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-[min(92vw,264px)] p-0">
+                <div className="flex items-center gap-2.5 border-b border-border px-4 py-3">
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-foreground text-[10px] font-bold text-background">
+                    {initials(user?.name ?? user?.email)}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="truncate text-[12.5px] font-semibold">
+                      {user?.name ?? "LifeLink account"}
+                    </p>
+                    <p className="truncate text-[10.5px] text-muted-foreground">
+                      {user?.email ?? roleKey}
+                    </p>
+                  </div>
+                </div>
+                {onProfile && (
+                  <div className="p-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAccountOpen(false);
+                        onProfile();
+                        window.scrollTo({ top: 0, behavior: "smooth" });
+                      }}
+                      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[12.5px] font-medium transition-colors hover:bg-muted"
+                    >
+                      <Settings2 className="size-4 opacity-70" />
+                      {profileLabel}
+                    </button>
+                  </div>
+                )}
+                <div className={cn("p-1.5", onProfile && "border-t border-border")}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAccountOpen(false);
+                      void handleSignOut();
+                    }}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[12.5px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    <LogOut className="size-4 opacity-70" />
+                    Sign out
+                  </button>
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
         </header>
 

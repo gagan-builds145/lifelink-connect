@@ -56,7 +56,6 @@ import {
   MapPin,
   Plus,
   Search,
-  Settings2,
   ShieldCheck,
   Siren,
   Trash2,
@@ -147,7 +146,6 @@ export default function RequestorDashboard() {
     { key: "overview", label: "Overview", icon: HeartPulse },
     { key: "requests", label: "My requests", icon: ClipboardList, badge: stats.active },
     { key: "new", label: "New request", icon: Plus },
-    { key: "profile", label: "Profile", icon: Settings2 },
   ];
 
   return (
@@ -159,6 +157,8 @@ export default function RequestorDashboard() {
       items={navItems}
       active={tab}
       onSelect={(key) => setTab(key as Tab)}
+      onProfile={() => setTab("profile")}
+      profileLabel="Profile"
       demoData={demoPresent}
       accentIcon={Droplets}
       quickLinks={[

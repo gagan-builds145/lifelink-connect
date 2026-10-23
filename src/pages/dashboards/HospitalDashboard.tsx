@@ -66,7 +66,6 @@ import {
   Plus,
   RefreshCw,
   Search,
-  Settings2,
   ShieldCheck,
   Siren,
   Stethoscope,
@@ -255,7 +254,6 @@ export default function HospitalDashboard() {
     { key: "new", label: "New request", icon: Plus },
     { key: "storage", label: "Blood storage", icon: Droplets, badge: openAlerts.length },
     { key: "availability", label: "Partner availability", icon: Search },
-    { key: "profile", label: "Hospital profile", icon: Settings2 },
   ];
 
   return (
@@ -271,6 +269,8 @@ export default function HospitalDashboard() {
       items={navItems}
       active={tab}
       onSelect={(key) => setTab(key as Tab)}
+      onProfile={() => setTab("profile")}
+      profileLabel="Hospital profile"
       demoData={demoPresent}
       accentIcon={Building2}
       quickLinks={[

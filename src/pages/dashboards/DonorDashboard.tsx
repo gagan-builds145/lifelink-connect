@@ -233,7 +233,6 @@ export default function DonorDashboard() {
     { key: "matches", label: "Matching requests", icon: Sparkles, badge: nearby?.length },
     { key: "camps", label: "Donation camps", icon: CalendarHeart },
     { key: "history", label: "Donation history", icon: History },
-    { key: "profile", label: "Profile & privacy", icon: Settings2 },
   ];
 
   const guidance = summary?.guidance ?? donationsData?.guidance;
@@ -249,6 +248,7 @@ export default function DonorDashboard() {
       items={navItems}
       active={tab}
       onSelect={(key) => setTab(key as Tab)}
+      onProfile={() => setTab("profile")}
       demoData={demoPresent}
       accentIcon={HeartHandshake}
       quickLinks={[

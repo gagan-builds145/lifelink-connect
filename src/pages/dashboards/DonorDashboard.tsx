@@ -75,7 +75,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import { toast } from "sonner";
 
-type Tab = "overview" | "matches" | "camps" | "history" | "profile";
+type Tab = "overview" | "matches" | "invitations" | "camps" | "history" | "profile";
 
 export default function DonorDashboard() {
   const { user } = useAuth();
@@ -86,6 +86,8 @@ export default function DonorDashboard() {
   const donationsData = useQuery(api.donors.myDonations);
   const camps = useQuery(api.camps.listPublic, {});
   const registrations = useQuery(api.camps.myRegistrations);
+  const invitations = useQuery(api.donorFallback.myInvitations);
+  const locationConsent = useQuery(api.donorFallback.myConsent);
 
   const setAvailability = useMutation(api.profiles.setAvailability);
   const updateProfile = useMutation(api.profiles.updateDonorProfile);
@@ -93,8 +95,13 @@ export default function DonorDashboard() {
   const withdrawOffer = useMutation(api.requests.withdrawOffer);
   const registerCamp = useMutation(api.camps.register);
   const cancelCamp = useMutation(api.camps.cancelRegistration);
+  const setLocationConsent = useMutation(api.donorFallback.setLocationConsent);
+  const respondToInvitation = useMutation(api.donorFallback.respond);
 
   const [switching, setSwitching] = useState(false);
+  const [consentHours, setConsentHours] = useState(24);
+  const [consentBusy, setConsentBusy] = useState(false);
+  const [invitationBusy, setInvitationBusy] = useState<string | null>(null);
   const [offerTarget, setOfferTarget] = useState<{ id: Id<"bloodRequests">; group: string } | null>(null);
   const [offerNote, setOfferNote] = useState("");
   const [offerBusy, setOfferBusy] = useState(false);
@@ -133,6 +140,48 @@ export default function DonorDashboard() {
     (nearby ?? []).some((r) => r.isDemo) ||
     (camps ?? []).some((c) => c.isDemo) ||
     (donationsData?.donations ?? []).some((d) => d.isDemo);
+
+  const handleConsent = async (shareLocation: boolean) => {
+    setConsentBusy(true);
+    try {
+      await setLocationConsent({ shareLocation, hours: consentHours });
+      toast.success(shareLocation ? "Temporary location sharing enabled" : "Location sharing revoked", {
+        description: shareLocation
+          ? `Only for the next ${consentHours} hour(s). You can revoke this at any time.`
+          : "Your location is no longer shared with the donor fallback search.",
+      });
+    } catch (error) {
+      toast.error("Could not update consent", {
+        description: error instanceof Error ? error.message : "Try again.",
+      });
+    } finally {
+      setConsentBusy(false);
+    }
+  };
+
+  const handleInvitation = async (invitationId: Id<"donorInvitations">, action: "accept" | "decline") => {
+    setInvitationBusy(String(invitationId));
+    try {
+      const result = await respondToInvitation({ invitationId, action });
+      if (action === "accept") {
+        toast.success("Invitation accepted", {
+          description: result.centerName
+            ? `Appointment at ${result.centerName}. Final eligibility and screening happen there — blood is not stock until it is collected and released.`
+            : "The coordinating team will confirm your appointment. Blood is not stock until it is collected and released.",
+        });
+      } else {
+        toast("Invitation declined", {
+          description: "The network will keep looking for other eligible donors. Thank you for responding.",
+        });
+      }
+    } catch (error) {
+      toast.error("Could not submit your response", {
+        description: error instanceof Error ? error.message : "Try again.",
+      });
+    } finally {
+      setInvitationBusy(null);
+    }
+  };
 
   const handleToggleAvailability = async (value: boolean) => {
     setSwitching(true);
@@ -231,6 +280,12 @@ export default function DonorDashboard() {
   const navItems = [
     { key: "overview", label: "Overview", icon: HeartPulse },
     { key: "matches", label: "Matching requests", icon: Sparkles, badge: nearby?.length },
+    {
+      key: "invitations",
+      label: "Invitations",
+      icon: HeartHandshake,
+      badge: (invitations ?? []).filter((i) => i.status === "sent").length,
+    },
     { key: "camps", label: "Donation camps", icon: CalendarHeart },
     { key: "history", label: "Donation history", icon: History },
   ];
@@ -641,6 +696,182 @@ export default function DonorDashboard() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {tab === "invitations" && (
+        <div className="mt-4 space-y-4">
+          <section className="rounded-2xl border border-border bg-card p-5">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="max-w-2xl">
+                <h2 className="flex items-center gap-2 text-[14px] font-bold">
+                  <MapPin className="size-4 text-primary" /> Temporary location sharing
+                </h2>
+                <p className="mt-1 text-[11.5px] leading-5 text-muted-foreground">
+                  When institutional blood supply cannot cover a verified request, LifeLink may
+                  invite compatible donors near the hospital. Your approximate distance is used only
+                  while this consent is active. It expires automatically, can be revoked at any
+                  time, and is never shown to hospitals or requestors.
+                </p>
+                {locationConsent?.expiresAt && locationConsent.shareLocation && (
+                  <p className="mt-2 rounded-lg border border-teal-200 bg-teal-50/70 px-2.5 py-1.5 text-[10.5px] font-medium text-teal-800">
+                    Active until {formatDateTime(locationConsent.expiresAt)}. You can revoke it
+                    immediately.
+                  </p>
+                )}
+              </div>
+              <div className="flex shrink-0 flex-col gap-2 rounded-xl border border-border bg-background p-3 sm:min-w-[240px]">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[11.5px] font-semibold">Share while available</p>
+                    <p className="text-[9.5px] text-muted-foreground">
+                      {locationConsent?.shareLocation ? "Consent active" : "Consent off"}
+                    </p>
+                  </div>
+                  <Switch
+                    checked={locationConsent?.shareLocation ?? false}
+                    disabled={consentBusy || locationConsent === undefined}
+                    onCheckedChange={(value) => void handleConsent(value)}
+                    aria-label="Temporarily share location for donor invitations"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="consent-hours" className="text-[10px] text-muted-foreground">
+                    Duration
+                  </Label>
+                  <select
+                    id="consent-hours"
+                    value={consentHours}
+                    onChange={(event) => setConsentHours(Number(event.target.value))}
+                    className="h-7 flex-1 rounded-md border border-border bg-background px-1.5 text-[10px]"
+                  >
+                    <option value={6}>6 hours</option>
+                    <option value={24}>24 hours</option>
+                    <option value={72}>3 days</option>
+                    <option value={168}>7 days</option>
+                  </select>
+                </div>
+                <p className="text-[8.5px] leading-3.5 text-muted-foreground">
+                  {locationConsent?.note ??
+                    "A donor is never an available unit. Blood counts only after collection, screening, testing, processing and release."}
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-border bg-card p-5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-[14px] font-bold">Donation invitations</h2>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                  Sent only after the institutional network has been searched and cannot meet the
+                  verified need.
+                </p>
+              </div>
+              <span className="rounded-full border border-border bg-muted/40 px-2.5 py-1 text-[9.5px] font-semibold text-muted-foreground">
+                {(invitations ?? []).filter((i) => i.status === "sent").length} awaiting your reply
+              </span>
+            </div>
+
+            {invitations === undefined ? (
+              <div className="flex items-center justify-center gap-2 py-10 text-[12px] text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" /> Loading invitations…
+              </div>
+            ) : invitations.length === 0 ? (
+              <EmptyState
+                icon={HeartHandshake}
+                title="No donor invitations yet"
+                description="Invitations appear here only when compatible hospital requests cannot be covered by institutional stock. Keep your availability current if you would like to help."
+              />
+            ) : (
+              <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                {invitations.map((invite) => {
+                  const awaiting = invite.status === "sent";
+                  return (
+                    <div key={invite._id} className="rounded-xl border border-border bg-background p-3.5">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="flex items-center gap-2.5">
+                          <BloodGroupChip group={invite.bloodGroup} size="sm" />
+                          <div>
+                            <p className="text-[11.5px] font-semibold leading-4">
+                              {COMPONENT_LABELS[invite.component]} · {invite.units} unit(s)
+                            </p>
+                            <p className="text-[9.5px] text-muted-foreground">
+                              {invite.facilityName}
+                              {invite.facilityCity ? ` · ${invite.facilityCity}` : ""}
+                            </p>
+                          </div>
+                        </div>
+                        <span
+                          className={
+                            invite.status === "accepted"
+                              ? "rounded-full bg-teal-50 px-2 py-0.5 text-[8.5px] font-bold uppercase text-teal-700"
+                              : invite.status === "declined"
+                                ? "rounded-full bg-muted px-2 py-0.5 text-[8.5px] font-bold uppercase text-muted-foreground"
+                                : "rounded-full bg-amber-50 px-2 py-0.5 text-[8.5px] font-bold uppercase text-amber-800"
+                          }
+                        >
+                          {invite.status}
+                        </span>
+                      </div>
+                      <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[9.5px] text-muted-foreground">
+                        <span>Invited {formatRelative(invite.createdAt)}</span>
+                        {invite.distanceKm != null && <span>~{invite.distanceKm} km away</span>}
+                        {invite.responseProbability != null && (
+                          <span>
+                            Predicted response {Math.round(invite.responseProbability * 100)}%
+                          </span>
+                        )}
+                      </p>
+                      {invite.appointmentAt && (
+                        <p className="mt-2 rounded-lg border border-teal-200 bg-teal-50/60 px-2.5 py-1.5 text-[10px] leading-4 text-teal-900">
+                          <strong>Appointment:</strong> {formatDateTime(invite.appointmentAt)}
+                          {invite.centerName ? ` · ${invite.centerName}` : " · centre to be confirmed"}
+                          {invite.centerAddress ? `, ${invite.centerAddress}` : ""}
+                          {invite.centerPhone ? ` · ${invite.centerPhone}` : ""}
+                        </p>
+                      )}
+                      {invite.status === "accepted" && invite.facilityPhone && (
+                        <p className="mt-1 text-[9px] text-muted-foreground">
+                          Facility contact: {invite.facilityPhone}
+                        </p>
+                      )}
+                      <p className="mt-2 text-[8.5px] leading-3.5 text-muted-foreground">
+                        Responding does not make blood available. A licensed centre must collect,
+                        screen, test, process and release any units.
+                      </p>
+                      {awaiting && (
+                        <div className="mt-2.5 flex gap-2 border-t border-border pt-2.5">
+                          <Button
+                            size="sm"
+                            className="h-8 flex-1 gap-1.5 text-[10.5px]"
+                            disabled={invitationBusy === String(invite._id)}
+                            onClick={() => void handleInvitation(invite._id, "accept")}
+                          >
+                            {invitationBusy === String(invite._id) ? (
+                              <Loader2 className="size-3 animate-spin" />
+                            ) : (
+                              <CheckCircle2 className="size-3" />
+                            )}
+                            I can donate
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 flex-1 text-[10.5px]"
+                            disabled={invitationBusy === String(invite._id)}
+                            onClick={() => void handleInvitation(invite._id, "decline")}
+                          >
+                            Decline
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
         </div>
       )}
 

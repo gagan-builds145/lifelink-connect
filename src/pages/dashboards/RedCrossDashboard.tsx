@@ -658,9 +658,13 @@ export default function RedCrossDashboard() {
       demoData={demoPresent}
       accentIcon={Building2}
       quickLinks={[
+        { label: "Supply command", href: "/supply", icon: Siren },
+        { label: "Drone operations", href: "/drones", icon: MapPin },
         { label: "Public blood search", href: "/blood-search", icon: Search },
         { label: "Public camps page", href: "/donation-camps", icon: CalendarHeart },
-        { label: "Network organizations", href: "/signup", icon: Building2 },
+        ...(user?.role === "admin"
+          ? [{ label: "Admin console", href: "/admin/dashboard", icon: ShieldCheck }]
+          : []),
       ]}
     >
       {demoPresent && <DemoDataBanner />}

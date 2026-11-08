@@ -2,17 +2,33 @@ import { authTables } from "@convex-dev/auth/server";
 import { defineSchema, defineTable } from "convex/server";
 import { Infer, v } from "convex/values";
 import {
+  anomalyKindValidator,
   bloodGroupValidator,
   campStatusValidator,
   componentValidator,
+  donorInvitationStatusValidator,
+  droneStatusValidator,
+  flightControllerValidator,
+  integrationKindValidator,
+  integrationStatusValidator,
+  linkStatusValidator,
+  maintenanceStatusValidator,
+  missionEventValidator,
+  missionStateValidator,
+  notificationChannelValidator,
+  notificationJobStatusValidator,
   notificationKindValidator,
   orgStatusValidator,
   orgTypeValidator,
+  preflightCheckValidator,
   requestStatusValidator,
   requestorTypeValidator,
+  syncModeValidator,
   transactionTypeValidator,
+  transferStatusValidator,
   urgencyValidator,
   userRoleValidator,
+  waypointValidator,
 } from "./validators";
 
 // Application roles. The default auth role values are kept for compatibility
@@ -110,6 +126,12 @@ const schema = defineSchema(
       verifiedAt: v.optional(v.number()),
       verifiedBy: v.optional(v.string()),
       createdByUserId: v.optional(v.id("users")),
+      // Institutional transfer policy. Auto-allocation only happens between
+      // facilities that explicitly opted in to a pre-authorised agreement.
+      transferAuthorized: v.optional(v.boolean()),
+      autoAllocate: v.optional(v.boolean()),
+      searchRadiusKm: v.optional(v.number()),
+      protectedReserveDefault: v.optional(v.number()),
       isDemo: v.optional(v.boolean()),
       createdAt: v.number(),
       updatedAt: v.number(),
@@ -131,6 +153,16 @@ const schema = defineSchema(
       batchRef: v.string(),
       lowStockThreshold: v.number(),
       verified: v.boolean(),
+      // Released-for-transfusion flags are optional so existing batches keep
+      // working; missing is treated as "not yet confirmed" by the allocation
+      // engine, which blocks the unit until staff release it.
+      screened: v.optional(v.boolean()),
+      released: v.optional(v.boolean()),
+      /** Units held back for this facility's own emergency cases. */
+      protectedReserve: v.optional(v.number()),
+      storageTempC: v.optional(v.number()),
+      integrationId: v.optional(v.id("facilityIntegrations")),
+      externalUnitRef: v.optional(v.string()),
       lastUpdated: v.number(),
       isDemo: v.optional(v.boolean()),
       createdAt: v.number(),
@@ -341,8 +373,12 @@ const schema = defineSchema(
       requestId: v.optional(v.id("bloodRequests")),
       link: v.optional(v.string()),
       read: v.boolean(),
+      /** Stops duplicate in-app rows for retried/idempotent operations. */
+      dedupeKey: v.optional(v.string()),
       createdAt: v.number(),
-    }).index("by_user", ["userId", "read"]),
+    })
+      .index("by_user", ["userId", "read"])
+      .index("by_dedupe", ["dedupeKey"]),
 
     auditLogs: defineTable({
       actorUserId: v.optional(v.id("users")),
@@ -365,6 +401,381 @@ const schema = defineSchema(
       message: v.string(),
       createdAt: v.number(),
     }).index("by_email", ["email"]),
+
+    /* ---------------------------------------------------------------- *
+     * Facility integration layer
+     * ---------------------------------------------------------------- */
+    facilityIntegrations: defineTable({
+      organizationId: v.id("organizations"),
+      kind: integrationKindValidator,
+      label: v.string(),
+      baseUrl: v.optional(v.string()),
+      authScheme: v.union(
+        v.literal("api_key"),
+        v.literal("bearer"),
+        v.literal("basic"),
+        v.literal("none"),
+      ),
+      /** Env var name only. Secrets are never stored in the database. */
+      credentialEnvVar: v.optional(v.string()),
+      syncMode: syncModeValidator,
+      status: integrationStatusValidator,
+      /** Explicitly labels adapters that return sample data. */
+      isMock: v.boolean(),
+      lastSyncAt: v.optional(v.number()),
+      lastSyncStatus: v.optional(
+        v.union(
+          v.literal("never"),
+          v.literal("success"),
+          v.literal("partial"),
+          v.literal("failed"),
+          v.literal("unconfigured"),
+        ),
+      ),
+      lastError: v.optional(v.string()),
+      recordsLastSync: v.optional(v.number()),
+      configNote: v.optional(v.string()),
+      createdAt: v.number(),
+      updatedAt: v.number(),
+    })
+      .index("by_organization", ["organizationId"])
+      .index("by_status", ["status"]),
+
+    facilitySyncRuns: defineTable({
+      integrationId: v.id("facilityIntegrations"),
+      organizationId: v.id("organizations"),
+      startedAt: v.number(),
+      finishedAt: v.optional(v.number()),
+      status: v.union(
+        v.literal("running"),
+        v.literal("success"),
+        v.literal("partial"),
+        v.literal("failed"),
+      ),
+      source: v.union(v.literal("mock"), v.literal("live")),
+      recordsRead: v.number(),
+      recordsApplied: v.number(),
+      error: v.optional(v.string()),
+      isMock: v.boolean(),
+      actorUserId: v.optional(v.id("users")),
+    })
+      .index("by_organization", ["organizationId"])
+      .index("by_integration", ["integrationId"]),
+
+    transferAgreements: defineTable({
+      requestingOrgId: v.id("organizations"),
+      supplyingOrgId: v.id("organizations"),
+      status: v.union(v.literal("active"), v.literal("suspended")),
+      autoAllocate: v.boolean(),
+      maxUnitsPerRequest: v.number(),
+      note: v.optional(v.string()),
+      createdByUserId: v.optional(v.id("users")),
+      createdAt: v.number(),
+      updatedAt: v.number(),
+    })
+      .index("by_requesting", ["requestingOrgId"])
+      .index("by_supplying", ["supplyingOrgId"]),
+
+    transfers: defineTable({
+      transferId: v.string(),
+      requestId: v.optional(v.id("bloodRequests")),
+      requestingOrgId: v.id("organizations"),
+      supplyingOrgId: v.id("organizations"),
+      bloodGroup: bloodGroupValidator,
+      component: componentValidator,
+      units: v.number(),
+      status: transferStatusValidator,
+      reservationIds: v.array(v.id("inventoryReservations")),
+      agreementId: v.optional(v.id("transferAgreements")),
+      droneMissionId: v.optional(v.id("droneMissions")),
+      auto: v.boolean(),
+      initiatedByUserId: v.optional(v.id("users")),
+      note: v.optional(v.string()),
+      createdAt: v.number(),
+      updatedAt: v.number(),
+      dispatchedAt: v.optional(v.number()),
+      receivedAt: v.optional(v.number()),
+    })
+      .index("by_requesting", ["requestingOrgId"])
+      .index("by_supplying", ["supplyingOrgId"])
+      .index("by_request", ["requestId"])
+      .index("by_status", ["status"]),
+
+    /* ---------------------------------------------------------------- *
+     * Drone logistics
+     * ---------------------------------------------------------------- */
+    droneBases: defineTable({
+      organizationId: v.id("organizations"),
+      name: v.string(),
+      city: v.string(),
+      latitude: v.number(),
+      longitude: v.number(),
+      status: v.union(v.literal("active"), v.literal("inactive")),
+      createdAt: v.number(),
+    })
+      .index("by_organization", ["organizationId"])
+      .index("by_status", ["status"]),
+
+    drones: defineTable({
+      droneId: v.string(),
+      baseId: v.id("droneBases"),
+      organizationId: v.id("organizations"),
+      model: v.string(),
+      manufacturer: v.string(),
+      maxPayloadKg: v.number(),
+      batteryCapacityWh: v.number(),
+      maxRangeKm: v.number(),
+      cruiseSpeedKmh: v.number(),
+      batteryPct: v.number(),
+      status: droneStatusValidator,
+      flightController: flightControllerValidator,
+      linkStatus: linkStatusValidator,
+      gpsAvailable: v.boolean(),
+      maintenanceStatus: maintenanceStatusValidator,
+      containerReady: v.boolean(),
+      containerTempC: v.number(),
+      currentLat: v.number(),
+      currentLng: v.number(),
+      lastSeenAt: v.number(),
+      createdAt: v.number(),
+      updatedAt: v.number(),
+    })
+      .index("by_base", ["baseId"])
+      .index("by_organization", ["organizationId"])
+      .index("by_status", ["status"])
+      .index("by_drone_id", ["droneId"]),
+
+    droneMissions: defineTable({
+      missionId: v.string(),
+      transferId: v.optional(v.id("transfers")),
+      droneId: v.id("drones"),
+      pickupOrgId: v.id("organizations"),
+      dropoffOrgId: v.id("organizations"),
+      bloodGroup: bloodGroupValidator,
+      component: componentValidator,
+      units: v.number(),
+      payloadKg: v.number(),
+      state: missionStateValidator,
+      /** Always true in this deployment: no real aircraft is commanded. */
+      simulated: v.boolean(),
+      route: v.array(waypointValidator),
+      outboundKm: v.number(),
+      returnKm: v.number(),
+      totalKm: v.number(),
+      preflight: v.array(preflightCheckValidator),
+      preflightPassed: v.boolean(),
+      weather: v.object({
+        windKmh: v.number(),
+        precipitationPct: v.number(),
+        visibilityKm: v.number(),
+        temperatureC: v.number(),
+        source: v.union(
+          v.literal("simulated"),
+          v.literal("manual"),
+          v.literal("provider"),
+        ),
+        observedAt: v.number(),
+      }),
+      airspace: v.object({
+        routeAuthorized: v.boolean(),
+        authorizationRef: v.optional(v.string()),
+        simulated: v.boolean(),
+        zoneIds: v.array(v.string()),
+      }),
+      containerTempC: v.number(),
+      batteryAtDispatch: v.optional(v.number()),
+      estimatedDurationMin: v.number(),
+      telemetry: v.optional(
+        v.object({
+          lat: v.number(),
+          lng: v.number(),
+          altitudeM: v.number(),
+          speedKmh: v.number(),
+          batteryPct: v.number(),
+          tempC: v.number(),
+          linkStatus: linkStatusValidator,
+          seq: v.number(),
+          updatedAt: v.number(),
+          simulated: v.boolean(),
+        }),
+      ),
+      stateHistory: v.array(missionEventValidator),
+      failure: v.optional(
+        v.object({
+          kind: v.string(),
+          at: v.number(),
+          detail: v.string(),
+        }),
+      ),
+      /** Handoff code the receiver must present; never shown to the sender. */
+      deliveryCode: v.optional(v.string()),
+      deliveryEvidence: v.optional(
+        v.object({
+          code: v.string(),
+          method: v.union(
+            v.literal("handoff_code"),
+            v.literal("supervisor_override"),
+          ),
+          confirmedByUserId: v.id("users"),
+          confirmedAt: v.number(),
+          note: v.optional(v.string()),
+        }),
+      ),
+      createdByUserId: v.id("users"),
+      createdAt: v.number(),
+      updatedAt: v.number(),
+      dispatchedAt: v.optional(v.number()),
+      deliveredAt: v.optional(v.number()),
+      completedAt: v.optional(v.number()),
+      note: v.optional(v.string()),
+    })
+      .index("by_drone", ["droneId"])
+      .index("by_state", ["state"])
+      .index("by_transfer", ["transferId"])
+      .index("by_pickup", ["pickupOrgId"])
+      .index("by_dropoff", ["dropoffOrgId"]),
+
+    missionEvents: defineTable({
+      missionId: v.id("droneMissions"),
+      fromState: v.optional(missionStateValidator),
+      toState: missionStateValidator,
+      at: v.number(),
+      actorUserId: v.optional(v.id("users")),
+      note: v.optional(v.string()),
+      isSimulated: v.boolean(),
+    }).index("by_mission", ["missionId"]),
+
+    airspaceZones: defineTable({
+      name: v.string(),
+      kind: v.union(v.literal("restricted"), v.literal("corridor")),
+      centerLat: v.number(),
+      centerLng: v.number(),
+      radiusKm: v.number(),
+      source: v.union(v.literal("simulated"), v.literal("published")),
+      active: v.boolean(),
+      note: v.optional(v.string()),
+      createdAt: v.number(),
+    }).index("by_kind", ["kind"]),
+
+    /* ---------------------------------------------------------------- *
+     * Donor fallback and consent
+     * ---------------------------------------------------------------- */
+    donorConsents: defineTable({
+      donorUserId: v.id("users"),
+      donorProfileId: v.id("donorProfiles"),
+      shareLocation: v.boolean(),
+      grantedAt: v.number(),
+      expiresAt: v.number(),
+      revokedAt: v.optional(v.number()),
+      updatedAt: v.number(),
+    })
+      .index("by_donor", ["donorUserId"])
+      .index("by_profile", ["donorProfileId"]),
+
+    donorInvitations: defineTable({
+      requestId: v.optional(v.id("bloodRequests")),
+      stockAlertId: v.optional(v.id("stockAlerts")),
+      requestingOrgId: v.id("organizations"),
+      donorUserId: v.id("users"),
+      donorProfileId: v.id("donorProfiles"),
+      bloodGroup: bloodGroupValidator,
+      component: componentValidator,
+      units: v.number(),
+      distanceKm: v.optional(v.number()),
+      responseProbability: v.optional(v.number()),
+      status: donorInvitationStatusValidator,
+      note: v.optional(v.string()),
+      idempotencyKey: v.string(),
+      createdAt: v.number(),
+      respondedAt: v.optional(v.number()),
+      appointmentAt: v.optional(v.number()),
+      donationCenterOrgId: v.optional(v.id("organizations")),
+    })
+      .index("by_donor", ["donorUserId"])
+      .index("by_request", ["requestId"])
+      .index("by_status", ["status"])
+      .index("by_idempotency", ["idempotencyKey"]),
+
+    /* ---------------------------------------------------------------- *
+     * Prediction, anomaly and notification delivery records
+     * ---------------------------------------------------------------- */
+    demandForecasts: defineTable({
+      organizationId: v.optional(v.id("organizations")),
+      scope: v.union(v.literal("hospital"), v.literal("network")),
+      bloodGroup: bloodGroupValidator,
+      component: componentValidator,
+      runAt: v.number(),
+      model: v.string(),
+      status: v.union(v.literal("ok"), v.literal("insufficient_data")),
+      sampleSize: v.number(),
+      metrics: v.optional(
+        v.object({
+          mae: v.number(),
+          rmse: v.number(),
+          baselineMae: v.number(),
+          baselineRmse: v.number(),
+          trainSize: v.number(),
+          holdoutSize: v.number(),
+          meanActual: v.number(),
+        }),
+      ),
+      confidence: v.optional(v.number()),
+      confidenceLabel: v.optional(
+        v.union(v.literal("high"), v.literal("medium"), v.literal("low")),
+      ),
+      explanation: v.string(),
+      horizons: v.object({
+        h24: v.union(v.number(), v.null()),
+        h7: v.union(v.number(), v.null()),
+        h30: v.union(v.number(), v.null()),
+      }),
+    })
+      .index("by_organization", ["organizationId"])
+      .index("by_group", ["bloodGroup", "component"]),
+
+    /** Model registry: versioned artifacts so predictions are reproducible. */
+    mlModels: defineTable({
+      kind: v.union(v.literal("donor_response"), v.literal("demand_forecast")),
+      version: v.string(),
+      trainedAt: v.number(),
+      sampleSize: v.number(),
+      payload: v.string(),
+      metricsJson: v.string(),
+      active: v.boolean(),
+    }).index("by_kind", ["kind", "active"]),
+
+    anomalyEvents: defineTable({
+      organizationId: v.optional(v.id("organizations")),
+      kind: anomalyKindValidator,
+      severity: v.union(v.literal("warning"), v.literal("critical")),
+      observed: v.number(),
+      expected: v.number(),
+      zScore: v.optional(v.number()),
+      at: v.number(),
+      note: v.string(),
+      acknowledged: v.boolean(),
+      createdAt: v.number(),
+    })
+      .index("by_organization", ["organizationId"])
+      .index("by_acknowledged", ["acknowledged"]),
+
+    notificationJobs: defineTable({
+      userId: v.id("users"),
+      notificationId: v.optional(v.id("notifications")),
+      channel: notificationChannelValidator,
+      recipient: v.string(),
+      subject: v.string(),
+      body: v.string(),
+      idempotencyKey: v.string(),
+      status: notificationJobStatusValidator,
+      attempts: v.number(),
+      lastError: v.optional(v.string()),
+      createdAt: v.number(),
+      sentAt: v.optional(v.number()),
+    })
+      .index("by_status", ["status"])
+      .index("by_user", ["userId"])
+      .index("by_idempotency", ["idempotencyKey"]),
 
     counters: defineTable({
       key: v.string(),

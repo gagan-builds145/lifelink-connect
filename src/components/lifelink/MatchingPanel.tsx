@@ -37,13 +37,13 @@ export function MatchingPanel({ requestId }: { requestId: Id<"bloodRequests"> })
           <div>
             <h2 className="text-[14px] font-bold">Smart matching</h2>
             <p className="mt-0.5 text-[11px] text-muted-foreground">
-              Transparent rules-based baseline · advisory only
+              Transparent rules-based ranking · advisory only
             </p>
           </div>
         </div>
         <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-border bg-muted/40 px-2.5 py-1 text-[9.5px] font-bold uppercase tracking-[0.08em] text-muted-foreground">
-          <Info className="size-3" />
-          ML model not connected
+          <ShieldCheck className="size-3" />
+          Rules decide eligibility
         </span>
       </div>
 

@@ -1,5 +1,6 @@
 import { mutation } from "./_generated/server";
 import { optionalUser, roleOf } from "./lib/helpers";
+import { payloadMassKg, planDroneRoute } from "../lib/supply";
 
 const SEED_KEY = "demo-network-v1";
 
@@ -371,12 +372,272 @@ export const seed = mutation({
       updatedAt: now,
     });
 
+    /* -------------------------------------------------------------- *
+     * Autonomous supply-chain demo: transfer policy, agreements, mock
+     * integration, fleet, airspace, demand history and one closed mission.
+     * Everything below is labelled demo/simulated.
+     * -------------------------------------------------------------- */
+    for (const orgId of [rcPune, bloodBank]) {
+      await ctx.db.patch(orgId, {
+        transferAuthorized: true,
+        autoAllocate: true,
+        protectedReserveDefault: 1,
+        searchRadiusKm: 75,
+        updatedAt: now,
+      });
+    }
+    await ctx.db.patch(hospitalPune, {
+      transferAuthorized: true,
+      autoAllocate: false,
+      protectedReserveDefault: 1,
+      updatedAt: now,
+    });
+
+    await ctx.db.insert("transferAgreements", {
+      requestingOrgId: hospitalPune,
+      supplyingOrgId: rcPune,
+      status: "active",
+      autoAllocate: true,
+      maxUnitsPerRequest: 6,
+      note: "Demo pre-authorised transfer agreement. Emergency release still needs staff confirmation.",
+      createdAt: now,
+      updatedAt: now,
+    });
+    await ctx.db.insert("transferAgreements", {
+      requestingOrgId: hospitalPune,
+      supplyingOrgId: bloodBank,
+      status: "active",
+      autoAllocate: true,
+      maxUnitsPerRequest: 4,
+      note: "Demo pre-authorised transfer agreement with a licensed blood bank.",
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await ctx.db.insert("facilityIntegrations", {
+      organizationId: rcPune,
+      kind: "blood_bank_api",
+      label: "Red Cross Pune inventory adapter (MOCK)",
+      authScheme: "api_key",
+      credentialEnvVar: "RC_PUNE_INVENTORY_API_KEY",
+      syncMode: "periodic",
+      status: "connected",
+      isMock: true,
+      lastSyncStatus: "never",
+      configNote:
+        "Mock adapter for development. Records it imports are always flagged as demo data. Register a live adapter with a real endpoint and key before production.",
+      createdAt: now,
+      updatedAt: now,
+    });
+    await ctx.db.insert("facilityIntegrations", {
+      organizationId: bloodBank,
+      kind: "hms_api",
+      label: "Sahyadri Blood Bank HMS bridge (MOCK)",
+      authScheme: "bearer",
+      credentialEnvVar: "SAHYADRI_HMS_TOKEN",
+      syncMode: "manual",
+      status: "connected",
+      isMock: true,
+      lastSyncStatus: "never",
+      configNote:
+        "Mock HMS bridge. Live sync expects GET {baseUrl}/inventory returning records and fails loudly when credentials are absent.",
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const demoBaseId = await ctx.db.insert("droneBases", {
+      organizationId: rcPune,
+      name: "Red Cross Pune drone base (Simulated)",
+      city: "Pune",
+      latitude: 18.5158,
+      longitude: 73.8798,
+      status: "active",
+      createdAt: now,
+    });
+    await ctx.db.insert("drones", {
+      droneId: "DRN-DEMO-001",
+      baseId: demoBaseId,
+      organizationId: rcPune,
+      model: "AeroMed S2 (Simulated)",
+      manufacturer: "LifeLink SITL Lab",
+      maxPayloadKg: 4,
+      batteryCapacityWh: 420,
+      maxRangeKm: 32,
+      cruiseSpeedKmh: 54,
+      batteryPct: 94,
+      status: "available",
+      flightController: "px4",
+      linkStatus: "online",
+      gpsAvailable: true,
+      maintenanceStatus: "ok",
+      containerReady: true,
+      containerTempC: 4,
+      currentLat: 18.5158,
+      currentLng: 73.8798,
+      lastSeenAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await ctx.db.insert("drones", {
+      droneId: "DRN-DEMO-002",
+      baseId: demoBaseId,
+      organizationId: rcPune,
+      model: "AeroMed S2-LR (Simulated)",
+      manufacturer: "LifeLink SITL Lab",
+      maxPayloadKg: 6,
+      batteryCapacityWh: 680,
+      maxRangeKm: 54,
+      cruiseSpeedKmh: 58,
+      batteryPct: 68,
+      status: "charging",
+      flightController: "ardupilot",
+      linkStatus: "online",
+      gpsAvailable: true,
+      maintenanceStatus: "due",
+      containerReady: true,
+      containerTempC: 4,
+      currentLat: 18.5158,
+      currentLng: 73.8798,
+      lastSeenAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await ctx.db.insert("airspaceZones", {
+      name: "Pune airfield control area (Simulated)",
+      kind: "restricted",
+      centerLat: 18.582,
+      centerLng: 73.919,
+      radiusKm: 2.4,
+      source: "simulated",
+      active: true,
+      note: "Simulated restriction used to exercise preflight route checks. Not an authoritative airspace dataset.",
+      createdAt: now,
+    });
+
+    // Historical issues are demo transactions behind a non-allocatable batch so
+    // no fake units become available for reservation.
+    const historyBatchId = await ctx.db.insert("inventory", {
+      organizationId: hospitalPune,
+      bloodGroup: "O+",
+      component: "red_cells",
+      unitsAvailable: 0,
+      unitsReserved: 0,
+      collectionDate: iso(-90),
+      expiryDate: iso(60),
+      storageLocation: "Demo demand history (not allocatable)",
+      batchRef: "DEMO-HISTORY",
+      lowStockThreshold: 3,
+      verified: false,
+      screened: false,
+      released: false,
+      protectedReserve: 0,
+      lastUpdated: now,
+      isDemo: true,
+      createdAt: now,
+    });
+    for (let day = 59; day >= 0; day -= 1) {
+      const weekday = new Date(now - day * 86_400_000).getUTCDay();
+      const seasonal = weekday === 1 ? 3 : weekday === 5 ? 2 : 0;
+      const wave = Math.round(2 * Math.sin(day / 5));
+      const spike = day === 21 || day === 22 || day === 41 ? 7 : 0;
+      const units = Math.max(0, 4 + seasonal + wave + spike);
+      if (units === 0) continue;
+      await ctx.db.insert("inventoryTransactions", {
+        inventoryId: historyBatchId,
+        organizationId: hospitalPune,
+        type: "dispatch",
+        units,
+        bloodGroup: "O+",
+        component: "red_cells",
+        actorRole: "demo",
+        note: "Demo demand history — not a live dispatch",
+        isDemo: true,
+        createdAt: now - day * 86_400_000,
+      });
+    }
+
+    const demoUser = await ctx.db.query("users").first();
+    if (demoUser) {
+      const route = planDroneRoute({
+        pickup: { lat: 18.5158, lng: 73.8798 },
+        dropoff: { lat: 18.5255, lng: 73.8734 },
+        pickupLabel: "Red Cross Pune landing zone",
+        dropoffLabel: "Sassoon General Hospital landing zone",
+      });
+      const transferId = await ctx.db.insert("transfers", {
+        transferId: "TRF-DEMO-001",
+        requestingOrgId: hospitalPune,
+        supplyingOrgId: rcPune,
+        bloodGroup: "O-",
+        component: "red_cells",
+        units: 2,
+        status: "received",
+        reservationIds: [],
+        auto: true,
+        note: "Closed demo transfer for the simulated mission history.",
+        createdAt: now - 2 * 86_400_000,
+        updatedAt: now - 2 * 86_400_000 + 3_600_000,
+        dispatchedAt: now - 2 * 86_400_000 + 600_000,
+        receivedAt: now - 2 * 86_400_000 + 3_600_000,
+      });
+      const demoMissionId = await ctx.db.insert("droneMissions", {
+        missionId: "DRM-DEMO-001",
+        transferId,
+        droneId: (await ctx.db.query("drones").first())!._id,
+        pickupOrgId: rcPune,
+        dropoffOrgId: hospitalPune,
+        bloodGroup: "O-",
+        component: "red_cells",
+        units: 2,
+        payloadKg: payloadMassKg(2),
+        state: "COMPLETED",
+        simulated: true,
+        route: route.waypoints,
+        outboundKm: route.outboundKm,
+        returnKm: route.returnKm,
+        totalKm: route.totalKm,
+        preflight: [],
+        preflightPassed: true,
+        weather: {
+          windKmh: 11,
+          precipitationPct: 5,
+          visibilityKm: 9,
+          temperatureC: 27,
+          source: "simulated",
+          observedAt: now - 2 * 86_400_000,
+        },
+        airspace: { routeAuthorized: true, simulated: true, zoneIds: [] },
+        containerTempC: 4,
+        estimatedDurationMin: 9,
+        stateHistory: [
+          { state: "PLANNED", at: now - 2 * 86_400_000, note: "Demo mission planned." },
+          { state: "COMPLETED", at: now - 2 * 86_400_000 + 3_600_000, note: "Demo mission completed (simulated)." },
+        ],
+        createdByUserId: demoUser._id,
+        createdAt: now - 2 * 86_400_000,
+        updatedAt: now - 2 * 86_400_000 + 3_600_000,
+        dispatchedAt: now - 2 * 86_400_000 + 300_000,
+        deliveredAt: now - 2 * 86_400_000 + 2_400_000,
+        completedAt: now - 2 * 86_400_000 + 3_600_000,
+        note: "Closed simulated mission retained for history. Never represented as a real flight.",
+      });
+      await ctx.db.insert("missionEvents", {
+        missionId: demoMissionId,
+        toState: "COMPLETED",
+        at: now - 2 * 86_400_000 + 3_600_000,
+        note: "Demo mission completed (simulated).",
+        isSimulated: true,
+      });
+      await ctx.db.patch(transferId, { droneMissionId: demoMissionId });
+    }
+
     await ctx.db.insert("auditLogs", {
       actorRole: "system",
       action: "demo.seeded",
       entityType: "demo",
       entityId: SEED_KEY,
-      detail: "Demo network data loaded (organizations, inventory, requests, camps).",
+      detail:
+        "Demo network data loaded (organizations, inventory, requests, camps, transfer agreements, mock integrations, simulated fleet, mission history and demand history).",
       isDemo: true,
       createdAt: now,
     });

@@ -12,6 +12,7 @@ export const APP_ROLES = [
   "requestor",
   "red_cross",
   "hospital",
+  "drone_ops",
   "user",
   "member",
 ] as const;
@@ -52,6 +53,17 @@ export async function requireStaff(ctx: Ctx): Promise<AppUser> {
 
 export async function requireRedCross(ctx: Ctx): Promise<AppUser> {
   return await requireRole(ctx, ["red_cross", "admin"]);
+}
+
+export const DRONE_ROLES: AppRole[] = ["drone_ops", "admin"];
+
+/** Flight dispatch is restricted to the drone operations role and admins. */
+export async function requireDroneOps(ctx: Ctx): Promise<AppUser> {
+  return await requireRole(ctx, DRONE_ROLES);
+}
+
+export async function requireAdmin(ctx: Ctx): Promise<AppUser> {
+  return await requireRole(ctx, ["admin"]);
 }
 
 /** Returns the verified organization attached to this staff account. */

@@ -274,9 +274,10 @@ export default function HospitalDashboard() {
       demoData={demoPresent}
       accentIcon={Building2}
       quickLinks={[
+        { label: "Supply command", href: "/supply", icon: Siren },
+        { label: "Drone operations", href: "/drones", icon: MapPin },
         { label: "Public blood search", href: "/blood-search", icon: Droplets },
         { label: "Donation camps", href: "/donation-camps", icon: CalendarPlus },
-        { label: "Verification workflow", href: "/#how-it-works", icon: Info },
       ]}
     >
       {demoPresent && <DemoDataBanner />}

@@ -16,4 +16,38 @@ crons.daily(
   internal.inventory.expirySweep,
 );
 
+// Software-in-the-loop drone telemetry only. No real aircraft is commanded.
+crons.interval(
+  "drone telemetry simulation",
+  { seconds: 30 },
+  internal.drones.simulateTelemetry,
+);
+
+// Retention: drains queued email/SMS/push attempts and records provider status.
+crons.interval(
+  "notification outbox dispatch",
+  { seconds: 120 },
+  internal.notificationsQueue.dispatchPending,
+);
+
+// Fallback synchronisation for integrations marked periodic (mock adapters
+// only; live sync requires an operator-triggered credentialed action).
+crons.interval(
+  "periodic facility sync",
+  { hours: 6 },
+  internal.integrations.runPeriodicSyncs,
+);
+
+crons.daily(
+  "demand forecast refresh",
+  { hourUTC: 2, minuteUTC: 10 },
+  internal.forecasting.refreshScheduledForecasts,
+);
+
+crons.daily(
+  "demand anomaly sweep",
+  { hourUTC: 2, minuteUTC: 30 },
+  internal.forecasting.anomalySweep,
+);
+
 export default crons;

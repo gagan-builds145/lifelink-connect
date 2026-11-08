@@ -52,6 +52,7 @@ import {
   Mail,
   MapPin,
   Phone,
+  Plane,
   Search,
   ShieldCheck,
   Siren,
@@ -59,6 +60,7 @@ import {
   Stethoscope,
   Truck,
   Users,
+  Zap,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
@@ -460,17 +462,17 @@ export default function Landing() {
             <h1 className="max-w-[660px] text-balance font-display text-[42px] font-extrabold leading-[1.02] tracking-[-0.045em] sm:text-[56px] lg:text-[62px]">
               LifeLink
               <span className="block text-[27px] font-bold leading-[1.15] tracking-[-0.03em] text-muted-foreground sm:text-[34px]">
-                Smart Blood Donation Management System
+                Autonomous Blood Supply & Drone Logistics
               </span>
             </h1>
             <p className="mt-5 font-display text-[18px] font-bold tracking-tight text-primary sm:text-[21px]">
               Donate Blood, Save Lives. Every Second Matters.
             </p>
             <p className="mt-4 max-w-[560px] text-pretty text-[14.5px] leading-7 text-muted-foreground">
-              One verified network connecting people who need blood with compatible
-              donors, authorized Red Cross branches, participating blood banks and
-              hospitals — with documents, stock and request status committed to a
-              single shared record.
+              One verified network connecting hospitals, blood banks, Red Cross
+              branches and donors — with deterministic allocation, real demand
+              forecasting, custody-tracked transfers and clearly simulated drone
+              logistics on a single shared ledger.
             </p>
 
             <div className="mt-7 flex flex-wrap gap-2.5">
@@ -818,27 +820,27 @@ export default function Landing() {
             },
             {
               icon: Droplets,
-              title: "Verified stock monitoring",
-              body: "Group and component stock with expiry, low-stock alerts, reservations and an immutable movement ledger.",
+              title: "Verified stock & allocation",
+              body: "Expiry, release status, protected reserves and atomic multi-facility reservations on an immutable ledger.",
               href: "/red-cross/dashboard",
-            },
-            {
-              icon: CalendarHeart,
-              title: "Donation camps",
-              body: "Publish camps, manage capacity and registrations, and record verified donations after medical clearance.",
-              href: "/donation-camps",
             },
             {
               icon: Hospital,
               title: "Hospital coordination",
-              body: "Hospital-specific requests, dispatch tracking, receipt confirmation and reported nearby availability.",
+              body: "Hospital requests, transfers, dispatch tracking, receipt confirmation and nearby reported availability.",
               href: "/signup/hospital",
             },
             {
-              icon: Sparkles,
-              title: "Explainable matching",
-              body: "Compatible inventory and donor ranking with visible reasons, a last-updated timestamp and no invented AI predictions.",
-              href: "/#matching",
+              icon: Zap,
+              title: "Autonomous supply command",
+              body: "Geospatial search, eligibility-first ranking, automatic reservation, donor fallback and demand forecasts.",
+              href: "/supply",
+            },
+            {
+              icon: Plane,
+              title: "Simulated drone logistics",
+              body: "Facility-to-facility missions with route planning, 12 preflight checks, telemetry and verified handoff — simulation only.",
+              href: "/drones",
             },
           ].map((service, i) => (
             <motion.div
@@ -869,16 +871,16 @@ export default function Landing() {
         <div className="mx-auto grid w-full max-w-7xl gap-10 px-4 py-16 sm:px-6 lg:grid-cols-2 lg:items-center lg:px-8 lg:py-20">
           <motion.div {...fadeUp}>
             <SectionHeading
-              eyebrow="Smart matching, honestly labelled"
-              title={<>Rules first. <span className="text-primary">No invented AI.</span></>}
-              description="LifeLink ships a transparent baseline that ranks verified inventory and eligible donors using ABO/Rh component rules, distance, reported availability, urgency and verification state. A future ML model can improve ranking, demand forecasting and camp planning — but only when a real model is configured."
+              eyebrow="AI assists. Rules decide."
+              title={<>Clinical safety first. <span className="text-primary">Genuine ML where it helps.</span></>}
+              description="Compatibility, release status, expiry and protected reserve are deterministic rules — never a model. On top of that, LifeLink evaluates a ridge demand forecast with a chronological holdout and an optional logistic donor-response model that only ranks invitations."
             />
             <ul className="mt-6 space-y-2.5">
               {[
-                "Component-specific compatibility rules, not label matching alone",
-                "Visible score reasons and warnings for every option",
-                "Verified-source filtering before ranking",
-                "Clear 'ML model not connected' status in every matching panel",
+                "Component-specific ABO/Rh rules, release checks and protected reserves",
+                "Visible score reasons, warnings and exclusions for every candidate",
+                "Demand forecasts report MAE, RMSE and a baseline — or refuse short data",
+                "Donor-response scores rank invitations; they never decide eligibility",
               ].map((point) => (
                 <li key={point} className="flex items-start gap-2 text-[12.5px] leading-6 text-muted-foreground">
                   <CheckCircle2 className="mt-1 size-3.5 shrink-0 text-teal-600" />
@@ -895,14 +897,14 @@ export default function Landing() {
             <div className="flex items-center justify-between">
               <p className="text-[11px] font-bold uppercase tracking-[0.15em] text-muted-foreground">Candidate ranking · demo view</p>
               <Badge variant="outline" className="border-border text-[9px] font-bold uppercase tracking-[0.08em] text-muted-foreground">
-                Rules baseline
+                Rules + evaluated ML
               </Badge>
             </div>
             <div className="mt-4 space-y-2.5">
               {[
                 { group: "O−", title: "Red Cross Pune · batch DEMO-001", score: 96, tags: ["Same city", "4 free units", "Verified"], tone: "teal" },
                 { group: "O+", title: "Sahyadri Blood Bank · batch DEMO-011", score: 88, tags: ["ABO compatible", "12 free units", "Verified"], tone: "teal" },
-                { group: "A−", title: "Donor LL-D-0007 · 3.1 km", score: 81, tags: ["Interval OK", "Contact protected"], tone: "amber" },
+                { group: "A−", title: "Donor LL-D-0007 · invitation candidate", score: 81, tags: ["Consent required", "Not stock"], tone: "amber" },
               ].map((row) => (
                 <div key={row.title} className="flex items-start gap-3 rounded-xl border border-border bg-background p-3">
                   <BloodGroupChip group={row.group} size="sm" />
@@ -922,6 +924,86 @@ export default function Landing() {
               <ShieldCheck className="mt-0.5 size-3 shrink-0 text-primary" />
               Illustrative ranking. Real matches are computed only from verified records for an authorized request, and final clinical decisions remain with medical staff.
             </p>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* SUPPLY CHAIN */}
+      <section id="supply-chain" className="mx-auto w-full max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-20">
+        <div className="grid gap-10 lg:grid-cols-[1fr_1.12fr] lg:items-center">
+          <motion.div {...fadeUp}>
+            <SectionHeading
+              eyebrow="Institutional supply chain"
+              title={<>From detected shortage to <span className="text-primary">verified handoff.</span></>}
+              description="Authorized facility staff search city → state → country by exception, reserve eligible units atomically, and move custody through dispatch and receipt. Donor invitations happen only after institutional supply fails."
+            />
+            <div className="mt-6 flex flex-wrap gap-2.5">
+              <Button asChild className="h-10 gap-1.5">
+                <Link to="/supply">
+                  <Zap className="size-4" />
+                  Open supply command
+                </Link>
+              </Button>
+              <Button asChild variant="outline" className="h-10 gap-1.5">
+                <Link to="/drones">
+                  <Plane className="size-4 text-primary" />
+                  Drone operations
+                </Link>
+              </Button>
+            </div>
+            <div className="mt-5 rounded-xl border border-amber-200/70 bg-amber-50/60 p-3">
+              <p className="flex items-start gap-2 text-[10.5px] leading-5 text-amber-900">
+                <ShieldCheck className="mt-0.5 size-3.5 shrink-0" />
+                Drone missions are explicitly simulated. No real flight, BVLOS
+                approval or airworthiness claim is made; clinical compatibility is
+                never decided by a model.
+              </p>
+            </div>
+          </motion.div>
+
+          <motion.div {...fadeUp} className="grid gap-3 sm:grid-cols-2">
+            {[
+              {
+                icon: Search,
+                title: "Search & reserve",
+                body: "Rank by eligibility, distance, expiry and availability. Multi-facility partial allocation with concurrency-safe writes.",
+                tag: "Deterministic",
+              },
+              {
+                icon: Activity,
+                title: "Forecast, don't guess",
+                body: "Ridge demand forecasts for 24h, 7d and 30d with MAE, RMSE and a baseline. Short history returns no prediction.",
+                tag: "Evaluated ML",
+              },
+              {
+                icon: Users,
+                title: "Consent-gated fallback",
+                body: "Invitations only after institutional supply fails. Temporary location consent, expiry rules and response tracking.",
+                tag: "Privacy-first",
+              },
+              {
+                icon: Plane,
+                title: "Simulated missions",
+                body: "PX4/ArduPilot-compatible mission states, 12 preflight gates, telemetry, return-to-base and emergency landing.",
+                tag: "Simulation",
+              },
+            ].map((item) => (
+              <div
+                key={item.title}
+                className="flex h-full flex-col rounded-2xl border border-border bg-card p-5"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <span className="flex size-10 items-center justify-center rounded-xl bg-primary/8 text-primary">
+                    <item.icon className="size-5" />
+                  </span>
+                  <span className="rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[8.5px] font-bold uppercase tracking-[0.1em] text-muted-foreground">
+                    {item.tag}
+                  </span>
+                </div>
+                <h3 className="mt-4 text-[14px] font-bold">{item.title}</h3>
+                <p className="mt-1.5 text-[11.5px] leading-5 text-muted-foreground">{item.body}</p>
+              </div>
+            ))}
           </motion.div>
         </div>
       </section>

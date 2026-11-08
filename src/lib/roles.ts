@@ -4,6 +4,7 @@ export type AppRole =
   | "requestor"
   | "red_cross"
   | "hospital"
+  | "drone_ops"
   | "user"
   | "member";
 
@@ -13,6 +14,7 @@ export const ROLE_LABELS: Record<AppRole, string> = {
   requestor: "Blood requestor",
   red_cross: "Red Cross Society",
   hospital: "Hospital",
+  drone_ops: "Drone operations",
   user: "Visitor",
   member: "Member",
 };
@@ -26,10 +28,13 @@ export function dashboardPathForRole(role?: string | null): string {
     case "requestor":
       return "/requestor/dashboard";
     case "red_cross":
-    case "admin":
       return "/red-cross/dashboard";
+    case "admin":
+      return "/admin/dashboard";
     case "hospital":
       return "/hospital/dashboard";
+    case "drone_ops":
+      return "/drones";
     default:
       return "/signup";
   }
@@ -51,6 +56,7 @@ export function hasDashboardRole(role?: string | null): boolean {
     role === "requestor" ||
     role === "red_cross" ||
     role === "hospital" ||
+    role === "drone_ops" ||
     role === "admin"
   );
 }

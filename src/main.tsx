@@ -25,6 +25,9 @@ const RequestorDashboard = lazy(() => import("./pages/dashboards/RequestorDashbo
 const RedCrossDashboard = lazy(() => import("./pages/dashboards/RedCrossDashboard.tsx"));
 const HospitalDashboard = lazy(() => import("./pages/dashboards/HospitalDashboard.tsx"));
 const RequestDetail = lazy(() => import("./pages/RequestDetail.tsx"));
+const SupplyCommand = lazy(() => import("./pages/SupplyCommand.tsx"));
+const DroneOps = lazy(() => import("./pages/DroneOps.tsx"));
+const AdminConsole = lazy(() => import("./pages/AdminConsole.tsx"));
 const BloodSearch = lazy(() => import("./pages/BloodSearch.tsx"));
 const DonationCamps = lazy(() => import("./pages/DonationCamps.tsx"));
 const Privacy = lazy(() => import("./pages/Privacy.tsx"));
@@ -320,6 +323,50 @@ createRoot(document.getElementById("root")!).render(
                   >
                     <RequireRole roles={["hospital"]}>
                       <HospitalDashboard />
+                    </RequireRole>
+                  </RequireAuth>
+                }
+              />
+
+              {/* Autonomous supply chain operations */}
+              <Route
+                path="/supply"
+                element={
+                  <RequireAuth
+                    redirectImmediately
+                    title="Sign in to open the supply command"
+                    description="Autonomous allocation, transfers and donor fallback require verified hospital, blood-bank or Red Cross access."
+                  >
+                    <RequireRole roles={["hospital", "red_cross", "admin"]}>
+                      <SupplyCommand />
+                    </RequireRole>
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/drones"
+                element={
+                  <RequireAuth
+                    redirectImmediately
+                    title="Sign in to view drone operations"
+                    description="Simulated mission control is available to verified facility staff and drone operations managers."
+                  >
+                    <RequireRole roles={["drone_ops", "admin", "hospital", "red_cross"]}>
+                      <DroneOps />
+                    </RequireRole>
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/admin/dashboard"
+                element={
+                  <RequireAuth
+                    redirectImmediately
+                    title="Administrator sign-in required"
+                    description="Network health, integrations, AI metrics, safety events and audit logs are restricted to system administrators."
+                  >
+                    <RequireRole roles={["admin"]}>
+                      <AdminConsole />
                     </RequireRole>
                   </RequireAuth>
                 }

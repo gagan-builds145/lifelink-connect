@@ -408,9 +408,9 @@ export const MATCHING_DISCLAIMER =
 
 export const AI_MODEL_STATUS = {
   configured: false,
-  label: "Rules-based baseline · ML model not connected",
+  label: "Rules-based eligibility · forecasting runs separately",
   detail:
-    "LifeLink uses a transparent deterministic ranking engine. No trained model is loaded in this deployment, so no AI predictions are shown.",
+    "Eligibility and this ranking are deterministic. Demand forecasting uses an evaluated ridge model, and an optional donor-response model only orders invitations. No ML model decides clinical compatibility or eligibility.",
 } as const;
 
 /* ---------------------------------------------------------------- *

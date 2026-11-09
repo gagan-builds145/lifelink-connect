@@ -410,7 +410,7 @@ export const AI_MODEL_STATUS = {
   configured: false,
   label: "Rules-based eligibility · forecasting runs separately",
   detail:
-    "Eligibility and this ranking are deterministic. Demand forecasting uses an evaluated ridge model, and an optional donor-response model only orders invitations. No ML model decides clinical compatibility or eligibility.",
+    "Eligibility and this ranking are deterministic. Demand forecasting is a Python XGBoost model with a chronological holdout and rolling-average baseline; donor-response scoring only orders invitations. No ML model decides clinical compatibility or eligibility.",
 } as const;
 
 /* ---------------------------------------------------------------- *

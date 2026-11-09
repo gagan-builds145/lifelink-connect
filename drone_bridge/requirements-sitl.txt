@@ -1,0 +1,3 @@
+# Optional SITL bridge dependency. This is NOT installed or exercised by the
+# default LifeLink test suite because no PX4/ArduPilot SITL process is present.
+mavsdk>=2.8,<3

@@ -284,6 +284,49 @@ export default function DroneOps() {
     }
   };
 
+  const exportSitlMission = () => {
+    if (!detail) return;
+    const mission = detail.mission;
+    const payload = {
+      schema: "lifelink.sitl.mission.v1",
+      simulated: true,
+      missionCode: mission.missionId,
+      generatedAt: new Date().toISOString(),
+      flightController: detail.drone?.flightController ?? "px4",
+      connection: "udp://:14540",
+      drone: detail.drone
+        ? { id: detail.drone.droneId, model: detail.drone.model, manufacturer: detail.drone.manufacturer }
+        : null,
+      pickup: detail.pickup,
+      dropoff: detail.dropoff,
+      payload: { units: mission.units, massKg: mission.payloadKg, bloodGroup: mission.bloodGroup, component: mission.component },
+      route: mission.route.map((point) => ({
+        latitude_deg: point.lat,
+        longitude_deg: point.lng,
+        label: point.label,
+        kind: point.kind,
+      })),
+      airspace: mission.airspace,
+      authorization: {
+        routeAuthorized: mission.airspace.routeAuthorized,
+        authorizationRef: mission.airspace.authorizationRef ?? null,
+        simulated: true,
+      },
+      disclaimer:
+        "Software-in-the-loop export only. This file does not authorize a real flight. Upload through drone_bridge with PX4/ArduPilot SITL and the required permissions.",
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const href = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = href;
+    anchor.download = `${mission.missionId}-sitl-mission.json`;
+    anchor.click();
+    URL.revokeObjectURL(href);
+    toast.info("SITL mission JSON exported", {
+      description: "Validate with drone_bridge/sitl_bridge.py --dry-run before connecting SITL.",
+    });
+  };
+
   const navItems = [
     { key: "live", label: "Live operations", icon: Plane, badge: overview?.activeMissions },
     { key: "fleet", label: "Fleet & bases", icon: Gauge, badge: overview?.maintenance },
@@ -548,15 +591,27 @@ export default function DroneOps() {
                   eyebrow="Mission control"
                   title={`${detail.mission.missionId} · ${detail.pickup?.name} → ${detail.dropoff?.name}`}
                   action={
-                    <span
-                      className={cn(
-                        "rounded-full border px-2 py-0.5 text-[8.5px] font-bold uppercase",
-                        STATE_TONE(detail.mission.state),
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span
+                        className={cn(
+                          "rounded-full border px-2 py-0.5 text-[8.5px] font-bold uppercase",
+                          STATE_TONE(detail.mission.state),
+                        )}
+                      >
+                        {MISSION_STATE_LABELS[detail.mission.state as MissionState] ??
+                          detail.mission.state}
+                      </span>
+                      {canOperate && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 gap-1 text-[9px]"
+                          onClick={exportSitlMission}
+                        >
+                          <Upload className="size-3" /> SITL JSON
+                        </Button>
                       )}
-                    >
-                      {MISSION_STATE_LABELS[detail.mission.state as MissionState] ??
-                        detail.mission.state}
-                    </span>
+                    </div>
                   }
                 >
                   <div className="grid gap-3 lg:grid-cols-[1.05fr_0.95fr]">

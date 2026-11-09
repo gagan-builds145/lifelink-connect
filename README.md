@@ -2,7 +2,7 @@
 
 > **Find the need. Reserve the right blood. Move it with an auditable chain of custody.**
 
-LifeLink is a working React + Convex application that connects donors, requestors, hospitals, blood banks and Red Cross facilities on one verified workflow. This build adds an institution-to-institution supply chain: geospatial blood search, deterministic allocation, transfer custody, consent-gated donor fallback, genuine demand forecasting, anomaly detection, notification outbox and **simulated** drone missions.
+LifeLink is a working React + Convex application that connects donors, requestors, hospitals, blood banks and Red Cross facilities on one verified workflow. This build adds an institution-to-institution supply chain: geospatial blood search, deterministic allocation, transfer custody, consent-gated donor fallback, a trained Python XGBoost demand service, Isolation Forest anomaly detection, notification outbox and **simulated** drone missions.
 
 It is not a static prototype. It is also **not** certified medical software or an aircraft control system. Read [Known limitations](docs/limitations.md) before any real use.
 
@@ -24,20 +24,20 @@ It is not a static prototype. It is also **not** certified medical software or a
 | **Transfer custody** | ✅ reserve → dispatch → receive / cancel, ledger + audit |
 | **Facility integration framework** | ✅ mock adapter + credentialed live REST pull + sync audit |
 | **Donor fallback** | ✅ temporary consent, invitations, accept/decline, appointment routing |
-| **Demand forecasting** | ✅ ridge regression, chronological holdout, MAE/RMSE + baseline |
-| **Donor response model** | ✅ optional logistic model, refuses insufficient data |
-| **Anomaly detection** | ✅ trailing z-score + persisted sync/mission anomalies |
+| **Demand forecasting** | ✅ Python FastAPI + trained XGBoost, chronological holdout, MAE/RMSE + baseline |
+| **Donor response model** | ✅ optional logistic model in-app; Python Random Forest API + artifacts also included |
+| **Anomaly detection** | ✅ trailing z-score plus Python Isolation Forest scan and persisted alerts |
 | **Notification outbox** | ✅ in-app, optional Resend email + Twilio SMS, idempotency keys |
 | **Drone operations** (`/drones`) | ✅ bases, fleet, airspace, route proxy, 12 preflight checks |
 | **Simulated mission lifecycle** | ✅ 15 states, telemetry, failure drills, handoff code, return-to-base |
 | **Admin control room** (`/admin/dashboard`) | ✅ network health, policy, agreements, sync, ML, safety, audit |
-| **Unit tests** | ✅ 26 tests / 145 assertions, executed |
+| **Automated tests** | ✅ 26 TypeScript domain tests + 21 Python model/training/SITL-validation tests, executed |
 | Real HMS/blood-bank production connector | ❌ framework + mock only |
-| PX4/ArduPilot SITL / MAVLink | ❌ not implemented; simulation is explicitly labelled |
-| Automated API/E2E/load/security/SITL suites | ❌ not included |
+| PX4/ArduPilot SITL / MAVLink | ⚠️ SITL export + MAVSDK bridge present; **not executed** because no SITL runtime is installed |
+| Live API/E2E/load/security/live-SITL suites | ❌ not included |
 | Push notifications | ❌ not implemented |
 
-The full test evidence is in [docs/test-report.md](docs/test-report.md); raw JUnit is [docs/test-results.xml](docs/test-results.xml).
+Test evidence: [docs/test-report.md](docs/test-report.md), [docs/test-results.xml](docs/test-results.xml) and [docs/python-test-results.xml](docs/python-test-results.xml).
 
 ## 2. Safety rules enforced in code
 
@@ -54,9 +54,9 @@ The full test evidence is in [docs/test-report.md](docs/test-report.md); raw JUn
 
 ## 3. Stack
 
-React 19 · Vite 7 · TypeScript · React Router 7 · Tailwind CSS v4 · shadcn/ui · Leaflet · Recharts · Framer Motion · Convex + Convex Auth.
+React 19 · Vite 7 · TypeScript · React Router 7 · Tailwind CSS v4 · shadcn/ui · Leaflet · Recharts · Framer Motion · Convex + Convex Auth · Python FastAPI · XGBoost · scikit-learn.
 
-The backend and pure domain engine are TypeScript/Convex rather than Python/FastAPI/PostGIS, preserving the existing working app and auth. See [Architecture](docs/architecture.md) for the rationale and component diagram.
+The web backend and deterministic domain engine remain TypeScript/Convex, preserving the existing working app and auth. The ML service is a separate Python FastAPI process with saved model artifacts. See [Architecture](docs/architecture.md) and [ML service](ml_service/README.md).
 
 ## 4. Windows 11 installation
 
@@ -65,7 +65,7 @@ The backend and pure domain engine are TypeScript/Convex rather than Python/Fast
 - Git for Windows
 - Node.js 20+ LTS and Bun
 - A Convex account/deployment
-- Optional: Resend (email) and Twilio (SMS)
+- Optional: Resend (email), Twilio (SMS), Python 3.10+/3.13 for ML
 
 ```powershell
 git clone <your-repository-url> lifelink
@@ -94,6 +94,26 @@ bun run dev        # Vite frontend → http://localhost:5173
 
 In the Freebuff managed workspace both processes are already running; do not start or kill them.
 
+### Python ML service
+
+```powershell
+cd ml_service
+py -3.13 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+python scripts/train_all.py
+uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+Then set a reachable service URL and shared token on the Convex deployment:
+
+```powershell
+bunx convex env set ML_SERVICE_URL "https://your-reachable-ml-service"
+bunx convex env set ML_SERVICE_TOKEN "a-long-random-secret"
+```
+
+Convex Cloud cannot reach `127.0.0.1`; use an HTTPS tunnel in development or deploy the service. If Python 3.13 is unavailable, the service also runs on 3.10+; report the interpreter actually used.
+
 ## 5. Checks and tests
 
 ```powershell
@@ -101,9 +121,12 @@ bun tsc -b --noEmit
 bunx convex dev --once
 bun test
 bun test --reporter=junit --reporter-outfile=docs/test-results.xml
+
+$env:PYTHONPATH="ml_service;drone_bridge"
+python -m pytest ml_service/tests drone_bridge/tests -q
 ```
 
-Current result: **26 pass, 0 fail, 0 skipped, 145 assertions**. No fabricated coverage percentage is reported; coverage, load, API, security, browser E2E and SITL tests were not run.
+Executed results: **26 TypeScript tests / 145 assertions** and **21 Python tests**. Bundled ML metrics are synthetic-data evidence only. Coverage, API, load, browser E2E, security and live SITL tests were not run.
 
 ## 6. Demo data
 
@@ -141,6 +164,8 @@ For the first administrator, set `users.role = "admin"` in the Convex dashboard.
 - [Test report](docs/test-report.md)
 - [Known limitations & production checklist](docs/limitations.md)
 - [Sample datasets](docs/sample-datasets.md)
+- [Python ML service](ml_service/README.md)
+- [SITL bridge](drone_bridge/README.md)
 - [Environment template](env.example)
 
 ## 9. Credentials and approvals needed for real use
@@ -148,13 +173,14 @@ For the first administrator, set `users.role = "admin"` in the Convex dashboard.
 | Requirement | Purpose |
 | --- | --- |
 | Convex production deployment + auth values | Hosting and sessions |
+| Reachable Python ML service URL + shared token | XGBoost forecasts, Isolation Forest scans |
 | Resend API key + verified sender domain | Email |
 | Twilio SID/token/number | SMS |
 | Hospital/blood-bank API contracts + keys | Real inventory sync |
 | Clinical sign-off on compatibility and SOPs | Real blood issue |
 | Data-protection/legal review | Donor consent and retention |
 | DGCA/ATC/operator/aircraft/remote-pilot approvals | **Any real drone operation** |
-| PX4/ArduPilot SITL + MAVLink bridge | Beyond the built-in simulation |
+| PX4/ArduPilot SITL runtime + MAVSDK | Executing the included, currently unverified bridge |
 
 Email and SMS are optional: without keys jobs are marked `skipped_no_provider`; in-app notifications still work.
 

@@ -113,7 +113,8 @@ export default function SupplyCommand() {
   const dispatchTransfer = useMutation(api.allocation.dispatchTransfer);
   const receiveTransfer = useMutation(api.allocation.receiveTransfer);
   const cancelTransfer = useMutation(api.allocation.cancelTransfer);
-  const storeForecasts = useMutation(api.forecasting.storeDemandForecasts);
+  const refreshForecasts = useAction(api.ml.refreshDemandForecasts);
+  const scanAnomalies = useAction(api.ml.runAnomalyScan);
   const runMockSync = useMutation(api.integrations.runMockSync);
   const runLiveSync = useAction(api.integrations.runLiveSync);
 
@@ -144,7 +145,7 @@ export default function SupplyCommand() {
   );
 
   const forecast = useQuery(
-    api.forecasting.demandForecast,
+    api.ml.latestDemandForecast,
     user?.role === "hospital" && org
       ? { organizationId: org._id, component }
       : user?.role === "hospital"
@@ -249,6 +250,27 @@ export default function SupplyCommand() {
       }
     } catch (error) {
       toast.error(`Could not ${action} transfer`, {
+        description: error instanceof Error ? error.message : "Try again.",
+      });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const runIsolationForestScan = async () => {
+    setBusy("anomaly-scan");
+    try {
+      const result = await scanAnomalies(
+        user?.role === "hospital" && org ? { organizationId: org._id } : {},
+      );
+      toast.success(
+        `${result.groupsScanned} series scanned · ${result.created} new alert(s)`,
+        {
+          description: `Isolation Forest ${result.modelVersion}${result.syntheticData ? " · synthetic training data" : ""}`,
+        },
+      );
+    } catch (error) {
+      toast.error("Isolation Forest scan failed", {
         description: error instanceof Error ? error.message : "Try again.",
       });
     } finally {
@@ -782,15 +804,18 @@ export default function SupplyCommand() {
                   onClick={async () => {
                     setBusy("forecast");
                     try {
-                      const result = await storeForecasts({
+                      const result = await refreshForecasts({
                         component,
                         ...(user?.role === "hospital" && org ? { organizationId: org._id } : {}),
                       });
-                      toast.success(`${result.stored} forecast run(s) stored`, {
-                        description: "Stored runs appear in the administrator model registry.",
-                      });
+                      toast.success(
+                        `${result.groupsWithForecast}/8 blood groups forecast`,
+                        {
+                          description: `XGBoost ${result.modelVersion}${result.syntheticData ? " · synthetic/demo training data" : ""}`,
+                        },
+                      );
                     } catch (error) {
-                      toast.error("Could not store forecast", {
+                      toast.error("Could not refresh XGBoost forecast", {
                         description: error instanceof Error ? error.message : "Try again.",
                       });
                     } finally {
@@ -803,7 +828,7 @@ export default function SupplyCommand() {
                   ) : (
                     <RefreshCcw className="size-3" />
                   )}
-                  Evaluate & store
+                  Refresh XGBoost forecast
                 </Button>
               </div>
             }
@@ -823,10 +848,18 @@ export default function SupplyCommand() {
                 <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-muted/25 p-2.5 text-[10px] text-muted-foreground">
                   <BrainCircuit className="size-3.5 text-primary" />
                   <strong className="text-foreground">{forecast.dataDays}-day</strong> history ·
-                  ridge regression with seasonality, lags and rolling mean · chronological holdout
+                  Python XGBoost · lags, rolling means and seasonality · chronological holdout
+                  {forecast.modelVersion ? ` · ${forecast.modelVersion}` : ""}
                   {forecast.includesDemo && <DemoBadge />}
                 </div>
                 <p className="text-[10px] leading-4 text-muted-foreground">{forecast.dataScope}</p>
+                {forecast.forecasts.length === 0 && (
+                  <EmptyState
+                    icon={BrainCircuit}
+                    title="No XGBoost forecast stored yet"
+                    description="Start the Python ML service and use Refresh XGBoost forecast. Existing Ridge forecasts are not shown."
+                  />
+                )}
                 <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
                   {forecast.forecasts.slice(0, 8).map((row) => (
                     <div key={row.bloodGroup} className="rounded-xl border border-border bg-background p-3">
@@ -895,7 +928,26 @@ export default function SupplyCommand() {
           </Panel>
 
           <div className="grid gap-4 lg:grid-cols-[1.3fr_0.7fr]">
-            <Panel eyebrow="Anomaly detection" title="Demand and synchronisation anomalies">
+            <Panel
+              eyebrow="Anomaly detection"
+              title="Demand and synchronisation anomalies"
+              action={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1 text-[9.5px]"
+                  disabled={busy === "anomaly-scan"}
+                  onClick={() => void runIsolationForestScan()}
+                >
+                  {busy === "anomaly-scan" ? (
+                    <Loader2 className="size-3 animate-spin" />
+                  ) : (
+                    <BrainCircuit className="size-3" />
+                  )}
+                  Isolation Forest scan
+                </Button>
+              }
+            >
               {anomalies === undefined ? (
                 <div className="flex items-center gap-2 py-6 text-xs text-muted-foreground">
                   <Loader2 className="size-4 animate-spin" /> Scanning…
@@ -975,10 +1027,18 @@ export default function SupplyCommand() {
                   <p className="text-[9px] leading-4 text-muted-foreground">
                     {modelStatus?.demandModel.validation}
                   </p>
+                  <p className="mt-1 text-[9px] leading-4 text-muted-foreground">
+                    {modelStatus?.demandModel.active
+                      ? `${modelStatus.demandModel.version} · retrained from Convex history`
+                      : modelStatus?.demandModel.serviceConfigured
+                        ? "Service configured; no Convex retraining registered yet."
+                        : "ML_SERVICE_URL is not configured on this deployment."}
+                  </p>
                 </div>
                 <p className="text-[9px] leading-4 text-muted-foreground">
-                  Stored runs: {modelStatus?.demandForecasts.length ?? 0}. Models are versioned; no
-                  accuracy is claimed beyond the reported holdout metrics.
+                  Stored XGBoost runs: {modelStatus?.demandForecasts.length ?? 0}. Bundled artifacts
+                  were trained on labelled synthetic data; no accuracy beyond the reported holdout
+                  metrics is claimed.
                 </p>
               </div>
             </Panel>

@@ -165,7 +165,7 @@ Failure semantics: failed auth/network/schema → run `failed`, `lastError` set,
 | `confirmDelivery` | mutation | receiver, drone ops, admin | Only in `AT_DESTINATION`; code must match. Receiver gets a receipt batch; writes evidence. |
 | `reportFailure` | mutation | drone ops/admin | `{ missionId, kind, detail }`; `battery`, `gps`, `landing_zone` → `EMERGENCY_LANDING`; others → `HOLD`. |
 | `abortMission` | mutation | drone ops/admin | Releases pre-load reservations; marks transfer failed if payload already aboard. |
-| `missionDetail` | query | mission parties, drone ops, admin | Route, preflight, telemetry, state history, failure, delivery evidence and handoff code (receiver/ops only). |
+| `missionDetail` | query | mission parties, drone ops, admin | Route, preflight, telemetry, state history, failure, delivery evidence and handoff code (receiver/ops only). Drone ops/admin can export the mission as `lifelink.sitl.mission.v1` JSON for the optional SITL bridge. |
 | `missions`, `overview` | query | signed-in/parties | Mission list and aggregate counts. |
 | `simulateTelemetry` | internal mutation | cron | Advances states and telemetry every 30 s. No browser motor commands. |
 
@@ -173,19 +173,23 @@ Mission states:
 
 `PLANNED → PREFLIGHT_CHECKING → PREFLIGHT_PASSED → DISPATCHED_TO_PICKUP → AT_PICKUP → PAYLOAD_LOADING → PAYLOAD_LOADED → IN_TRANSIT_TO_DESTINATION → AT_DESTINATION → DELIVERED → RETURNING_TO_BASE → COMPLETED`, plus `HOLD`, `ABORTED`, `EMERGENCY_LANDING`.
 
-## 6. AI / ML — `src/convex/forecasting.ts`
+## 6. AI / ML — `src/convex/ml.ts` and `src/convex/forecasting.ts`
+
+The Python service endpoints are documented in [ml_service/README.md](../ml_service/README.md). Convex calls it with `ML_SERVICE_URL` and optional `ML_SERVICE_TOKEN`; credentials stay in the deployment environment.
 
 | Function | Type | Access | Contract |
 | --- | --- | --- | --- |
-| `demandForecast` | query | staff | `{ organizationId?, component?, bloodGroup?, days? }`; ridge model with chronological holdout and MAE/RMSE versus a 7-day rolling-mean baseline. Returns `insufficient_data` when there is no demand history. |
-| `storeDemandForecasts` | mutation | staff | Persists the current run for each group with recorded demand. |
-| `anomalyReport` | query | staff | Trailing 28-day z-score findings plus persisted sync/mission anomalies. |
-| `trainDonorResponseModel` | mutation | admin | Requires ≥20 answered invitations with a mix of outcomes; stores a versioned logistic model. Returns a refusal otherwise. |
-| `modelStatus` | query | staff | Active model version, training size, demand-model description and stored runs. |
-| `refreshScheduledForecasts` | internal mutation | cron | Stores scheduled facility forecasts. |
-| `anomalySweep` | internal mutation | cron | Persists demand anomalies once. |
+| `latestDemandForecast` | query | staff | `{ organizationId?, component? }`; latest stored XGBoost run for the scope. Returns an empty forecast list with a clear message until a service refresh succeeds. |
+| `refreshDemandForecasts` | action | staff | Gathers scoped issue/dispatch history, calls `POST /v1/predict/demand/batch`, and stores 24h/7d/30d rows with model version, synthetic-data flag and metrics. Throws on an unreachable/unprepared service rather than inventing a forecast. |
+| `trainDemandModel` | action | admin | Gathers up to 365 days of Convex transactions, calls `POST /v1/train/demand`, and registers the returned version/metrics. |
+| `runAnomalyScan` | action | staff | Calls `POST /v1/detect/anomalies` for red-cell series and persists Isolation Forest alerts with model version and synthetic flag. |
+| `mlServiceStatus` | action | staff | Reads the service `/health`; returns `reachable: false` with an error instead of pretending it is up. |
+| `anomalyReport` | query | staff | Trailing 28-day z-score findings plus persisted sync/mission and Isolation Forest alerts. |
+| `trainDonorResponseModel` | mutation | admin | Requires ≥20 answered invitations with mixed outcomes; stores the existing in-app logistic model. The Python Random Forest donor API is available separately for consented datasets. |
+| `modelStatus` | query | staff | Active model version, training size, XGBoost description, stored XGBoost runs and service configuration flag. |
+| `anomalySweep` | internal mutation | cron | Persists statistical demand anomalies once. |
 
-Models are decision support only. Compatibility and authorization never call them.
+Models are decision support only. Compatibility and authorization never call them. The bundled artifacts were trained on labelled synthetic data; retraining from this deployment's transactions is an explicit admin action.
 
 ## 7. Admin — `src/convex/admin.ts`
 

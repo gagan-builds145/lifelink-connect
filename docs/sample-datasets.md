@@ -67,7 +67,24 @@ No aircraft exists. These records exercise payload, energy, preflight and restri
 
 `DEMO-D-002` fails the 90-day interval guidance. `DEMO-D-003` fails availability, consent and routine city scope. A donor is never inventory.
 
-## 5. Loading the real demo seed
+## 5. ML training datasets
+
+The Python service generates and checks in deterministic synthetic datasets:
+
+| File | Shape | Purpose |
+| --- | --- | --- |
+| `ml_service/data/demand_history.csv` | 11,680 rows: 8 groups × 4 components × 365 days | XGBoost lag/seasonality training; every row has `is_synthetic=true` |
+| `ml_service/data/donor_responses.csv` | 900 consented synthetic response outcomes | Random Forest donor-response classifier |
+| `ml_service/data/anomaly_observations.csv` | 240 daily observations with five labelled injected anomalies | Isolation Forest fit/evaluation |
+
+The current synthetic holdout results are recorded in
+`ml_service/artifacts/training-summary.json`: XGBoost MAE **0.2998** versus a
+7-day baseline MAE **0.7652** (60.83% lower) on 2,176 chronological holdout
+rows; Random Forest donor ROC-AUC **0.6066**; Isolation Forest precision
+**0.3333** and recall **1.0** on five synthetic injected anomalies. These are
+dataset-specific pipeline checks, **not** real-world accuracy claims.
+
+## 6. Loading the real demo seed
 
 ```bash
 bunx convex run demo:seed

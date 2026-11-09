@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
 import { COMPONENT_LABELS, formatDateTime, formatRelative } from "@/lib/blood";
 import { cn } from "@/lib/utils";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import {
   Activity,
   BrainCircuit,
@@ -144,6 +144,8 @@ export default function AdminConsole() {
   const setPolicy = useMutation(api.allocation.setTransferPolicy);
   const grantDroneOps = useMutation(api.allocation.grantDroneOps);
   const trainDonorModel = useMutation(api.forecasting.trainDonorResponseModel);
+  const trainDemandModel = useAction(api.ml.trainDemandModel);
+  const checkMlService = useAction(api.ml.mlServiceStatus);
 
   const verified = facilities ?? [];
 
@@ -933,11 +935,16 @@ export default function AdminConsole() {
           {tab === "ml" && (
             <div className="space-y-4">
               <div className="grid gap-4 lg:grid-cols-2">
-                <Panel eyebrow="Demand model" title="Ridge time-series model">
+                <Panel eyebrow="Demand model" title="Python XGBoost service">
                   <p className="text-[10.5px] leading-5 text-muted-foreground">
                     {modelStatus?.demandModel.type}. {modelStatus?.demandModel.validation}. The
-                    system refuses to forecast a group/component with no recorded demand rather than
-                    inventing a number.
+                    bundled artifacts were trained on labelled synthetic data; retraining here uses
+                    this deployment's recorded issue/dispatch transactions.
+                  </p>
+                  <p className="mt-2 rounded-lg border border-border bg-background px-2 py-1.5 text-[9px] leading-4 text-muted-foreground">
+                    {modelStatus?.demandModel.active
+                      ? `${modelStatus.demandModel.version} · trained ${formatRelative(modelStatus.demandModel.trainedAt ?? Date.now())} · ${modelStatus.demandModel.sampleSize} rows`
+                      : "No Convex-retrained XGBoost model is registered yet. Forecast refresh still uses the bundled labelled-synthetic artifact."}
                   </p>
                   <div className="mt-3 grid grid-cols-3 gap-1.5 text-center">
                     <div className="rounded-lg bg-muted/30 p-2">
@@ -966,6 +973,65 @@ export default function AdminConsole() {
                           : "none"}
                       </p>
                     </div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    <Button
+                      size="sm"
+                      className="h-7 gap-1 text-[9.5px]"
+                      disabled={busy === "train-demand"}
+                      onClick={() =>
+                        void run(
+                          "train-demand",
+                          async () => {
+                            const result = await trainDemandModel();
+                            toast.success(`XGBoost ${result.version} trained`, {
+                              description: `${result.sampleSize} rows · MAE ${String(result.metrics.mae ?? "—")} · baseline ${String(result.metrics.baseline_mae ?? "—")}`,
+                            });
+                            return result;
+                          },
+                          "XGBoost retraining completed.",
+                        )
+                      }
+                    >
+                      {busy === "train-demand" ? (
+                        <Loader2 className="size-3 animate-spin" />
+                      ) : (
+                        <BrainCircuit className="size-3" />
+                      )}
+                      Retrain from Convex history
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 gap-1 text-[9.5px]"
+                      disabled={busy === "check-ml"}
+                      onClick={() =>
+                        void run(
+                          "check-ml",
+                          async () => {
+                            const result = await checkMlService();
+                            if (!result.reachable) {
+                              toast.error("ML service unreachable", {
+                                description: result.error,
+                              });
+                            } else {
+                              toast.success("ML service reachable", {
+                                description: `${result.status} · ${result.version}`,
+                              });
+                            }
+                            return result;
+                          },
+                          "ML service check completed.",
+                        )
+                      }
+                    >
+                      {busy === "check-ml" ? (
+                        <Loader2 className="size-3 animate-spin" />
+                      ) : (
+                        <ServerCog className="size-3" />
+                      )}
+                      Check service
+                    </Button>
                   </div>
                   <div className="mt-3 max-h-[220px] space-y-1 overflow-y-auto">
                     {(modelStatus?.demandForecasts ?? [])
@@ -1043,7 +1109,8 @@ export default function AdminConsole() {
                 <ul className="grid gap-2 text-[10px] leading-4 text-muted-foreground sm:grid-cols-2">
                   <li className="rounded-lg border border-border bg-background p-2">
                     <strong className="text-foreground">Chronological split.</strong> The last 20% of
-                    days is held out; the model never trains on held-out future days.
+                    days is held out; the model never trains on held-out future days. Bundled
+                    metrics are synthetic-data evidence only.
                   </li>
                   <li className="rounded-lg border border-border bg-background p-2">
                     <strong className="text-foreground">Baseline comparison.</strong> Every forecast

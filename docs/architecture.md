@@ -21,7 +21,7 @@ This build extends the existing LifeLink blood-donation application into an inst
 | Backend | Convex queries/mutations/actions/internal mutations |
 | Database | Convex document database with indexes and serializable mutations |
 | Auth | Convex Auth (email OTP + demo guest) |
-| ML | TypeScript ridge regression, logistic regression and z-score detector in `src/lib/supply.ts` |
+| ML | Python FastAPI service: XGBoost demand forecasting, Random Forest donor response and Isolation Forest anomaly detection; Convex actions call it over authenticated HTTP |
 | Email / SMS | Optional Resend and Twilio adapters in Convex actions |
 | Scheduled work | Convex crons for telemetry, notification outbox, sync, forecasts and anomaly sweeps |
 
@@ -32,8 +32,8 @@ This build extends the existing LifeLink blood-donation application into an inst
 | Python / FastAPI / SQLAlchemy | Convex TypeScript backend | The existing LifeLink application already runs on Convex with working auth and data. Replacing it would discard working code, which the brief explicitly forbids. |
 | PostgreSQL + PostGIS | Convex tables + shared haversine/geofence functions | No PostGIS in this runtime. Geospatial filtering is deterministic and test-covered, but not spatially indexed at PostgreSQL scale. |
 | Redis / queues | Convex outbox table + cron worker | Durable queue semantics without adding another service. |
-| PX4/ArduPilot SITL + MAVSDK | Software-in-the-loop mission simulator | No flight-controller process or MAVLink link exists in this environment. The mission state machine, preflight, telemetry and failure drills are real software; the flight is explicitly simulated. |
-| XGBoost / Random Forest | Ridge time-series regression | Implemented without a Python runtime. Evaluation is genuine (chronological holdout, MAE/RMSE, baseline). It is not XGBoost. |
+| PX4/ArduPilot SITL + MAVSDK | Application simulator + SITL export/bridge scaffold | No flight-controller runtime is installed here. The mission state machine, preflight, telemetry and failure drills are real software; the flight is explicitly simulated. The bridge has not been executed against SITL. |
+| Python / XGBoost ML service | Python FastAPI service with saved XGBoost, Random Forest and Isolation Forest artifacts | Added without replacing the working Convex app. Convex actions handle auth and gather scoped data before calling the service. |
 | MapLibre | Leaflet | Existing dependency added for the project; simpler integration. |
 
 ## 3. Component map
@@ -52,17 +52,21 @@ Convex deployment
   ├─ drones.ts            fleet, route planning, preflight, mission state machine, telemetry
   ├─ donorFallback.ts     consent, invitations, accept/decline, escalation gate
   ├─ integrations.ts      adapter registry, mock sync, live credentialed sync
-  ├─ forecasting.ts       demand forecast, anomaly report, donor model training
+  ├─ ml.ts                authenticated XGBoost/Isolation Forest calls, forecast persistence
+  ├─ forecasting.ts       anomaly report, in-app donor logistic model, model status
   ├─ admin.ts             aggregate read models, anomaly acknowledgement
   ├─ notificationsQueue.ts email/SMS outbox worker
   ├─ crons.ts             telemetry, outbox, sync, forecast and anomaly schedules
   └─ lib/helpers.ts       auth, role, organization, rate-limit and audit guards
-          │
+          │  authenticated HTTPS (ML_SERVICE_URL + bearer token)
           ▼
-Convex database (shared ledger)
-```
+Python FastAPI ML service
+  ├─ demand_model.py       XGBoost + versioned JSON artifacts
+  ├─ donor_model.py        Random Forest + joblib artifact
+  ├─ anomaly_model.py      Isolation Forest pipeline + joblib artifact
+  └─ artifacts/            trained models, metadata, holdout metrics
 
-The pure domain engine `src/lib/supply.ts` is imported by both the Convex backend and the UI (and by the tests), so allocation, routing and model rules have one implementation.
+The pure domain engine `src/lib/supply.ts` is imported by both the Convex backend and the UI (and by the tests), so allocation, routing and preflight rules have one implementation. Ridge code remains in that module only for historical unit tests and is no longer exposed through Convex or the UI.
 
 ## 4. Primary flow
 
@@ -104,7 +108,8 @@ If reservations do not cover the request, `autoAllocate` calls the donor fallbac
 9. **No delivery without evidence.** `DELIVERED` requires the receiver's one-time handoff code (admin override is audited and labelled).
 10. **Simulation is labelled.** Every mission carries `simulated: true`; UI, notifications and admin aggregates state that no aircraft is connected.
 11. **No invented inventory.** Failed syncs write no stock. Mock imports are `isDemo: true` and visibly labelled.
-12. **Forecasts refuse short data.** A group with no recorded demand returns `insufficient_data`, not a fabricated number.
+12. **Forecasts refuse short data.** The ML service requires ≥29 continuous days per prediction and ≥60 per training series; no forecast or accuracy is fabricated.
+13. **ML cannot allocate.** Compatibility, release and authorization never call the Python models.
 
 ## 6. Data freshness and real-time behaviour
 
@@ -113,8 +118,8 @@ If reservations do not cover the request, `autoAllocate` calls the donor fallbac
   - telemetry simulation and automatic mission state advancement,
   - notification outbox delivery/retry,
   - periodic facility syncs,
-  - scheduled demand forecasts,
-  - anomaly sweeps.
+  - scheduled XGBoost forecast refresh when `ML_SERVICE_URL` is configured,
+  - statistical anomaly sweeps.
 - The UI displays timestamps, sync status, model run times and demo labels.
 
 ## 7. Failure handling

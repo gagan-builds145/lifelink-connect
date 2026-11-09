@@ -2,3 +2,9 @@
 node_modules
 dist
 src/convex/_generated
+
+# Python ML service
+ml_service/.venv/
+**/__pycache__/
+.pytest_cache/
+ml_service/.pytest_cache/

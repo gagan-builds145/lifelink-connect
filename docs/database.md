@@ -76,9 +76,9 @@ An invitation is not stock. Only released `inventory` rows can be allocated.
 | --- | --- | --- |
 | `notifications` | In-app inbox | user/role/organization target, read state, dedupe key |
 | `notificationJobs` | Outbox | `channel` (`in_app`/`email`/`sms`), `status`, `attempts`, `dedupeKey`, `lastError`, `sentAt` |
-| `demandForecasts` | Stored model runs | `bloodGroup`, `component`, `scope`, `model`, `status`, `metrics`, `confidence`, `horizons`, `runAt` |
-| `mlModels` | Versioned donor model | `kind`, `version`, `trainedAt`, `sampleSize`, `payload` (JSON weights), `metricsJson`, `active` |
-| `anomalyEvents` | Persisted safety/data anomalies | `kind`, `severity`, `observed`, `expected`, `zScore`, `note`, `acknowledged` |
+| `demandForecasts` | Stored XGBoost runs | `bloodGroup`, `component`, `scope`, `model`, `modelVersion`, `syntheticData`, `datasetLabel`, `dataDays`, `status`, `metrics`, `confidence`, `horizons`, `runAt` |
+| `mlModels` | Versioned model registry | `kind` (`demand_forecast`/`donor_response`), `version`, `trainedAt`, `sampleSize`, `payload` (JSON summary/weights), `metricsJson`, `active` |
+| `anomalyEvents` | Persisted statistical and Isolation Forest alerts | `kind`, `severity`, `observed`, `expected`, `zScore`, `note`, `bloodGroup`, `component`, `modelVersion`, `syntheticData`, `acknowledged` |
 | `auditLogs` | Administrative and safety actions | `actorUserId`, `actorRole`, `action`, `entityType`, `entityId`, `detail`, `organizationId`, `isDemo` |
 
 ## 2. Indexes
@@ -95,7 +95,7 @@ New indexes include:
 - `drones.by_organization`, `by_base`, `by_status`
 - `droneMissions.by_transfer`, `by_drone`, `by_state`
 - `missionEvents.by_mission`
-- `demandForecasts.by_organization`, `by_run`
+- `demandForecasts.by_organization`, `by_group`
 - `mlModels.by_kind`
 - `notifications.by_dedupe`
 - `notificationJobs.by_status`, `by_dedupe`

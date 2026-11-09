@@ -1,0 +1,50 @@
+[
+  {
+    "version": "xgboost-demand-2026-09-30-58530099a9",
+    "trained_at": "2026-11-08T17:23:54.060889+00:00",
+    "metrics": {
+      "mae": 0.2998,
+      "rmse": 0.45,
+      "baseline_mae": 0.7652,
+      "baseline_rmse": 1.1816,
+      "mae_improvement_pct": 60.83,
+      "train_size": 8608,
+      "holdout_size": 2176,
+      "mean_actual": 7.852
+    },
+    "synthetic": true,
+    "dataset_label": "deterministic synthetic demand, 32 blood-group/component series, 365 days"
+  },
+  {
+    "version": "xgboost-demand-2026-09-30-58530099a9",
+    "trained_at": "2026-11-08T17:24:22.965016+00:00",
+    "metrics": {
+      "mae": 0.2998,
+      "rmse": 0.45,
+      "baseline_mae": 0.7652,
+      "baseline_rmse": 1.1816,
+      "mae_improvement_pct": 60.83,
+      "train_size": 8608,
+      "holdout_size": 2176,
+      "mean_actual": 7.852
+    },
+    "synthetic": true,
+    "dataset_label": "deterministic synthetic demand, 32 blood-group/component series, 365 days"
+  },
+  {
+    "version": "xgboost-demand-2026-09-30-58530099a9",
+    "trained_at": "2026-11-08T17:26:11.165432+00:00",
+    "metrics": {
+      "mae": 0.2998,
+      "rmse": 0.45,
+      "baseline_mae": 0.7652,
+      "baseline_rmse": 1.1816,
+      "mae_improvement_pct": 60.83,
+      "train_size": 8608,
+      "holdout_size": 2176,
+      "mean_actual": 7.852
+    },
+    "synthetic": true,
+    "dataset_label": "deterministic synthetic demand, 32 blood-group/component series, 365 days"
+  }
+]

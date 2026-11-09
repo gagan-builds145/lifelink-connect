@@ -20,7 +20,7 @@ This is a working software system, but it is **not** certified medical software,
 
 ## 3. Drone system
 
-- **No PX4/ArduPilot, MAVLink or MAVSDK connection.** The mission state machine, preflight, telemetry simulation and failure drills are implemented in TypeScript. No autopilot software-in-the-loop process is included, so the required SITL integration test has **not** been executed.
+- **SITL was not executed.** A mission export and an optional MAVSDK bridge exist in `drone_bridge/`, but no PX4/ArduPilot SITL runtime is installed in this environment. The bridge upload path is unverified. The built-in mission state machine, preflight, telemetry simulation and failure drills are implemented and tested in software.
 - **Routes are corridor proxies, not safe flight routes.** They include waypoints and restricted-zone checks but no obstacle/terrain data, NOTAMs, approved corridors or landing-zone survey.
 - **Weather is simulated/manual.** There is no live weather provider.
 - **Airspace data is a training dataset.** It is not authoritative and must never be used for flight clearance.
@@ -30,11 +30,13 @@ This is a working software system, but it is **not** certified medical software,
 
 ## 4. AI / ML
 
-- **No XGBoost/Random Forest.** Demand forecasting uses ridge regression with seasonality, lags and a rolling mean. Donor response uses logistic regression. Both are genuine and evaluated, but they are not the requested tree models.
-- **Metrics are only as good as the data.** Demo history is synthetic and labelled. No real hospital demand dataset has been used; reported MAE/RMSE must not be treated as clinical accuracy.
-- **No drift monitoring or automated retraining pipeline.** Models are versioned on manual/scheduled runs, but drift detection, approval gates and rollback are not implemented.
-- **No 24-hour/7-day/30-day guarantee.** Short or sparse series return `insufficient_data` rather than a number.
-- **Donor model is optional.** With fewer than 20 answered invitations, or one-sided outcomes, no model is trained and invitations fall back to distance/eligibility. It is never used for medical eligibility.
+- **Bundled metrics are synthetic.** The checked-in XGBoost artifacts were trained on a deterministic generated dataset, not hospital demand. The measured MAE/RMSE and improvement versus baseline are evidence that the training/evaluation pipeline works, **not** evidence of clinical or operational accuracy.
+- **Python 3.13 was not executed here.** The service was installed, trained and tested on Python 3.10.12 because that is the available interpreter. The Dockerfile targets 3.13 and the requirements have interpreter-specific NumPy/SciPy pins, but 3.13 remains unverified in this environment.
+- **Convex integration was not executed end-to-end.** Unit/API tests exercise the FastAPI service with `TestClient`. No persistent ML server was exposed to the Convex Cloud deployment during this run, so the authenticated Convex action path has not been tested live. `ML_SERVICE_URL` and `ML_SERVICE_TOKEN` are required.
+- **No drift monitoring or automatic production retraining approval.** An admin-triggered retraining action and a scheduled refresh path exist, but drift detection, approval gates, rollback and model monitoring are not implemented.
+- **Forecast method limitations.** The served model is a global XGBoost regressor with lag/rolling/calendar features and a one-step chronological holdout. Recursive 30-day forecasts can compound error; the reported holdout metrics are not multi-step backtest guarantees.
+- **Donor models serve different roles.** The active in-app invitation ranker is a logistic model trained from Convex invitation outcomes. The Python Random Forest donor API and artifact are trained and tested separately on consented synthetic samples, but are not currently used to write invitation probabilities. Medical eligibility remains deterministic in both paths.
+- **Anomaly alerts require human review.** Isolation Forest combined with a z-score can produce false positives or miss context. It does not identify theft, wastage, a clinical error or a cause.
 
 ## 5. Integrations and notifications
 
@@ -47,7 +49,7 @@ This is a working software system, but it is **not** certified medical software,
 
 - **No edge rate limiting/WAF.** Existing request/contact endpoints have database-backed limits, but new supply/drone/admin endpoints rely on auth and Convex platform protections.
 - **No SQL injection surface** because there is no SQL, but no automated security scan or penetration test was run.
-- **No automated API, database-concurrency, real-time, geospatial API, security, load or end-to-end test suite.** The executed suite is 26 pure-domain unit tests (see [test-report.md](test-report.md)).
+- **No automated API, database-concurrency, real-time, geospatial API, security, load or browser end-to-end suite.** Executed: 26 TypeScript domain tests and 21 Python ML/SITL-validation/training tests. The FastAPI endpoints were tested in-process, not through the deployed Convex action path (see [test-report.md](test-report.md)).
 - **Code coverage was not measured.** No coverage tool is configured; do not claim a percentage.
 - **Concurrency correctness relies on Convex serializable mutations** and re-checking free stock. A multi-client simultaneous reservation test has not been automated.
 - **No production backup/restore drill.** Backups are a deployment concern and must be configured and tested.
@@ -62,12 +64,12 @@ This is a working software system, but it is **not** certified medical software,
 | Atomic reservations and protected reserve | Implemented, concurrency test not automated |
 | Donor consent gate | Implemented, privacy review pending |
 | Facility integration framework | Implemented for pull + mock; production connector pending |
-| Genuine ML with chronological evaluation | Implemented (ridge/logistic); real data validation pending |
+| Genuine ML with chronological evaluation | XGBoost/Random Forest/Isolation Forest implemented and tested on synthetic data; real data validation pending |
 | Drone mission state machine / preflight / simulation | Implemented in software |
-| PX4/ArduPilot SITL / MAVLink | **Not implemented** |
-| Automated API/E2E/load/SITL/security tests | **Not implemented** |
+| PX4/ArduPilot SITL / MAVSDK | Bridge scaffold + export implemented; **not executed** |
+| Automated API/E2E/load/live-SITL/security tests | **Not implemented** |
 | Rate limiting, WAF, monitoring, backups | Partial / deployment work required |
 | Clinical, legal and DGCA approvals | **Not obtained** |
 | Production deployment | **Not performed** |
 
-**Bottom line:** the institutional allocation, consent-gated donor fallback, notification outbox and simulated drone workflow are functional and testable. Real inventory integration, real flight control, production security hardening and regulatory approval remain out of scope of this build.
+**Bottom line:** the institutional allocation, consent-gated donor fallback, notification outbox, Python ML service and simulated drone workflow are functional and testable. Real inventory integration, live SITL/flight control, live Convex-to-ML deployment verification, production security hardening and regulatory approval remain out of scope of this build.

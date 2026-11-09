@@ -1,0 +1,26 @@
+{
+  "model": "isolation_forest_inventory",
+  "version": "isolation-forest-2026-11-08-240",
+  "trained_at": "2026-11-08T17:26:12.769508+00:00",
+  "synthetic": true,
+  "sample_size": 240,
+  "feature_names": [
+    "units",
+    "delta_1",
+    "rolling_mean_7",
+    "rolling_std_7",
+    "rolling_mean_28",
+    "ratio_to_rolling_28",
+    "zscore_28"
+  ],
+  "metrics": {
+    "precision": 0.3333,
+    "recall": 1.0,
+    "f1": 0.5,
+    "holdout_size": 226,
+    "labelled_anomalies": 5,
+    "normal_samples": 235
+  },
+  "validation_method": "Fit on synthetic normal demand and scored against injected labelled spikes/drops. These are synthetic evaluation metrics only.",
+  "constraints": "Alerts require human review. The model does not identify a cause or make clinical, inventory or disciplinary decisions."
+}

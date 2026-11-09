@@ -38,10 +38,12 @@ crons.interval(
   internal.integrations.runPeriodicSyncs,
 );
 
+// XGBoost forecast refresh. If ML_SERVICE_URL is absent the internal action
+// skips rather than inventing a forecast.
 crons.daily(
   "demand forecast refresh",
   { hourUTC: 2, minuteUTC: 10 },
-  internal.forecasting.refreshScheduledForecasts,
+  internal.ml.refreshScheduledForecasts,
 );
 
 crons.daily(

@@ -7,6 +7,7 @@
 - Node.js 20+ LTS
 - Bun 1.3+ (`bun --version`)
 - A Convex account/deployment
+- Optional: Python 3.10+ (3.13 target) for the ML service
 - Optional: Resend account (email), Twilio account (SMS)
 
 The project already targets a Convex development deployment. Keep the same deployment if you want existing accounts and demo data.
@@ -48,7 +49,29 @@ Open <http://localhost:5173>.
 
 > In the Freebuff managed workspace, the dev server and Convex process are already running. Do not start or kill them; edits are picked up automatically.
 
-## 3. Backend deployment variables
+## 3. Python ML service
+
+The service is a separate FastAPI process. From `ml_service/`:
+
+```powershell
+py -3.13 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+python scripts/train_all.py
+uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+The training script creates `artifacts/` and synthetic `data/` CSVs. If Python
+3.13 is unavailable, use 3.10+ and say which version you used; this workspace
+executed the tests on 3.10.12. The trained artifacts are included, but retraining
+is reproducible.
+
+Expose the service to Convex over HTTPS (Convex Cloud cannot call
+`127.0.0.1`). In development, a tunnel is acceptable; in production, deploy the
+container in `ml_service/Dockerfile`.
+
+## 4. Backend deployment variables
 
 Convex deployment variables are separate from `.env.local`. Set them with:
 
@@ -58,6 +81,10 @@ bunx convex env set RESEND_FROM_EMAIL "LifeLink <alerts@yourdomain.org>"
 bunx convex env set TWILIO_ACCOUNT_SID "AC..."
 bunx convex env set TWILIO_AUTH_TOKEN "..."
 bunx convex env set TWILIO_FROM_NUMBER "+1..."
+
+# Python ML service. Use a reachable HTTPS URL, not localhost for Convex Cloud.
+bunx convex env set ML_SERVICE_URL "https://your-ml-service.example.org"
+bunx convex env set ML_SERVICE_TOKEN "a-long-random-secret"
 ```
 
 Optional live facility adapters (the demo adapters use these names):
@@ -71,7 +98,7 @@ Do not set `RESEND_*` or `TWILIO_*` unless you want real outbound messages. With
 
 Convex Auth needs its generated `JWT_PRIVATE_KEY`, `JWKS` and `SITE_URL` values; they are already managed by the project's Convex Auth setup. Do not overwrite them.
 
-## 4. First accounts
+## 5. First accounts
 
 1. Open `/signup` and register a **hospital**, **blood bank / Red Cross** or **donor** account using email OTP (or the demo guest path where available).
 2. The server assigns the role; never set `role` in the browser.
@@ -79,7 +106,7 @@ Convex Auth needs its generated `JWT_PRIVATE_KEY`, `JWKS` and `SITE_URL` values;
 4. Sign in as admin, open **Institutions & policy**, and grant drone operations access to an existing staff account by email.
 5. Confirm each facility has verified status, coordinates, `transferAuthorized` and an appropriate protected reserve.
 
-## 5. Demo supply-chain data
+## 6. Demo supply-chain data
 
 From `/blood-search`, use the demo-data control; or run:
 
@@ -91,7 +118,7 @@ The seed adds labelled demo facilities, requests, agreements, mock integrations,
 
 Demo inventory is `isDemo: true`; it is labelled in the UI and never presented as live hospital stock.
 
-## 6. Tests and checks
+## 7. Tests and checks
 
 ```powershell
 # Typecheck (frontend + backend types)
@@ -103,13 +130,20 @@ bunx convex dev --once
 # Unit tests (supply engine)
 bun test
 
-# JUnit evidence used by docs/test-report.md
+# TypeScript JUnit evidence
 bun test --reporter=junit --reporter-outfile=docs/test-results.xml
+
+# Python ML + SITL-validation tests (activate the ML venv first)
+$env:PYTHONPATH="ml_service;drone_bridge"
+python -m pytest ml_service/tests drone_bridge/tests -q --junitxml=docs/python-test-results.xml
 ```
 
-The current suite covers deterministic domain rules only. There is **no** Playwright/API/concurrency/SITL/load suite. See [test-report.md](test-report.md) and [limitations.md](limitations.md).
+The suites cover deterministic domain rules, model artifact loading/prediction,
+consent refusal, anomaly detection, auth-token enforcement and SITL export
+validation. There is **no** Playwright/browser/API/concurrency/live-SITL/load
+suite. See [test-report.md](test-report.md) and [limitations.md](limitations.md).
 
-## 7. Manual acceptance walkthrough
+## 8. Manual acceptance walkthrough
 
 Use three browser profiles:
 
@@ -123,8 +157,11 @@ Use three browser profiles:
 8. Wait for `RETURNING_TO_BASE` → `COMPLETED`; check the mission event log.
 9. **Donor**: open `/donor/dashboard` → **Invitations**, grant temporary location consent for 24 h, respond to an invitation. Confirm no stock changes until a donation is recorded and released.
 10. **Admin**: `/admin/dashboard` → verify system health, sync runs, model registry, anomalies and audit trail.
+11. **ML**: start the FastAPI service, expose it over HTTPS, set `ML_SERVICE_URL`/`ML_SERVICE_TOKEN`, open `/admin/dashboard` → **ML** → **Check service**, then **Retrain from Convex history** and **Refresh XGBoost forecast** on `/supply`. Confirm model version and synthetic-data labelling.
+12. **Anomaly**: on `/supply` → **Demand intelligence**, run **Isolation Forest scan** and confirm any persisted alert is labelled with its model version.
+13. **SITL export**: on `/drones`, select a mission and export **SITL JSON**; run the bridge's `--dry-run`. Do not run `--confirm SITL` without a local PX4/ArduPilot instance and safety review.
 
-## 8. If the preview is blank
+## 9. If the preview is blank
 
 ```powershell
 bun tsc -b --noEmit
@@ -133,18 +170,19 @@ bunx convex dev --once
 
 Fix any real type/function error before reloading. Do not hand-edit `src/convex/_generated/*`.
 
-## 9. Required credentials and approvals for real deployment
+## 10. Required credentials and approvals for real deployment
 
 | Requirement | Needed for |
 | --- | --- |
 | Convex production deployment + auth env values | All production use |
+| Reachable ML service URL + shared bearer token | XGBoost forecasts and Isolation Forest alerts |
 | Resend API key + verified sender domain | Email notifications |
 | Twilio SID/token/from number | SMS notifications |
 | Hospital/blood-bank API contracts + credentials | Live inventory synchronization |
 | Clinical sign-off on component compatibility and SOPs | Real allocation |
 | Named data-protection/legal review | Donor consent and retention |
 | DGCA / airspace / operator / aircraft / remote-pilot approvals | Any real drone operation |
-| PX4 or ArduPilot SITL and a MAVLink/MAVSDK bridge | Flight-controller simulation beyond this build |
+| PX4/ArduPilot SITL runtime, MAVSDK, operator/airspace approvals | Executing the included SITL bridge; this build did not run it |
 | Monitoring, backups and incident response | Production operations |
 
 This software is not certified medical or aviation software. Do not use it for real blood issue or aircraft control without clinical, legal and aviation authority approval.

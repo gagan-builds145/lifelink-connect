@@ -873,7 +873,7 @@ export default function Landing() {
             <SectionHeading
               eyebrow="AI assists. Rules decide."
               title={<>Clinical safety first. <span className="text-primary">Genuine ML where it helps.</span></>}
-              description="Compatibility, release status, expiry and protected reserve are deterministic rules — never a model. On top of that, LifeLink evaluates a ridge demand forecast with a chronological holdout and an optional logistic donor-response model that only ranks invitations."
+              description="Compatibility, release status, expiry and protected reserve are deterministic rules — never a model. On top of that, LifeLink evaluates Python XGBoost demand forecasts with a chronological holdout and rolling-average baseline, plus consented donor-response ranking that never decides eligibility."
             />
             <ul className="mt-6 space-y-2.5">
               {[

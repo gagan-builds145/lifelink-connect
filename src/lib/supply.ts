@@ -818,7 +818,12 @@ export function payloadMassKg(units: number, containerKg = 1.4) {
 }
 
 /* ------------------------------------------------------------------ *
- * Demand forecasting (ridge regression, chronological validation)
+ * Legacy demand-forecasting reference implementation
+ *
+ * This ridge code is retained only for historical unit tests. The active
+ * Convex/React path uses the Python XGBoost service in ml_service/ and the
+ * authenticated actions in src/convex/ml.ts. Do not wire this function into
+ * new UI code.
  * ------------------------------------------------------------------ */
 
 export type DailyPoint = { date: string; units: number };

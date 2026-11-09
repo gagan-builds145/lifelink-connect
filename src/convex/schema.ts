@@ -706,6 +706,12 @@ const schema = defineSchema(
       component: componentValidator,
       runAt: v.number(),
       model: v.string(),
+      /** Version reported by the Python model registry. */
+      modelVersion: v.optional(v.string()),
+      /** True when the training data was synthetic/demo, never hospital data. */
+      syntheticData: v.optional(v.boolean()),
+      datasetLabel: v.optional(v.string()),
+      dataDays: v.optional(v.number()),
       status: v.union(v.literal("ok"), v.literal("insufficient_data")),
       sampleSize: v.number(),
       metrics: v.optional(
@@ -754,6 +760,11 @@ const schema = defineSchema(
       at: v.number(),
       note: v.string(),
       acknowledged: v.boolean(),
+      /** Set when the finding came from the Python Isolation Forest service. */
+      bloodGroup: v.optional(bloodGroupValidator),
+      component: v.optional(componentValidator),
+      modelVersion: v.optional(v.string()),
+      syntheticData: v.optional(v.boolean()),
       createdAt: v.number(),
     })
       .index("by_organization", ["organizationId"])

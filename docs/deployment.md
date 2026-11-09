@@ -10,7 +10,14 @@ Static Vite build (HTTPS)
                          ├── auth + database + file storage
                          ├── scheduled crons
                          ├── Resend / Twilio secrets
-                         └── live facility adapter secrets
+                         ├── live facility adapter secrets
+                         └── ML_SERVICE_URL + ML_SERVICE_TOKEN
+                                    │ authenticated HTTPS
+                                    ▼
+                         Python FastAPI ML container (CPU)
+                           ├── XGBoost demand model JSON
+                           ├── Random Forest donor artifact
+                           └── Isolation Forest anomaly artifact
 Facility systems ── HTTPS ──▶ inventory adapter action ──▶ Convex ledger
 ```
 
@@ -23,6 +30,8 @@ Recommended hosting for the static frontend: any HTTPS static host that supports
 - [ ] Verified-only onboarding and an admin approval workflow for organizations (current build: manual admin promotion).
 - [ ] Demo data disabled or isolated from production data.
 - [ ] Resend domain verified, sender set; Twilio number provisioned (if used).
+- [ ] ML container deployed with `ML_SERVICE_TOKEN`, and `ML_SERVICE_URL` set on Convex over HTTPS.
+- [ ] Model artifacts retrained from deployment data or explicitly approved synthetic artifacts for a pilot.
 - [ ] Live adapter endpoints, schemas and credentials validated against a sandbox HMS/blood bank.
 - [ ] Privacy policy, terms, consent language and retention schedule approved by legal/compliance.
 - [ ] Backups and restore drills tested.
@@ -50,6 +59,8 @@ bunx convex env set --prod RESEND_FROM_EMAIL "LifeLink <alerts@yourdomain.org>"
 bunx convex env set --prod TWILIO_ACCOUNT_SID "AC..."
 bunx convex env set --prod TWILIO_AUTH_TOKEN "..."
 bunx convex env set --prod TWILIO_FROM_NUMBER "+1..."
+bunx convex env set --prod ML_SERVICE_URL "https://your-ml-service.example.org"
+bunx convex env set --prod ML_SERVICE_TOKEN "a-long-random-secret"
 ```
 
 Set any live adapter keys using the exact names registered in `facilityIntegrations.credentialEnvVar`. Never commit values.
@@ -80,6 +91,18 @@ Upload `dist/` to the static host. Configure SPA fallback:
 
 The app uses `BrowserRouter`; without fallback, deep links such as `/supply` return 404.
 
+### ML service container
+
+```powershell
+cd ml_service
+docker build -t lifelink-ml .
+docker run --rm -p 8000:8000 `
+  -e ML_SERVICE_TOKEN="a-long-random-secret" `
+  lifelink-ml
+```
+
+Put the container behind HTTPS (managed container host, reverse proxy, or private service mesh) and make it reachable from Convex. Do not expose it without a token. The bundled artifacts must be replaced or retrained for a real pilot; their metrics are synthetic-data evidence only. Convex cannot reach `localhost` on your laptop.
+
 ## 5. Post-deploy verification
 
 1. OTP sign-in and sign-out.
@@ -91,7 +114,8 @@ The app uses `BrowserRouter`; without fallback, deep links such as `/supply` ret
 7. Notification with and without provider keys: `sent` vs `skipped_no_provider`.
 8. Plan a mission; confirm preflight blocks low battery, no authorization and container temperature outside range.
 9. Admin console shows real aggregates, no demo mixed into real metrics without the demo label.
-10. Backup/restore drill and alerting test.
+10. ML health: `/admin/dashboard` → **Check service** returns all three models ready, and **Refresh XGBoost forecast** stores a run.
+11. Backup/restore drill and alerting test.
 
 ## 6. Monitoring and operations
 
@@ -111,7 +135,7 @@ Convex provides function logs and the dashboard's health views. Add:
 
 ## 8. What is deliberately not deployed
 
-- A real PX4/ArduPilot/MAVLink bridge or aircraft command path.
+- A production aircraft command path. The repository contains a SITL-only export/bridge scaffold; it was not executed against PX4/ArduPilot here.
 - A real HMS/blood-bank production connector (the framework and mock adapter exist).
 - PostgreSQL/PostGIS, Redis, Firebase, Docker Compose.
 - Push notifications.

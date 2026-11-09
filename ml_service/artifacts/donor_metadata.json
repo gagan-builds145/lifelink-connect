@@ -1,0 +1,26 @@
+{
+  "model": "random_forest_donor_response",
+  "version": "rf-donor-2026-11-08-f8337253ac",
+  "trained_at": "2026-11-08T17:26:12.050088+00:00",
+  "dataset_label": "deterministic synthetic consented donor-response sample",
+  "synthetic": true,
+  "sample_size": 900,
+  "feature_names": [
+    "distance_km",
+    "days_since_donation",
+    "previous_donations",
+    "prior_response_rate"
+  ],
+  "metrics": {
+    "roc_auc": 0.6066,
+    "accuracy": 0.7056,
+    "precision": 0.8288,
+    "recall": 0.8121,
+    "f1": 0.8203,
+    "base_rate": 0.83,
+    "train_size": 720,
+    "holdout_size": 180
+  },
+  "validation_method": "Stratified 80/20 holdout. Metrics describe this dataset only; the final model is refit on all consented samples.",
+  "constraints": "Consent required. Not used for medical eligibility or clinical compatibility. Non-responders are not penalised medically."
+}

@@ -53,7 +53,7 @@ Reservations live in `inventoryReservations`; there is no separate reservation t
 | Table | Purpose | Key fields |
 | --- | --- | --- |
 | `donorConsents` | Temporary location sharing | `donorUserId`, `donorProfileId`, `shareLocation`, `grantedAt`, `expiresAt`, `revokedAt` |
-| `donorInvitations` | Invitation and response | `requestId`, `donorUserId`, `requestingOrgId`, `donationCenterOrgId`, `bloodGroup`, `component`, `units`, `status`, `distanceKm`, `responseProbability`, `appointmentAt`, `respondedAt` |
+| `donorInvitations` | Invitation and response | `requestId`, `donorUserId`, `requestingOrgId`, `donationCenterOrgId`, `bloodGroup`, `component`, `units`, `status`, `distanceKm`, `responseProbability`, `responseModel`, `responseModelVersion`, `responseModelSynthetic`, `responseExplanation`, `predictedAt`, `appointmentAt`, `respondedAt` |
 | `donations` | Licensed collection records | donor, organization, component, units, date |
 
 An invitation is not stock. Only released `inventory` rows can be allocated.
@@ -75,7 +75,7 @@ An invitation is not stock. Only released `inventory` rows can be allocated.
 | Table | Purpose | Key fields |
 | --- | --- | --- |
 | `notifications` | In-app inbox | user/role/organization target, read state, dedupe key |
-| `notificationJobs` | Outbox | `channel` (`in_app`/`email`/`sms`), `status`, `attempts`, `dedupeKey`, `lastError`, `sentAt` |
+| `notificationJobs` | Outbox | `channel` (`in_app`/`email`/`sms`), `status`, `attempts`, `dedupeKey`, `lastError`, `nextAttemptAt`, `providerMessageId`, `sentAt` |
 | `demandForecasts` | Stored XGBoost runs | `bloodGroup`, `component`, `scope`, `model`, `modelVersion`, `syntheticData`, `datasetLabel`, `dataDays`, `status`, `metrics`, `confidence`, `horizons`, `runAt` |
 | `mlModels` | Versioned model registry | `kind` (`demand_forecast`/`donor_response`), `version`, `trainedAt`, `sampleSize`, `payload` (JSON summary/weights), `metricsJson`, `active` |
 | `anomalyEvents` | Persisted statistical and Isolation Forest alerts | `kind`, `severity`, `observed`, `expected`, `zScore`, `note`, `bloodGroup`, `component`, `modelVersion`, `syntheticData`, `acknowledged` |

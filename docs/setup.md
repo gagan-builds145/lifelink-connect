@@ -7,7 +7,7 @@
 - Node.js 20+ LTS
 - Bun 1.3+ (`bun --version`)
 - A Convex account/deployment
-- Optional: Python 3.10+ (3.13 target) for the ML service
+- Optional: Python 3.13 (verified) or 3.10+ for the ML service
 - Optional: Resend account (email), Twilio account (SMS)
 
 The project already targets a Convex development deployment. Keep the same deployment if you want existing accounts and demo data.
@@ -62,10 +62,10 @@ python scripts/train_all.py
 uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-The training script creates `artifacts/` and synthetic `data/` CSVs. If Python
-3.13 is unavailable, use 3.10+ and say which version you used; this workspace
-executed the tests on 3.10.12. The trained artifacts are included, but retraining
-is reproducible.
+The training script creates `artifacts/` and synthetic `data/` CSVs. This
+workspace executed the complete suite on **Python 3.13.15 and 3.10.12**. The
+trained artifacts are included, and retraining is reproducible. The Dockerfile
+targets Python 3.13 and requires `ML_SERVICE_TOKEN`.
 
 Expose the service to Convex over HTTPS (Convex Cloud cannot call
 `127.0.0.1`). In development, a tunnel is acceptable; in production, deploy the
@@ -85,6 +85,11 @@ bunx convex env set TWILIO_FROM_NUMBER "+1..."
 # Python ML service. Use a reachable HTTPS URL, not localhost for Convex Cloud.
 bunx convex env set ML_SERVICE_URL "https://your-ml-service.example.org"
 bunx convex env set ML_SERVICE_TOKEN "a-long-random-secret"
+
+# The deployed ML process must have the same token and should reject
+# unauthenticated startup:
+# ML_REQUIRE_AUTH=true
+# ML_SERVICE_TOKEN=<same value>
 ```
 
 Optional live facility adapters (the demo adapters use these names):
@@ -139,9 +144,11 @@ python -m pytest ml_service/tests drone_bridge/tests -q --junitxml=docs/python-t
 ```
 
 The suites cover deterministic domain rules, model artifact loading/prediction,
-consent refusal, anomaly detection, auth-token enforcement and SITL export
-validation. There is **no** Playwright/browser/API/concurrency/live-SITL/load
-suite. See [test-report.md](test-report.md) and [limitations.md](limitations.md).
+donor batch scoring and explainability, consent refusal, anomaly detection,
+auth-token enforcement, model retraining and SITL export validation. Python
+3.13.15 and 3.10.12 both pass 22 tests. There is **no**
+Playwright/browser/API/concurrency/live-SITL/load suite. See
+[test-report.md](test-report.md) and [limitations.md](limitations.md).
 
 ## 8. Manual acceptance walkthrough
 
@@ -157,7 +164,7 @@ Use three browser profiles:
 8. Wait for `RETURNING_TO_BASE` → `COMPLETED`; check the mission event log.
 9. **Donor**: open `/donor/dashboard` → **Invitations**, grant temporary location consent for 24 h, respond to an invitation. Confirm no stock changes until a donation is recorded and released.
 10. **Admin**: `/admin/dashboard` → verify system health, sync runs, model registry, anomalies and audit trail.
-11. **ML**: start the FastAPI service, expose it over HTTPS, set `ML_SERVICE_URL`/`ML_SERVICE_TOKEN`, open `/admin/dashboard` → **ML** → **Check service**, then **Retrain from Convex history** and **Refresh XGBoost forecast** on `/supply`. Confirm model version and synthetic-data labelling.
+11. **ML**: start the FastAPI service, expose it over HTTPS, set `ML_SERVICE_URL`/`ML_SERVICE_TOKEN`, open `/admin/dashboard` → **ML** → **Check service**, then **Retrain from Convex history** and **Refresh XGBoost forecast** on `/supply`. Confirm model version and synthetic-data labelling. For donor retraining, use **Retrain donor model** in the same ML tab; it requires at least 40 consented answered invitations with both outcomes.
 12. **Anomaly**: on `/supply` → **Demand intelligence**, run **Isolation Forest scan** and confirm any persisted alert is labelled with its model version.
 13. **SITL export**: on `/drones`, select a mission and export **SITL JSON**; run the bridge's `--dry-run`. Do not run `--confirm SITL` without a local PX4/ArduPilot instance and safety review.
 
@@ -175,7 +182,7 @@ Fix any real type/function error before reloading. Do not hand-edit `src/convex/
 | Requirement | Needed for |
 | --- | --- |
 | Convex production deployment + auth env values | All production use |
-| Reachable ML service URL + shared bearer token | XGBoost forecasts and Isolation Forest alerts |
+| Reachable ML service URL + shared bearer token | XGBoost forecasts, donor ranking and Isolation Forest alerts |
 | Resend API key + verified sender domain | Email notifications |
 | Twilio SID/token/from number | SMS notifications |
 | Hospital/blood-bank API contracts + credentials | Live inventory synchronization |

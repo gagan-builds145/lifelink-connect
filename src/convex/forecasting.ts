@@ -1,20 +1,9 @@
 import { v } from "convex/values";
-import { internalMutation, mutation, query } from "./_generated/server";
+import { internalMutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
-import {
-  audit,
-  optionalUser,
-  requireAdmin,
-  requireStaff,
-  roleOf,
-} from "./lib/helpers";
-import {
-  detectAnomalies,
-  fitDonorModel,
-  type DailyPoint,
-  type DonorSample,
-} from "../lib/supply";
+import { audit, optionalUser, requireStaff, roleOf } from "./lib/helpers";
+import { detectAnomalies, type DailyPoint } from "../lib/supply";
 import { BLOOD_GROUPS, type BloodGroup, type Component } from "../lib/blood";
 
 const DAY_MS = 86_400_000;
@@ -117,83 +106,6 @@ export const anomalyReport = query({
   },
 });
 
-export const trainDonorResponseModel = mutation({
-  args: {},
-  handler: async (ctx) => {
-    const admin = await requireAdmin(ctx);
-    const invitations = await ctx.db.query("donorInvitations").collect();
-    const donors = await ctx.db.query("donorProfiles").collect();
-    const donorById = new Map(donors.map((d) => [d._id, d]));
-    const donations = await ctx.db.query("donations").collect();
-    const samples: DonorSample[] = [];
-
-    for (const invite of invitations) {
-      if (invite.status === "sent" || invite.status === "expired") continue;
-      const donor = donorById.get(invite.donorProfileId);
-      if (!donor) continue;
-      const history = invitations.filter((i) => i.donorProfileId === invite.donorProfileId);
-      const answered = history.filter((i) => ["accepted", "declined"].includes(i.status));
-      const accepted = answered.filter((i) => i.status === "accepted").length;
-      const priorResponseRate = answered.length ? accepted / answered.length : 0.5;
-      const previousDonations = donations.filter((d) => d.donorProfileId === invite.donorProfileId).length;
-      const daysSinceDonation = donor.lastDonationDate
-        ? Math.max(
-            0,
-            Math.floor((invite.createdAt - new Date(donor.lastDonationDate).getTime()) / DAY_MS),
-          )
-        : 365;
-      samples.push({
-        distanceKm: invite.distanceKm ?? 25,
-        daysSinceDonation,
-        previousDonations,
-        priorResponseRate,
-        responded: invite.status === "accepted",
-      });
-    }
-
-    const model = fitDonorModel(samples);
-    if (!model) {
-      return {
-        trained: false,
-        sampleSize: samples.length,
-        message:
-          "At least 20 answered invitations with a mix of acceptances and declines are required. No model was stored and no accuracy is claimed.",
-      };
-    }
-    const previous = await ctx.db
-      .query("mlModels")
-      .withIndex("by_kind", (q) => q.eq("kind", "donor_response").eq("active", true))
-      .collect();
-    for (const old of previous) {
-      await ctx.db.patch(old._id, { active: false });
-    }
-    const modelId = await ctx.db.insert("mlModels", {
-      kind: "donor_response",
-      version: `donor-logistic-v1-${new Date().toISOString().slice(0, 10)}`,
-      trainedAt: model.trainedAt,
-      sampleSize: model.sampleSize,
-      payload: JSON.stringify(model),
-      metricsJson: JSON.stringify({ baseRate: model.baseRate, sampleSize: model.sampleSize }),
-      active: true,
-    });
-    await audit(ctx, {
-      actor: admin,
-      action: "ml.donorModelTrained",
-      entityType: "mlModel",
-      entityId: String(modelId),
-      detail: `Logistic donor-response model trained on ${model.sampleSize} answered invitations; base response rate ${Math.round(model.baseRate * 100)}%.`,
-    });
-    return {
-      trained: true,
-      sampleSize: model.sampleSize,
-      baseRate: model.baseRate,
-      modelId,
-      message:
-        "Model stored. It only ranks who to invite; medical eligibility remains deterministic.",
-    };
-  },
-});
-
 export const modelStatus = query({
   args: {},
   handler: async (ctx) => {
@@ -259,7 +171,7 @@ export const modelStatus = query({
         metrics: activeDemand
           ? (JSON.parse(activeDemand.metricsJson) as Record<string, unknown>)
           : null,
-        serviceConfigured: Boolean(process.env.ML_SERVICE_URL),
+        serviceConfigured: Boolean(process.env.ML_SERVICE_URL?.trim()),
       },
     };
   },

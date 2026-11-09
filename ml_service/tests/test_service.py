@@ -23,6 +23,7 @@ def _demand_points(blood_group: str = "O+", component: str = "red_cells", days: 
 
 
 def test_health_reports_trained_artifacts() -> None:
+    assert client.get("/livez").status_code == 200
     response = client.get("/health")
     assert response.status_code == 200
     body = response.json()
@@ -194,13 +195,52 @@ def test_anomaly_detection_refuses_short_history() -> None:
     assert response.json()["status"] == "insufficient_data"
 
 
+def test_batch_donor_prediction_and_explainability() -> None:
+    response = client.post(
+        "/v1/predict/donor/batch",
+        json={
+            "donors": [
+                {
+                    "donor_id": "donor-1",
+                    "distance_km": 4.2,
+                    "days_since_donation": 120,
+                    "previous_donations": 4,
+                    "prior_response_rate": 0.8,
+                    "consented": True,
+                },
+                {
+                    "donor_id": "donor-2",
+                    "distance_km": 19.0,
+                    "days_since_donation": 300,
+                    "previous_donations": 1,
+                    "prior_response_rate": 0.2,
+                    "consented": True,
+                },
+            ]
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["model_ready"] is True
+    assert len(body["results"]) == 2
+    first = body["results"][0]
+    assert first["donor_id"] == "donor-1"
+    assert first["status"] == "ok"
+    assert 0 <= first["response_probability"] <= 1
+    assert len(first["top_factors"]) == 3
+    assert "not a causal" in first["explanation"]
+
+
 def test_token_is_enforced_when_configured(monkeypatch) -> None:
     monkeypatch.setenv("ML_SERVICE_TOKEN", "test-secret")
+    assert client.get("/health").status_code == 401
+    assert client.get("/livez").status_code == 200
     assert client.get("/v1/models").status_code == 401
     response = client.get(
         "/v1/models", headers={"Authorization": "Bearer test-secret"}
     )
     assert response.status_code == 200
+    assert client.get("/health", headers={"Authorization": "Bearer test-secret"}).status_code == 200
     assert len(response.json()["models"]) == 3
     monkeypatch.delenv("ML_SERVICE_TOKEN")
 

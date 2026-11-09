@@ -50,10 +50,11 @@ Browser (React SPA)
 Convex deployment
   ├─ allocation.ts        geospatial search, atomic reservation, transfers
   ├─ drones.ts            fleet, route planning, preflight, mission state machine, telemetry
-  ├─ donorFallback.ts     consent, invitations, accept/decline, escalation gate
+  ├─ donorFallback.ts     consent, invitations, accept/decline, escalation action
+  ├─ donorPrediction.ts   deterministic candidate prep, consented donor batch scoring, invitation commit
   ├─ integrations.ts      adapter registry, mock sync, live credentialed sync
-  ├─ ml.ts                authenticated XGBoost/Isolation Forest calls, forecast persistence
-  ├─ forecasting.ts       anomaly report, in-app donor logistic model, model status
+  ├─ ml.ts                authenticated XGBoost/donor/anomaly calls, retraining, persistence
+  ├─ forecasting.ts       anomaly report and model status
   ├─ admin.ts             aggregate read models, anomaly acknowledgement
   ├─ notificationsQueue.ts email/SMS outbox worker
   ├─ crons.ts             telemetry, outbox, sync, forecast and anomaly schedules
@@ -93,7 +94,7 @@ sequenceDiagram
   S->>S: Return-to-base → COMPLETED
 ```
 
-If reservations do not cover the request, `autoAllocate` calls the donor fallback. The fallback re-checks active reservations and refuses to contact donors while institutional supply covers the need.
+If reservations do not cover the request, the public `autoAllocate` action commits the stock transaction first, then calls `donorPrediction.escalateForRequest`. That query builds candidates using deterministic compatibility, availability, donation-interval and active-consent checks. Only those candidates are sent to the Python batch endpoint; the Random Forest can reorder them but cannot add an ineligible donor. Invitations are committed in a second mutation that re-checks consent and reservations. If ML is unavailable, the commit uses distance ordering and stores no probability.
 
 ## 5. Safety and authorization invariants
 

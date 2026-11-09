@@ -143,7 +143,7 @@ export default function AdminConsole() {
   const createAgreement = useMutation(api.allocation.createAgreement);
   const setPolicy = useMutation(api.allocation.setTransferPolicy);
   const grantDroneOps = useMutation(api.allocation.grantDroneOps);
-  const trainDonorModel = useMutation(api.forecasting.trainDonorResponseModel);
+  const trainDonorModel = useAction(api.ml.trainDonorModel);
   const trainDemandModel = useAction(api.ml.trainDemandModel);
   const checkMlService = useAction(api.ml.mlServiceStatus);
 
@@ -887,6 +887,7 @@ export default function AdminConsole() {
                           <th className="py-1.5 pr-2 font-bold">Subject</th>
                           <th className="py-1.5 pr-2 font-bold">Status</th>
                           <th className="py-1.5 pr-2 font-bold">Attempts</th>
+                          <th className="py-1.5 pr-2 font-bold">Next retry</th>
                           <th className="py-1.5 pr-2 font-bold">Created</th>
                           <th className="py-1.5 pr-2 font-bold">Error</th>
                         </tr>
@@ -911,6 +912,9 @@ export default function AdminConsole() {
                               </span>
                             </td>
                             <td className="py-1.5 pr-2 text-muted-foreground">{job.attempts}</td>
+                            <td className="py-1.5 pr-2 text-muted-foreground">
+                              {job.nextAttemptAt ? formatRelative(job.nextAttemptAt) : "—"}
+                            </td>
                             <td className="py-1.5 pr-2 text-muted-foreground">
                               {formatRelative(job.createdAt)}
                             </td>
@@ -1060,19 +1064,17 @@ export default function AdminConsole() {
                     <>
                       <p className="text-[11px] font-semibold">{modelStatus.donorModel.version}</p>
                       <p className="mt-1 text-[10px] leading-5 text-muted-foreground">
-                        Trained on {modelStatus.donorModel.sampleSize} answered invitation(s) at{" "}
-                        {formatDateTime(modelStatus.donorModel.trainedAt ?? Date.now())}. Base
-                        response rate{" "}
-                        {typeof modelStatus.donorModel.metrics?.baseRate === "number"
-                          ? `${Math.round((modelStatus.donorModel.metrics.baseRate as number) * 100)}%`
-                          : "—"}
-                        .
+                        Trained on {modelStatus.donorModel.sampleSize} consented invitation
+                        outcome(s) at {formatDateTime(modelStatus.donorModel.trainedAt ?? Date.now())}.
+                        {typeof modelStatus.donorModel.metrics?.roc_auc === "number"
+                          ? ` Holdout ROC-AUC ${modelStatus.donorModel.metrics.roc_auc}.`
+                          : " No holdout metric is available for this historical model."}
                       </p>
                     </>
                   ) : (
                     <p className="text-[10.5px] leading-5 text-muted-foreground">
                       {modelStatus?.donorModel?.note ??
-                        "No donor-response model is active. Invitations use deterministic eligibility and distance."}
+                        "No Convex-retrained donor model is registered. The bundled Python Random Forest artifact is used when ML_SERVICE_URL is configured; otherwise invitations use an explicit distance-only fallback."}
                     </p>
                   )}
                   <Button
@@ -1084,10 +1086,12 @@ export default function AdminConsole() {
                         "train",
                         async () => {
                           const result = await trainDonorModel();
-                          toast.info(result.message);
+                          toast.success(`Random Forest ${result.version} trained`, {
+                            description: `${result.sampleSize} consented outcomes · ROC-AUC ${String(result.metrics.roc_auc ?? "—")}`,
+                          });
                           return result;
                         },
-                        "Training routine completed.",
+                        "Donor model retraining completed.",
                       )
                     }
                   >
@@ -1096,11 +1100,13 @@ export default function AdminConsole() {
                     ) : (
                       <BrainCircuit className="size-3" />
                     )}
-                    Train from recorded invitations
+                    Retrain donor model
                   </Button>
                   <p className="mt-2 text-[9px] leading-4 text-muted-foreground">
-                    Predictions only rank invitations. ABO/Rh eligibility, deferrals and collection
-                    release remain deterministic clinical rules.
+                    Predictions only order already-eligible, consented invitations. ABO/Rh
+                    eligibility, deferrals and collection release remain deterministic clinical
+                    rules. If the service is unreachable, invitations use distance only and no
+                    probability is stored.
                   </p>
                 </Panel>
               </div>

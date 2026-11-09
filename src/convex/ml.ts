@@ -10,11 +10,13 @@ import { internal } from "./_generated/api";
 import {
   audit,
   optionalUser,
+  requireAdmin,
   requireStaff,
   requireUser,
   roleOf,
 } from "./lib/helpers";
 import { BLOOD_GROUPS, type BloodGroup, type Component } from "../lib/blood";
+import { mlFetch, mlServiceConfigured } from "./lib/mlClient";
 
 const DAY_MS = 86_400_000;
 const DEMAND_TYPES = new Set(["dispatch", "issue"]);
@@ -55,25 +57,6 @@ function dayKey(timestamp: number) {
 
 function isoDay(date: Date) {
   return date.toISOString().slice(0, 10);
-}
-
-function serviceUrl() {
-  const url = process.env.ML_SERVICE_URL?.trim();
-  if (!url) {
-    throw new Error(
-      "The Python ML service is not configured. Set ML_SERVICE_URL on the Convex deployment and start ml_service, then retry.",
-    );
-  }
-  return url.replace(/\/$/, "");
-}
-
-function serviceHeaders(): Record<string, string> {
-  const token = process.env.ML_SERVICE_TOKEN;
-  return {
-    "Content-Type": "application/json",
-    Accept: "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
 }
 
 function finiteOrNull(value: unknown): number | null {
@@ -171,6 +154,214 @@ export const collectDemandHistory = internalQuery({
       includesDemo,
       totalUnits,
       records: records.sort((a, b) => a.date.localeCompare(b.date)),
+    };
+  },
+});
+
+export const collectDonorTrainingSamples = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+    const now = Date.now();
+    const [invitations, donors, donations, consents, requests] = await Promise.all([
+      ctx.db.query("donorInvitations").collect(),
+      ctx.db.query("donorProfiles").collect(),
+      ctx.db.query("donations").collect(),
+      ctx.db.query("donorConsents").collect(),
+      ctx.db.query("bloodRequests").collect(),
+    ]);
+    const donorById = new Map(donors.map((donor) => [String(donor._id), donor]));
+    const requestById = new Map(requests.map((request) => [String(request._id), request]));
+    const consentByProfile = new Map(
+      consents.map((consent) => [String(consent.donorProfileId), consent]),
+    );
+    const answeredByDonor = new Map<string, { accepted: number; total: number }>();
+    for (const invitation of invitations) {
+      if (invitation.status !== "accepted" && invitation.status !== "declined") continue;
+      const key = String(invitation.donorProfileId);
+      const current = answeredByDonor.get(key) ?? { accepted: 0, total: 0 };
+      current.total += 1;
+      if (invitation.status === "accepted") current.accepted += 1;
+      answeredByDonor.set(key, current);
+    }
+
+    const samples: Array<{
+      distance_km: number;
+      days_since_donation: number;
+      previous_donations: number;
+      prior_response_rate: number;
+      consented: boolean;
+      responded: boolean;
+      is_synthetic: boolean;
+    }> = [];
+    let includesDemo = false;
+    for (const invitation of invitations) {
+      if (invitation.status !== "accepted" && invitation.status !== "declined") continue;
+      const donor = donorById.get(String(invitation.donorProfileId));
+      const consent = consentByProfile.get(String(invitation.donorProfileId));
+      if (!donor) continue;
+      // Training on donor data requires a currently active location-sharing
+      // consent. Revoked or expired consent is excluded rather than inferred.
+      if (
+        consent?.shareLocation !== true ||
+        consent.revokedAt != null ||
+        consent.expiresAt <= now
+      ) {
+        continue;
+      }
+      const request = invitation.requestId
+        ? requestById.get(String(invitation.requestId))
+        : null;
+      const donationCount = donations.filter(
+        (donation) => donation.donorProfileId === invitation.donorProfileId,
+      ).length;
+      const responses = answeredByDonor.get(String(invitation.donorProfileId));
+      samples.push({
+        distance_km: Math.max(0, invitation.distanceKm ?? 25),
+        days_since_donation: donor.lastDonationDate
+          ? Math.max(
+              0,
+              Math.floor(
+                (invitation.createdAt - new Date(donor.lastDonationDate).getTime()) /
+                  DAY_MS,
+              ),
+            )
+          : 365,
+        previous_donations: donationCount,
+        prior_response_rate:
+          responses && responses.total > 0
+            ? Math.min(1, Math.max(0, responses.accepted / responses.total))
+            : 0.5,
+        consented: true,
+        responded: invitation.status === "accepted",
+        is_synthetic: request?.isDemo === true,
+      });
+      if (request?.isDemo === true) includesDemo = true;
+    }
+    return {
+      samples,
+      includesDemo,
+      accepted: samples.filter((sample) => sample.responded).length,
+      declined: samples.filter((sample) => !sample.responded).length,
+    };
+  },
+});
+
+export const storeDonorModelMetadata = internalMutation({
+  args: {
+    version: v.string(),
+    trainedAt: v.number(),
+    sampleSize: v.number(),
+    metricsJson: v.string(),
+    payload: v.string(),
+    actorUserId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("mlModels")
+      .withIndex("by_kind", (q) => q.eq("kind", "donor_response").eq("active", true))
+      .collect();
+    for (const row of existing) {
+      await ctx.db.patch(row._id, { active: false });
+    }
+    await ctx.db.insert("mlModels", {
+      kind: "donor_response",
+      version: args.version,
+      trainedAt: args.trainedAt,
+      sampleSize: args.sampleSize,
+      payload: args.payload,
+      metricsJson: args.metricsJson,
+      active: true,
+    });
+    const actor = await ctx.db.get(args.actorUserId);
+    if (actor) {
+      await audit(ctx, {
+        actor,
+        action: "ml.donorModelRegistered",
+        entityType: "mlModel",
+        entityId: args.version,
+        detail: `Python Random Forest donor model ${args.version} registered from ${args.sampleSize} consented invitation outcome(s).`,
+      });
+    }
+    return { stored: true };
+  },
+});
+
+export const trainDonorModel = action({
+  args: {},
+  handler: async (ctx): Promise<{
+    trained: boolean;
+    version: string;
+    sampleSize: number;
+    synthetic: boolean;
+    metrics: Record<string, unknown>;
+    message: string;
+  }> => {
+    const auth = await ctx.runQuery(internal.ml.authorizeMlAction, {
+      mode: "train",
+    });
+    const data = await ctx.runQuery(internal.ml.collectDonorTrainingSamples, {});
+    if (data.samples.length < 40) {
+      throw new Error(
+        `Only ${data.samples.length} consented, answered invitation(s) are available. At least 40 are required to train. No model was stored.`,
+      );
+    }
+    if (data.accepted < 8 || data.declined < 8) {
+      throw new Error(
+        `The training set needs at least 8 accepted and 8 declined outcomes; found ${data.accepted} accepted and ${data.declined} declined. No model was stored.`,
+      );
+    }
+    let response: Response;
+    try {
+      response = await mlFetch("/v1/train/donor", {
+        method: "POST",
+        body: JSON.stringify({
+          samples: data.samples,
+          dataset_label: data.includesDemo
+            ? "LifeLink invitation outcomes including labelled demo requests"
+            : "LifeLink recorded invitation outcomes from consented donors",
+        }),
+      }, { timeoutMs: 120_000, attempts: 1 });
+    } catch (error) {
+      throw new Error(
+        `Could not reach the ML training service: ${
+          error instanceof Error ? error.message : "network error"
+        }`,
+      );
+    }
+    const payload = (await response.json()) as Record<string, unknown>;
+    if (!response.ok) {
+      throw new Error(
+        `Donor training failed (HTTP ${response.status}): ${JSON.stringify(payload).slice(0, 500)}`,
+      );
+    }
+    const version = String(payload.version ?? "rf-donor-unknown");
+    const metrics = (payload.metrics as Record<string, unknown>) ?? {};
+    const sampleSize = Number(payload.sample_size ?? data.samples.length);
+    const trainedAt = Date.parse(String(payload.trained_at ?? "")) || Date.now();
+    await ctx.runMutation(internal.ml.storeDonorModelMetadata, {
+      version,
+      trainedAt,
+      sampleSize,
+      metricsJson: JSON.stringify(metrics),
+      payload: JSON.stringify({
+        source: "python_service",
+        model: payload.model,
+        datasetLabel: payload.dataset_label,
+        synthetic: payload.synthetic,
+        featureImportances: payload.feature_importances,
+        constraints: payload.constraints,
+      }),
+      actorUserId: auth.actorUserId,
+    });
+    return {
+      trained: true,
+      version,
+      sampleSize,
+      synthetic: payload.synthetic === true,
+      metrics,
+      message:
+        "Python Random Forest stored. It only orders already-eligible, consented invitations; deterministic medical eligibility is unchanged.",
     };
   },
 });
@@ -404,12 +595,10 @@ export const refreshDemandForecasts = action({
       );
     }
 
-    const url = serviceUrl();
     let response: Response;
     try {
-      response = await fetch(`${url}/v1/predict/demand/batch`, {
+      response = await mlFetch("/v1/predict/demand/batch", {
         method: "POST",
-        headers: serviceHeaders(),
         body: JSON.stringify({
           series: activeGroups.map((row) => ({
             blood_group: row.bloodGroup,
@@ -418,13 +607,10 @@ export const refreshDemandForecasts = action({
           })),
           horizon_days: 30,
         }),
-        signal: AbortSignal.timeout(20_000),
-      });
+      }, { timeoutMs: 20_000, attempts: 2 });
     } catch (error) {
       throw new Error(
-        `Could not reach the ML service at ${url}. Start it and retry. ${
-          error instanceof Error ? error.message : ""
-        }`.trim(),
+        `Demand forecast request failed. ${error instanceof Error ? error.message : ""}`.trim(),
       );
     }
     if (!response.ok) {
@@ -548,12 +734,10 @@ export const trainDemandModel = action({
     if (history.records.length === 0) {
       throw new Error("No issue/dispatch transactions are available to train on.");
     }
-    const url = serviceUrl();
     let response: Response;
     try {
-      response = await fetch(`${url}/v1/train/demand`, {
+      response = await mlFetch("/v1/train/demand", {
         method: "POST",
-        headers: serviceHeaders(),
         body: JSON.stringify({
           records: history.records.map((record) => ({
             date: record.date,
@@ -567,11 +751,10 @@ export const trainDemandModel = action({
             : "LifeLink Convex inventoryTransactions (real recorded operations)",
           source: "convex",
         }),
-        signal: AbortSignal.timeout(120_000),
-      });
+      }, { timeoutMs: 120_000, attempts: 1 });
     } catch (error) {
       throw new Error(
-        `Could not reach the ML training service at ${url}: ${
+        `Demand training request failed: ${
           error instanceof Error ? error.message : "network error"
         }`,
       );
@@ -707,7 +890,6 @@ export const runAnomalyScan = action({
     if (groups.length === 0) {
       throw new Error("No demand history is available for an anomaly scan.");
     }
-    const url = serviceUrl();
     const findings: Array<{
       bloodGroup: BloodGroup;
       date: string;
@@ -721,17 +903,15 @@ export const runAnomalyScan = action({
     let modelVersion = "isolation-forest-unknown";
     let syntheticData = history.includesDemo;
     for (const group of groups) {
-      const response = await fetch(`${url}/v1/detect/anomalies`, {
+      const response = await mlFetch("/v1/detect/anomalies", {
         method: "POST",
-        headers: serviceHeaders(),
         body: JSON.stringify({
           observations: group.points.map((point) => ({
             date: point.date,
             units: point.units,
           })),
         }),
-        signal: AbortSignal.timeout(15_000),
-      });
+      }, { timeoutMs: 15_000, attempts: 2 });
       if (!response.ok) {
         throw new Error(`Anomaly service returned HTTP ${response.status} for ${group.bloodGroup}.`);
       }
@@ -833,12 +1013,8 @@ export const mlServiceStatus = action({
   args: {},
   handler: async (ctx) => {
     await ctx.runQuery(internal.ml.authorizeMlAction, { mode: "predict" });
-    const url = serviceUrl();
     try {
-      const response = await fetch(`${url}/health`, {
-        headers: serviceHeaders(),
-        signal: AbortSignal.timeout(8_000),
-      });
+      const response = await mlFetch("/health", { method: "GET" }, { timeoutMs: 8_000, attempts: 2 });
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
@@ -864,7 +1040,7 @@ export const mlServiceStatus = action({
 export const refreshScheduledForecasts = internalAction({
   args: {},
   handler: async (ctx) => {
-    if (!process.env.ML_SERVICE_URL) {
+    if (!mlServiceConfigured()) {
       return { skipped: true, reason: "ML_SERVICE_URL is not configured." };
     }
     try {
@@ -883,9 +1059,8 @@ export const refreshScheduledForecasts = internalAction({
       if (activeGroups.length === 0) {
         return { skipped: true, reason: "No demand history." };
       }
-      const response = await fetch(`${serviceUrl()}/v1/predict/demand/batch`, {
+      const response = await mlFetch("/v1/predict/demand/batch", {
         method: "POST",
-        headers: serviceHeaders(),
         body: JSON.stringify({
           series: activeGroups.map((row) => ({
             blood_group: row.bloodGroup,
@@ -894,8 +1069,7 @@ export const refreshScheduledForecasts = internalAction({
           })),
           horizon_days: 30,
         }),
-        signal: AbortSignal.timeout(20_000),
-      });
+      }, { timeoutMs: 20_000, attempts: 2 });
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }

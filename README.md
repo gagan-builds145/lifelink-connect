@@ -25,19 +25,19 @@ It is not a static prototype. It is also **not** certified medical software or a
 | **Facility integration framework** | ✅ mock adapter + credentialed live REST pull + sync audit |
 | **Donor fallback** | ✅ temporary consent, invitations, accept/decline, appointment routing |
 | **Demand forecasting** | ✅ Python FastAPI + trained XGBoost, chronological holdout, MAE/RMSE + baseline |
-| **Donor response model** | ✅ optional logistic model in-app; Python Random Forest API + artifacts also included |
+| **Donor response model** | ✅ Python Random Forest ranks already-eligible, consented invitations; explicit distance-only fallback if ML is unavailable |
 | **Anomaly detection** | ✅ trailing z-score plus Python Isolation Forest scan and persisted alerts |
-| **Notification outbox** | ✅ in-app, optional Resend email + Twilio SMS, idempotency keys |
+| **Notification outbox** | ✅ in-app, optional Resend email + Twilio SMS, idempotency keys, three delivery attempts and provider message ids |
 | **Drone operations** (`/drones`) | ✅ bases, fleet, airspace, route proxy, 12 preflight checks |
 | **Simulated mission lifecycle** | ✅ 15 states, telemetry, failure drills, handoff code, return-to-base |
 | **Admin control room** (`/admin/dashboard`) | ✅ network health, policy, agreements, sync, ML, safety, audit |
-| **Automated tests** | ✅ 26 TypeScript domain tests + 21 Python model/training/SITL-validation tests, executed |
+| **Automated tests** | ✅ 28 TypeScript domain tests + 22 Python model/training/SITL-validation tests, executed on Python 3.13.15 and 3.10.12 |
 | Real HMS/blood-bank production connector | ❌ framework + mock only |
 | PX4/ArduPilot SITL / MAVLink | ⚠️ SITL export + MAVSDK bridge present; **not executed** because no SITL runtime is installed |
 | Live API/E2E/load/security/live-SITL suites | ❌ not included |
 | Push notifications | ❌ not implemented |
 
-Test evidence: [docs/test-report.md](docs/test-report.md), [docs/test-results.xml](docs/test-results.xml) and [docs/python-test-results.xml](docs/python-test-results.xml).
+Test evidence: [docs/test-report.md](docs/test-report.md), [docs/test-results.xml](docs/test-results.xml), [Python 3.13 JUnit](docs/python-3.13-test-results.xml) and [Python 3.10 JUnit](docs/python-test-results.xml).
 
 ## 2. Safety rules enforced in code
 
@@ -65,7 +65,7 @@ The web backend and deterministic domain engine remain TypeScript/Convex, preser
 - Git for Windows
 - Node.js 20+ LTS and Bun
 - A Convex account/deployment
-- Optional: Resend (email), Twilio (SMS), Python 3.10+/3.13 for ML
+- Optional: Resend (email), Twilio (SMS), Python 3.13 (verified) or 3.10+ for ML
 
 ```powershell
 git clone <your-repository-url> lifelink
@@ -112,7 +112,7 @@ bunx convex env set ML_SERVICE_URL "https://your-reachable-ml-service"
 bunx convex env set ML_SERVICE_TOKEN "a-long-random-secret"
 ```
 
-Convex Cloud cannot reach `127.0.0.1`; use an HTTPS tunnel in development or deploy the service. If Python 3.13 is unavailable, the service also runs on 3.10+; report the interpreter actually used.
+Convex Cloud cannot reach `127.0.0.1`; use an HTTPS tunnel in development or deploy the service. Python 3.13.15 and 3.10.12 were both verified here; the Docker image targets 3.13.
 
 ## 5. Checks and tests
 
@@ -126,7 +126,7 @@ $env:PYTHONPATH="ml_service;drone_bridge"
 python -m pytest ml_service/tests drone_bridge/tests -q
 ```
 
-Executed results: **26 TypeScript tests / 145 assertions** and **21 Python tests**. Bundled ML metrics are synthetic-data evidence only. Coverage, API, load, browser E2E, security and live SITL tests were not run.
+Executed results: **28 TypeScript tests / 147 assertions** and **22 Python tests on both Python 3.13.15 and 3.10.12**. Bundled ML metrics are synthetic-data evidence only. Coverage, deployed API, load, browser E2E, security and live SITL tests were not run.
 
 ## 6. Demo data
 
@@ -166,6 +166,11 @@ For the first administrator, set `users.role = "admin"` in the Convex dashboard.
 - [Sample datasets](docs/sample-datasets.md)
 - [Python ML service](ml_service/README.md)
 - [SITL bridge](drone_bridge/README.md)
+- [Production readiness](docs/production-readiness.md)
+- [Security checklist](docs/security.md)
+- [Backup and recovery](docs/backup-recovery.md)
+- [ML operations](docs/ml-operations.md)
+- [Hospital API integration](docs/hospital-integration.md)
 - [Environment template](env.example)
 
 ## 9. Credentials and approvals needed for real use
@@ -173,7 +178,7 @@ For the first administrator, set `users.role = "admin"` in the Convex dashboard.
 | Requirement | Purpose |
 | --- | --- |
 | Convex production deployment + auth values | Hosting and sessions |
-| Reachable Python ML service URL + shared token | XGBoost forecasts, Isolation Forest scans |
+| Reachable Python ML service URL + shared token | XGBoost forecasts, donor ranking, Isolation Forest scans |
 | Resend API key + verified sender domain | Email |
 | Twilio SID/token/number | SMS |
 | Hospital/blood-bank API contracts + keys | Real inventory sync |
@@ -182,7 +187,7 @@ For the first administrator, set `users.role = "admin"` in the Convex dashboard.
 | DGCA/ATC/operator/aircraft/remote-pilot approvals | **Any real drone operation** |
 | PX4/ArduPilot SITL runtime + MAVSDK | Executing the included, currently unverified bridge |
 
-Email and SMS are optional: without keys jobs are marked `skipped_no_provider`; in-app notifications still work.
+Email and SMS are optional: without keys jobs are marked `skipped_no_provider`; in-app notifications still work. Failed provider calls are retried up to three times; no bounce/webhook processing is implemented.
 
 ## 10. Medical and aviation disclaimer
 

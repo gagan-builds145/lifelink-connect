@@ -818,9 +818,22 @@ export default function DonorDashboard() {
                         <span>Invited {formatRelative(invite.createdAt)}</span>
                         {invite.distanceKm != null && <span>~{invite.distanceKm} km away</span>}
                         {invite.responseProbability != null && (
-                          <span>
-                            Predicted response {Math.round(invite.responseProbability * 100)}%
+                          <span
+                            title={invite.responseExplanation ?? undefined}
+                            className="inline-flex items-center gap-1"
+                          >
+                            <Sparkles className="size-2.5 text-teal-600" />
+                            Response estimate {Math.round(invite.responseProbability * 100)}%
+                            {invite.responseModelVersion ? ` · ${invite.responseModelVersion}` : ""}
                           </span>
+                        )}
+                        {invite.responseProbability == null && invite.responseModel && (
+                          <span title={invite.responseExplanation ?? undefined}>
+                            Distance-ranked
+                          </span>
+                        )}
+                        {invite.responseModelSynthetic && invite.responseProbability != null && (
+                          <span className="text-amber-700">synthetic model</span>
                         )}
                       </p>
                       {invite.appointmentAt && (

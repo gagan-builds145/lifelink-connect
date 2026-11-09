@@ -1,8 +1,8 @@
 # Test Execution Report
 
 **Project:** LifeLink — AI-assisted autonomous blood supply chain and simulated drone delivery  
-**Date of final run:** 8 November 2026  
-**Environment:** Freebuff browser-runtime workspace, Bun 1.4.2, TypeScript 5.9  
+**Date of final run:** 9 November 2026  
+**Environment:** Freebuff browser-runtime workspace, Bun 1.4.2, TypeScript 5.9, Python 3.13.15 and 3.10.12  
 **Command:**
 
 ```bash
@@ -15,18 +15,19 @@ bun test --reporter=junit --reporter-outfile=docs/test-results.xml
 
 | Metric | Result |
 | --- | --- |
-| TypeScript test files | 1 (`tests/supply.test.ts`) |
-| TypeScript tests | **26 passed, 0 failed, 0 skipped** |
-| TypeScript assertions | **145** |
+| TypeScript test files | 2 (`tests/supply.test.ts`, `tests/donorRanking.test.ts`) |
+| TypeScript tests | **28 passed, 0 failed, 0 skipped** |
+| TypeScript assertions | **147** |
 | Python test files | 3 (`ml_service/tests`, `drone_bridge/tests`) |
-| Python tests | **21 passed, 0 failed, 0 skipped** |
-| Total automated tests executed | **47** |
+| Python tests | **22 passed, 0 failed, 0 skipped on Python 3.13.15** |
+| Python tests | **22 passed, 0 failed, 0 skipped on Python 3.10.12** |
+| Total automated tests executed | **50 per Python interpreter run** |
 | Code coverage | **Not measured** (no coverage tool configured) |
 | Typecheck | **Passed**: `bun tsc -b --noEmit` |
 | Convex push/codegen | **Passed**: `bun convex dev --once` |
-| Python interpreter | **3.10.12** (3.13 not available in this workspace) |
+| Python interpreter | **3.13.15 and 3.10.12**, both executed |
 
-Raw evidence: [TypeScript JUnit](test-results.xml) and [Python JUnit](python-test-results.xml). The Python suite exercised the FastAPI app in-process with `TestClient`. It did **not** verify the Cloud Convex action → HTTPS ML service path. Browser, database-concurrency, security, load, live SITL and full API/HTTP tests were **not executed**; see §6.
+Raw evidence: [TypeScript JUnit](test-results.xml), [Python 3.10 JUnit](python-test-results.xml) and [Python 3.13 JUnit](python-3.13-test-results.xml). The Python suite exercised the FastAPI app in-process with `TestClient`. It did **not** verify the Cloud Convex action → HTTPS ML service path. Browser, database-concurrency, security, load, live SITL and full API/HTTP tests were **not executed**; see §6.
 
 ## 2. Detailed test cases
 
@@ -98,6 +99,13 @@ UT-019–UT-021 exercise the retained legacy ridge reference implementation in `
 | UT-025 | Donor-model refusal | 12 samples; 30 all-positive samples; 40 mixed samples | Null, null, trained model | Matched | PASS | 16.369 | — |
 | UT-026 | Probability bounds | Untrained model; trained 40-sample model | Null score untrained; 0–1 trained | Matched; basis and note correct | PASS | 7.659 | — |
 
+### Donor ML ranking
+
+| ID | Test / preconditions | Input | Expected | Actual | Status | Time (ms) | Error / bug |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| UT-027 | Model-probability ordering | Four consented candidates with probabilities and distances | Probability descending, distance tie-break | Matched | PASS | 0.50 | — |
+| UT-028 | Missing-score fallback | One scored, two unscored candidates | Scored first; unscored ordered by distance; no invented probability | Matched | PASS | 0.10 | — |
+
 ## 3. Python ML verification
 
 Command (Windows equivalent uses `;` in `PYTHONPATH`):
@@ -106,7 +114,15 @@ Command (Windows equivalent uses `;` in `PYTHONPATH`):
 PYTHONPATH=ml_service:drone_bridge python -m pytest ml_service/tests drone_bridge/tests -q --junitxml=docs/python-test-results.xml
 ```
 
-Result: **21 passed, 0 failed**.
+Result: **22 passed, 0 failed** on both Python 3.13.15 and 3.10.12.
+
+```bash
+# Python 3.13.15
+/dev/shm/lifelink-ml-venv-313/bin/python -m pytest -q --junitxml=docs/python-3.13-test-results.xml
+
+# Python 3.10.12
+/dev/shm/lifelink-ml-venv-310/bin/python -m pytest -q --junitxml=docs/python-test-results.xml
+```
 
 | Area | What was actually executed |
 | --- | --- |
@@ -117,6 +133,9 @@ Result: **21 passed, 0 failed**.
 | Batch prediction | Two group/component series preserve their labels and return results. |
 | Donor consent | `consented: false` receives HTTP 403. |
 | Donor probability | Values are bounded to 0–1 for varied inputs. |
+| Donor batch + explainability | Two donors return probabilities, model-wide top factors and a non-causal explanation. |
+| Health auth | `/livez` stays public; `/health` and `/v1/models` reject a missing token when configured. |
+| Production startup guard | Manual command with `ML_REQUIRE_AUTH=true` and no token exited with the explicit refusal message; with a token, the app loaded. |
 | Anomaly | Injected spike is found; five observations return `insufficient_data`. |
 | Service auth | Configured bearer token rejects missing credentials and accepts the correct token. |
 | SITL safety | Valid simulated loopback mission accepted; non-simulated, real-network, unauthorized and short routes rejected. |
@@ -149,8 +168,8 @@ All are fixed. The final runs have no failures.
 
 Measured (single development machine, unit-test processes):
 
-- TypeScript suite: **40.39 ms** test-file time, **47.35 ms** total time reported by the final JUnit XML.
-- Python ML + bridge suite: **2.49 s** wall time in the final pytest run, including fresh model training, artifact reload and FastAPI `TestClient` calls.
+- TypeScript suite: **146.23 ms** total time reported by the final JUnit XML across two test files.
+- Python ML + bridge suite: **2.39 s** on Python 3.13.15 and **2.94 s** on Python 3.10.12, including fresh model training, artifact reload and FastAPI `TestClient` calls.
 - No deployed request latency, Convex action latency, load or concurrent-request benchmark was executed.
 
 No blood-search latency, database query latency, WebSocket throughput, notification throughput or concurrent-request benchmark was executed. The requested sub-500 ms search target is therefore **unverified**, not claimed. No load generator (Locust/k6) is included.
@@ -159,8 +178,8 @@ No blood-search latency, database query latency, WebSocket throughput, notificat
 
 | Required category | Status | Reason / next step |
 | --- | --- | --- |
-| TypeScript unit tests | **Executed** (26 pass) | Deterministic domain engine. |
-| Python ML unit/API tests | **Executed in-process** (21 pass) | Includes fresh training into temp dirs and FastAPI `TestClient`; no deployed HTTP path. |
+| TypeScript unit tests | **Executed** (28 pass) | Deterministic domain engine plus donor ML ordering/fallback. |
+| Python ML unit/API tests | **Executed in-process** (22 pass on 3.13.15 and 3.10.12) | Includes fresh training, donor batch/explainability and FastAPI `TestClient`; no deployed HTTP path. |
 | Convex action → ML HTTPS integration | Not executed | Requires a reachable service URL, token and deployment; Convex Cloud cannot call `localhost`. |
 | API tests against deployed services | Not executed | Needs authenticated test users and a Convex test harness. |
 | Database tests (atomic reservation, rollback, concurrent requests) | Not executed | Convex serializable semantics are implemented, but no multi-client automated test exists. |
@@ -170,9 +189,10 @@ No blood-search latency, database query latency, WebSocket throughput, notificat
 | Security tests | Not executed | No auth/RBAC/rate-limit/penetration suite. |
 | Real-data model accuracy / drift | Not executed | Bundled artifacts and metrics are synthetic only. XGBoost one-step holdout is not a multi-step backtest guarantee. |
 | Performance/load | Not executed | Add k6/Locust and a production-like dataset. |
+| Donor invitation end-to-end | Not executed against Cloud | The new action path typechecks and the Python batch API is tested; no live Convex-to-HTTPS run was possible. |
 | Drone SITL execution | **Not executed** | Bridge/export code and dry-run tests exist, but no PX4/ArduPilot or MAVSDK runtime is installed. |
 | End-to-end browser tests | Not executed | No Playwright suite. |
 
 ## 7. Honest completion statement
 
-47 automated tests passed: 26 TypeScript domain tests and 21 Python model/training/bridge tests. The application typechecks, Convex accepts the schema/functions, and the FastAPI service loads real trained artifacts and returns predictions. The checked-in model metrics are synthetic-data evidence only. This does **not** establish production readiness, clinical safety, live Convex-to-ML connectivity, real drone capability or the required full test matrix. See [limitations.md](limitations.md).
+50 automated tests passed per interpreter: 28 TypeScript domain/ranking tests and 22 Python model/training/bridge tests, with the Python suite executed on both 3.13.15 and 3.10.12. The application typechecks, Convex accepts the schema/functions, and the FastAPI service loads real trained artifacts and returns predictions. The checked-in model metrics are synthetic-data evidence only. This does **not** establish production readiness, clinical safety, live Convex-to-ML connectivity, real drone capability or the required full test matrix. See [limitations.md](limitations.md).

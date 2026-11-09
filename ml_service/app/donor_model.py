@@ -117,16 +117,44 @@ class DonorModel:
             self.model.predict_proba(np.asarray([sample.features()], dtype=float))[0][1]
         )
         probability = round(min(1.0, max(0.0, probability)), 4)
+        values = sample.features()
+        raw_importance = getattr(self.model, "feature_importances_", None)
+        importances = (
+            [round(float(value), 4) for value in raw_importance]
+            if raw_importance is not None
+            else [0.0] * len(FEATURE_NAMES)
+        )
+        factors = [
+            {
+                "feature": name,
+                "value": round(float(value), 4),
+                "model_importance": importance,
+            }
+            for name, value, importance in zip(
+                FEATURE_NAMES, values, importances, strict=False
+            )
+        ]
+        factors.sort(key=lambda item: item["model_importance"], reverse=True)
         return {
             "status": "ok",
             "response_probability": probability,
             "model": "random_forest_donor_response",
             "model_version": self.metadata.get("version") if self.metadata else None,
             "metrics": self.metadata.get("metrics") if self.metadata else None,
+            "synthetic_training_data": bool(
+                self.metadata.get("synthetic") if self.metadata else False
+            ),
+            "feature_values": {
+                name: round(float(value), 4)
+                for name, value in zip(FEATURE_NAMES, values, strict=False)
+            },
+            "top_factors": factors[:3],
             "explanation": (
                 "Predicted likelihood of an invitation response among consented, "
-                "eligible donors. This is not a medical eligibility decision, and "
-                "an invited donor is never counted as available blood."
+                "eligible donors. Top factors are model-wide feature importances "
+                "with this donor's values, not a causal or clinical assessment. "
+                "This is not a medical eligibility decision, and an invited donor "
+                "is never counted as available blood."
             ),
         }
 
@@ -204,6 +232,12 @@ class DonorModel:
             "synthetic": all(sample.is_synthetic for sample in consented),
             "sample_size": len(consented),
             "feature_names": FEATURE_NAMES,
+            "feature_importances": {
+                name: round(float(value), 4)
+                for name, value in zip(
+                    FEATURE_NAMES, final_model.feature_importances_, strict=False
+                )
+            },
             "metrics": metrics,
             "validation_method": (
                 "Stratified 80/20 holdout. Metrics describe this dataset only; "

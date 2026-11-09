@@ -28,6 +28,7 @@ from .schemas import (
     DemandBatchPredictRequest,
     DemandPredictRequest,
     DemandTrainRequest,
+    DonorBatchPredictRequest,
     DonorPredictRequest,
     DonorTrainRequest,
 )
@@ -43,6 +44,13 @@ SERVICE_VERSION = "1.0.0"
 demand_model = DemandModel(ARTIFACTS_DIR)
 donor_model = DonorModel(ARTIFACTS_DIR)
 anomaly_model = AnomalyModel(ARTIFACTS_DIR)
+
+if os.environ.get("ML_REQUIRE_AUTH", "").lower() in {"1", "true", "yes"} and not os.environ.get(
+    "ML_SERVICE_TOKEN"
+):
+    raise RuntimeError(
+        "ML_REQUIRE_AUTH is enabled but ML_SERVICE_TOKEN is missing. Refusing to start an unauthenticated production service."
+    )
 
 app = FastAPI(
     title="LifeLink ML Service",
@@ -109,7 +117,13 @@ def _model_summary(model, kind: str) -> dict:
     }
 
 
-@app.get("/health")
+@app.get("/livez")
+def livez() -> dict:
+    """Minimal unauthenticated liveness endpoint for container probes."""
+    return {"status": "ok", "service": "lifelink-ml", "version": SERVICE_VERSION}
+
+
+@app.get("/health", dependencies=[Depends(require_token)])
 def health() -> dict:
     return {
         "status": "ok"
@@ -248,6 +262,38 @@ def predict_donor(request: DonorPredictRequest) -> dict:
         )
     except PermissionError as error:
         raise HTTPException(status_code=403, detail=str(error)) from error
+
+
+@app.post("/v1/predict/donor/batch", dependencies=[Depends(require_token)])
+def predict_donor_batch(request: DonorBatchPredictRequest) -> dict:
+    results = []
+    for donor in request.donors:
+        try:
+            result = donor_model.predict(
+                DonorSample(
+                    distance_km=donor.distance_km,
+                    days_since_donation=donor.days_since_donation,
+                    previous_donations=donor.previous_donations,
+                    prior_response_rate=donor.prior_response_rate,
+                    consented=donor.consented,
+                    responded=False,
+                    is_synthetic=False,
+                )
+            )
+        except PermissionError as error:
+            result = {
+                "status": "consent_required",
+                "response_probability": None,
+                "explanation": str(error),
+            }
+        results.append({"donor_id": donor.donor_id, **result})
+    metadata = donor_model.metadata or {}
+    return {
+        "model_ready": donor_model.ready,
+        "model_version": metadata.get("version"),
+        "synthetic_training_data": bool(metadata.get("synthetic")),
+        "results": results,
+    }
 
 
 @app.post("/v1/detect/anomalies", dependencies=[Depends(require_token)])

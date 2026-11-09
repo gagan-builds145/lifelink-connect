@@ -27,14 +27,19 @@ Everything below is the complete reference for a local Windows 11 setup.
 | `VLY_INTEGRATION_KEY` | For email OTP | managed by Freebuff | Sends 6-digit sign-in codes |
 | `ML_SERVICE_URL` | For ML features | `https://your-ml-service.example.org` | Reachable FastAPI URL. Convex Cloud cannot use `127.0.0.1`. |
 | `ML_SERVICE_TOKEN` | For ML features | long random secret | Bearer token shared with the Python process; never a `VITE_*` value |
+| `RESEND_API_KEY` / `RESEND_FROM_EMAIL` | For email | provider values | Server-only Resend credentials |
+| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_FROM_NUMBER` | For SMS | provider values | Server-only Twilio credentials |
 
 ## Python ML process variables
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `ML_SERVICE_TOKEN` | unset | When set, all `/v1/*` endpoints require `Authorization: Bearer <token>` |
+| `ML_SERVICE_TOKEN` | unset | Bearer token for `/health` and `/v1/*`. Required in the production image. |
+| `ML_REQUIRE_AUTH` | unset | Set to `true` in production to fail startup when `ML_SERVICE_TOKEN` is missing. The Dockerfile sets this. |
 | `LIFELINK_ML_ARTIFACTS` | `ml_service/artifacts` | Directory containing active model artifacts |
-| `ML_CORS_ORIGINS` | `http://localhost:5173` | Comma-separated browser origins if calling the service directly |
+| `ML_CORS_ORIGINS` | `http://localhost:5173` | Comma-separated browser origins if calling the service directly. Convex server calls do not need CORS. |
+
+`/livez` remains public and returns only service/version status; it exposes no model metadata. `/health` is authenticated when a token is configured.
 
 ## Example
 

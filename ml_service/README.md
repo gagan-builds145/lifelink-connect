@@ -14,10 +14,10 @@ can be issued.
 
 ## Verified environment
 
-The checked-in artifacts and tests were executed on **Python 3.10.12**, because
-that is the interpreter available in the current workspace. The code is written
-for 3.10+ and the Dockerfile targets 3.13; Python 3.13 was **not executed here**.
-`requirements.txt` selects NumPy/SciPy builds appropriate to each interpreter.
+The checked-in artifacts and the complete **22-test suite passed on both Python
+3.13.15 and 3.10.12**. The Dockerfile targets 3.13; the image itself was not
+built here because Docker is unavailable. `requirements.txt` selects the
+NumPy/SciPy wheels appropriate to each interpreter.
 
 ## Install and run (Windows PowerShell)
 
@@ -34,11 +34,22 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000
 If Python 3.13 is unavailable, use Python 3.10+; state which interpreter is
 actually running rather than claiming 3.13.
 
-Health check:
+Liveness check (public, minimal):
 
 ```powershell
-Invoke-RestMethod http://127.0.0.1:8000/health | ConvertTo-Json -Depth 8
+Invoke-RestMethod http://127.0.0.1:8000/livez | ConvertTo-Json -Depth 4
 ```
+
+Authenticated readiness check:
+
+```powershell
+$headers = @{ Authorization = "Bearer $env:ML_SERVICE_TOKEN" }
+Invoke-RestMethod http://127.0.0.1:8000/health -Headers $headers | ConvertTo-Json -Depth 8
+```
+
+For a production process set `ML_REQUIRE_AUTH=true`; startup then fails rather
+than serving protected model endpoints without a token. The Dockerfile sets this
+by default.
 
 ## Connect Convex
 
@@ -58,19 +69,23 @@ The app uses:
 - `ml.refreshDemandForecasts` → `POST /v1/predict/demand/batch`
 - `ml.trainDemandModel` (admin) → `POST /v1/train/demand`
 - `ml.runAnomalyScan` → `POST /v1/detect/anomalies`
-- `ml.mlServiceStatus` → `GET /health`
+- `ml.trainDonorModel` (admin) → `POST /v1/train/donor`
+- donor invitation action → `POST /v1/predict/donor/batch`
+- `ml.mlServiceStatus` → `GET /health` (bearer token required when configured)
 
 ## Endpoints
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| GET | `/health` | Artifact readiness and model metadata. Public by design; contains no patient data. |
+| GET | `/livez` | Minimal unauthenticated liveness response for container probes. |
+| GET | `/health` | Authenticated artifact readiness, model metadata and version. |
 | GET | `/v1/models` | Versioned artifact summaries. |
 | POST | `/v1/train/demand` | Train XGBoost from `{date, blood_group, component, units, is_synthetic}` records. Requires ≥60 continuous days per retained series. |
 | POST | `/v1/predict/demand` | One group/component forecast. Requires ≥29 continuous days. |
 | POST | `/v1/predict/demand/batch` | Up to 32 group/component series in one call. |
 | POST | `/v1/train/donor` | Train Random Forest from consented labelled responses. Requires ≥40 samples with both classes. |
 | POST | `/v1/predict/donor` | Response probability; rejects `consented: false`. |
+| POST | `/v1/predict/donor/batch` | Up to 50 consented donors; returns probabilities, model versions, top model-wide factors and explicit non-causal explanation. |
 | POST | `/v1/detect/anomalies` | Isolation Forest + trailing z-score findings. Requires ≥15 observations. |
 | POST | `/v1/train/anomalies` | Refit Isolation Forest from labelled synthetic/normal observations. |
 
@@ -96,8 +111,15 @@ python -m pytest ml_service/tests drone_bridge/tests -q
 ```
 
 The suite covers artifact loading, real holdout metrics shape, prediction
-horizons, insufficient-history refusal, consent rejection, anomaly detection,
-service-token enforcement, SITL export validation and dry-run-only safety.
+horizons, insufficient-history refusal, consent rejection, batch donor scoring
+with explainability, anomaly detection, authenticated health/readiness,
+service-token enforcement, SITL export validation and dry-run-only safety. It
+passed on Python 3.13.15 and 3.10.12.
+
+```powershell
+# Python 3.13
+py -3.13 -m pytest -q --junitxml=..\docs\python-3.13-test-results.xml
+```
 
 ## Docker
 
@@ -107,6 +129,9 @@ docker run --rm -p 8000:8000 `
   -e ML_SERVICE_TOKEN="a-long-random-secret" `
   lifelink-ml
 ```
+
+The image sets `ML_REQUIRE_AUTH=true`, so the token is mandatory. Its health
+check uses `/livez`, which does not expose model metadata.
 
 The image includes the checked-in artifacts. Set a persistent volume or retrain
 from Convex after deployment if you want deployment-specific models.

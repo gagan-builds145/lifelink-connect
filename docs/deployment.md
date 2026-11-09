@@ -30,8 +30,9 @@ Recommended hosting for the static frontend: any HTTPS static host that supports
 - [ ] Verified-only onboarding and an admin approval workflow for organizations (current build: manual admin promotion).
 - [ ] Demo data disabled or isolated from production data.
 - [ ] Resend domain verified, sender set; Twilio number provisioned (if used).
-- [ ] ML container deployed with `ML_SERVICE_TOKEN`, and `ML_SERVICE_URL` set on Convex over HTTPS.
+- [ ] ML container deployed with `ML_REQUIRE_AUTH=true` and `ML_SERVICE_TOKEN`, and `ML_SERVICE_URL` set on Convex over HTTPS.
 - [ ] Model artifacts retrained from deployment data or explicitly approved synthetic artifacts for a pilot.
+- [ ] Donor Random Forest retrained only from consented outcomes; invitation fallback behaviour approved by clinical operations.
 - [ ] Live adapter endpoints, schemas and credentials validated against a sandbox HMS/blood bank.
 - [ ] Privacy policy, terms, consent language and retention schedule approved by legal/compliance.
 - [ ] Backups and restore drills tested.
@@ -101,7 +102,9 @@ docker run --rm -p 8000:8000 `
   lifelink-ml
 ```
 
-Put the container behind HTTPS (managed container host, reverse proxy, or private service mesh) and make it reachable from Convex. Do not expose it without a token. The bundled artifacts must be replaced or retrained for a real pilot; their metrics are synthetic-data evidence only. Convex cannot reach `localhost` on your laptop.
+The image sets `ML_REQUIRE_AUTH=true`, so the token is mandatory and startup fails without it. Put the container behind HTTPS (managed container host, reverse proxy, or private service mesh) and make it reachable from Convex. Do not expose it without a token. The bundled artifacts must be replaced or retrained for a real pilot; their metrics are synthetic-data evidence only. Convex cannot reach `localhost` on your laptop.
+
+Container probes should call public `/livez`. Convex calls authenticated `/health` and `/v1/*`. The Docker health check uses `/livez`; never place the bearer token in a probe URL. The full Python suite passed on 3.13.15 and 3.10.12, but the Docker image was not built in this workspace because Docker is unavailable.
 
 ## 5. Post-deploy verification
 
@@ -114,18 +117,23 @@ Put the container behind HTTPS (managed container host, reverse proxy, or privat
 7. Notification with and without provider keys: `sent` vs `skipped_no_provider`.
 8. Plan a mission; confirm preflight blocks low battery, no authorization and container temperature outside range.
 9. Admin console shows real aggregates, no demo mixed into real metrics without the demo label.
-10. ML health: `/admin/dashboard` → **Check service** returns all three models ready, and **Refresh XGBoost forecast** stores a run.
-11. Backup/restore drill and alerting test.
+10. ML health: `/admin/dashboard` → **Check service** returns all three models ready, **Refresh XGBoost forecast** stores a run, and donor invitations show a model version after automatic escalation.
+11. Force an ML outage (wrong URL/token) and confirm automatic allocation still reserves stock, donor invitations use distance-only fallback, and no probability is stored.
+12. Backup/restore drill and alerting test from [backup-recovery.md](backup-recovery.md).
+13. Security checklist from [security.md](security.md), including secret scanning and RBAC checks.
 
 ## 6. Monitoring and operations
 
-Convex provides function logs and the dashboard's health views. Add:
+Convex provides function logs and the dashboard's health views. Production must also add:
 
-- uptime checks on the static site and a lightweight public query;
-- alerting on `facilitySyncRuns.status = failed`, `notificationJobs.status = failed`, `anomalyEvents.severity = critical`, mission `HOLD`/`EMERGENCY_LANDING`;
+- uptime checks on the static site, a lightweight public query and ML `/livez`;
+- alerting on ML `/health` degradation, `facilitySyncRuns.status = failed`, `notificationJobs.status = failed`, `anomalyEvents.severity = critical`, mission `HOLD`/`EMERGENCY_LANDING`;
+- alerting when the donor fallback model is `distance_only_fallback` for an unusual share of invitations;
 - log retention and access review;
 - a documented incident runbook for oversupply, wrong-unit, privacy or mission-safety events;
 - database backup schedule with restore tests.
+
+See [security.md](security.md), [backup-recovery.md](backup-recovery.md), [ml-operations.md](ml-operations.md), [hospital-integration.md](hospital-integration.md) and [../drone_bridge/README.md](../drone_bridge/README.md).
 
 ## 7. Rollback
 
@@ -141,4 +149,4 @@ Convex provides function logs and the dashboard's health views. Add:
 - Push notifications.
 - Automated browser, load or SITL tests.
 
-See [limitations.md](limitations.md) for the full production-readiness gap list.
+See [limitations.md](limitations.md) and [production-readiness.md](production-readiness.md) for the full production-readiness classification and gap list.

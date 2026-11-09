@@ -1,5 +1,12 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import {
+  action,
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+} from "./_generated/server";
+import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import {
@@ -14,7 +21,6 @@ import {
 } from "./lib/helpers";
 import { evaluateStockLevel } from "./lib/stockWatch";
 import { queueForOrganization } from "./lib/messaging";
-import { escalateDonorsForNeed } from "./lib/donorFallback";
 import {
   computeShortage,
   planAllocation,
@@ -26,6 +32,31 @@ import {
   type SupplyScope,
 } from "../lib/supply";
 import { cityCoords } from "../lib/blood";
+import type { DonorEscalationResult } from "./donorPrediction";
+
+type AllocationCoreResult = {
+  allocated: number;
+  shortfall: number;
+  transfers: Array<{
+    transferId: string;
+    supplyingOrgId: string;
+    supplyingName: string;
+    units: number;
+  }>;
+  invitations: null;
+  donorNeed: {
+    requestId: Id<"bloodRequests">;
+    actorUserId: Id<"users">;
+  } | null;
+  applied?: Array<{ batchId: string; units: number }>;
+  message: string;
+};
+
+type AutoAllocateResult = Omit<AllocationCoreResult, "invitations" | "donorNeed"> & {
+  invitations: DonorEscalationResult | null;
+  donorNeed?: AllocationCoreResult["donorNeed"];
+  donorFallbackError: string | null;
+};
 
 const scopeValidator = v.union(
   v.literal("city"),
@@ -322,21 +353,42 @@ export const searchSupply = query({
   },
 });
 
+export const currentAllocationActor = internalQuery({
+  args: { requestId: v.id("bloodRequests") },
+  handler: async (ctx, args) => {
+    const user = await requireStaff(ctx);
+    const request = await ctx.db.get(args.requestId);
+    if (!request) throw new Error("Request not found.");
+    if (roleOf(user) !== "admin" && user.organizationId !== request.hospitalOrgId) {
+      throw new Error("Only the requesting hospital can run automatic allocation.");
+    }
+    return { actorUserId: user._id };
+  },
+});
+
 /**
  * Automatic institutional allocation. Reserves eligible units atomically across
  * one or more pre-authorised facilities. Convex mutations are serializable, so
  * concurrent requests cannot reserve the same unit twice; the batch free count
  * is re-checked immediately before every write.
+ *
+ * Donor contact is deliberately outside this transaction. The public action
+ * below scores already-eligible, consented donors through the Python service
+ * and writes invitations only after the reservation is committed.
  */
-export const autoAllocate = mutation({
+export const autoAllocateCore = internalMutation({
   args: {
     requestId: v.id("bloodRequests"),
+    actorUserId: v.id("users"),
     scope: v.optional(scopeValidator),
     maxDistanceKm: v.optional(v.number()),
     note: v.optional(v.string()),
   },
-  handler: async (ctx, args) => {
-    const user = await requireStaff(ctx);
+  handler: async (ctx, args): Promise<AllocationCoreResult> => {
+    const user = await ctx.db.get(args.actorUserId);
+    if (!user || user.suspended || !["red_cross", "hospital", "admin"].includes(roleOf(user))) {
+      throw new Error("Only authorised facility staff can run automatic allocation.");
+    }
     const resolved = await resolveNeed(ctx, user, args);
     const request = resolved.request!;
     const role = roleOf(user);
@@ -360,6 +412,7 @@ export const autoAllocate = mutation({
         shortfall: 0,
         transfers: [],
         invitations: null,
+        donorNeed: null,
         message: "This request is already fully reserved.",
       };
     }
@@ -367,23 +420,14 @@ export const autoAllocate = mutation({
     const { authorizedRanked } = await buildCandidates(ctx, resolved);
     const plan = planAllocation(authorizedRanked, resolved.remainingUnits);
     if (plan.allocations.length === 0) {
-      // No authorised institutional stock. Donors are only contacted after the
-      // institutional shortfall is confirmed, so escalate immediately.
-      const escalation = await escalateDonorsForNeed(ctx, {
-        requestingOrg: resolved.requesterOrg,
-        bloodGroup: request.bloodGroup,
-        component: request.component,
-        units: resolved.remainingUnits,
-        urgency: request.urgency,
-        requestId: request._id,
-        actorUserId: user._id,
-      });
+      // No authorised institutional stock. Donors are contacted by the public
+      // action only after this reservation transaction commits.
       await ctx.db.insert("requestStatusHistory", {
         requestId: request._id,
         status: request.status,
         actorUserId: user._id,
         actorRole: role,
-        note: `Automatic institutional allocation found no authorised supply. ${escalation.invited} donor invitation(s) sent; donors are not counted as stock.`,
+        note: "Automatic institutional allocation found no authorised supply. Donor eligibility evaluation is queued; donors are not counted as stock.",
         isDemo: request.isDemo,
         createdAt: Date.now(),
       });
@@ -391,9 +435,10 @@ export const autoAllocate = mutation({
         allocated: 0,
         shortfall: resolved.remainingUnits,
         transfers: [],
-        invitations: escalation,
+        invitations: null,
+        donorNeed: { requestId: request._id, actorUserId: user._id },
         message:
-          "No pre-authorised institutional supply was available. Donor fallback was triggered automatically.",
+          "No pre-authorised institutional supply was available. Donor eligibility evaluation is queued.",
       };
     }
 
@@ -556,30 +601,79 @@ export const autoAllocate = mutation({
     });
 
     const remainingAfter = Math.max(0, request.units - resolved.activeReserved - allocated);
-    const invitations =
-      remainingAfter > 0
-        ? await escalateDonorsForNeed(ctx, {
-            requestingOrg: resolved.requesterOrg,
-            bloodGroup: request.bloodGroup,
-            component: request.component,
-            units: remainingAfter,
-            urgency: request.urgency,
-            requestId: request._id,
-            actorUserId: user._id,
-          })
-        : null;
 
     return {
       allocated,
       shortfall: remainingAfter,
       transfers: transferResults,
-      invitations,
+      invitations: null,
+      donorNeed:
+        remainingAfter > 0
+          ? { requestId: request._id, actorUserId: user._id }
+          : null,
       applied,
       message:
         remainingAfter === 0
           ? "Institutional supply covers the request. Dispatch and clinical release still require staff action."
-          : `Institutional shortfall of ${remainingAfter} unit(s). Donor invitations were queued; donors are not counted as stock.`,
+          : `Institutional shortfall of ${remainingAfter} unit(s). Donor eligibility evaluation is queued; donors are not counted as stock.`,
     };
+  },
+});
+
+/**
+ * Public allocation entry point. Stock is committed first; donor invitations are
+ * created afterwards and only from deterministically eligible, consented donors.
+ * If ML scoring is unavailable, invitations use an explicit distance-only
+ * fallback and no probability is fabricated.
+ */
+export const autoAllocate = action({
+  args: {
+    requestId: v.id("bloodRequests"),
+    scope: v.optional(scopeValidator),
+    maxDistanceKm: v.optional(v.number()),
+    note: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<AutoAllocateResult> => {
+    const { actorUserId } = await ctx.runQuery(
+      internal.allocation.currentAllocationActor,
+      { requestId: args.requestId },
+    );
+    const result = await ctx.runMutation(internal.allocation.autoAllocateCore, {
+      ...args,
+      actorUserId,
+    });
+    if (!result.donorNeed) {
+      return { ...result, donorFallbackError: null };
+    }
+    try {
+      const invitations = await ctx.runAction(
+        internal.donorPrediction.escalateForRequest,
+        {
+          requestId: result.donorNeed.requestId,
+          actorUserId: result.donorNeed.actorUserId,
+          note: args.note,
+        },
+      );
+      return {
+        ...result,
+        invitations,
+        donorFallbackError: null,
+        message:
+          result.shortfall > 0
+            ? `Institutional shortfall of ${result.shortfall} unit(s). ${invitations.invited} donor invitation(s) evaluated; donors are not counted as stock.`
+            : result.message,
+      };
+    } catch (error) {
+      return {
+        ...result,
+        invitations: null,
+        donorFallbackError:
+          error instanceof Error ? error.message : "Donor fallback failed.",
+        message: `${result.message} Donor fallback could not be queued: ${
+          error instanceof Error ? error.message : "unknown error"
+        }`,
+      };
+    }
   },
 });
 

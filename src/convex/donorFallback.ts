@@ -1,5 +1,6 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { action, internalQuery, mutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import {
   audit,
@@ -9,17 +10,9 @@ import {
   requireUser,
   roleOf,
 } from "./lib/helpers";
-import { queueForDonors, queueForOrganization, queueNotification } from "./lib/messaging";
-import { escalateDonorsForNeed } from "./lib/donorFallback";
+import { queueForDonors, queueForOrganization } from "./lib/messaging";
 import { DONOR_FALLBACK_NOTE } from "../lib/supply";
-
-const OPEN_STATUSES = new Set([
-  "pending",
-  "under_verification",
-  "approved",
-  "dispatched",
-  "received",
-]);
+import type { DonorEscalationResult } from "./donorPrediction";
 
 /**
  * Temporary, revocable location-sharing consent. No donor location is exposed
@@ -116,6 +109,11 @@ export const myInvitations = query({
           status: invite.status,
           distanceKm: invite.distanceKm ?? null,
           responseProbability: invite.responseProbability ?? null,
+          responseModel: invite.responseModel ?? null,
+          responseModelVersion: invite.responseModelVersion ?? null,
+          responseModelSynthetic: invite.responseModelSynthetic ?? null,
+          responseExplanation: invite.responseExplanation ?? null,
+          predictedAt: invite.predictedAt ?? null,
           createdAt: invite.createdAt,
           respondedAt: invite.respondedAt ?? null,
           appointmentAt: invite.appointmentAt ?? null,
@@ -262,60 +260,31 @@ export const invitationsForOrg = query({
   },
 });
 
-/**
- * Manual donor fallback. Refuses to contact donors while institutional
- * reservations already cover the request.
- */
-export const escalateRequest = mutation({
-  args: { requestId: v.id("bloodRequests"), note: v.optional(v.string()) },
-  handler: async (ctx, args) => {
+export const currentEscalationActor = internalQuery({
+  args: {},
+  handler: async (ctx) => {
     const user = await requireStaff(ctx);
-    const request = await ctx.db.get(args.requestId);
-    if (!request) throw new Error("Request not found.");
-    const organizationId = user.organizationId;
-    const role = roleOf(user);
-    if (role !== "admin" && organizationId !== request.hospitalOrgId) {
-      throw new Error("Only the requesting hospital can escalate this request to donors.");
-    }
-    if (!OPEN_STATUSES.has(request.status)) {
-      throw new Error("This request is closed; donor invitations cannot be sent.");
-    }
-    const reservations = await ctx.db
-      .query("inventoryReservations")
-      .withIndex("by_request", (q) => q.eq("requestId", request._id))
-      .collect();
-    const activeUnits = reservations
-      .filter((r) => r.status === "active")
-      .reduce((sum, r) => sum + r.units, 0);
-    if (activeUnits >= request.units) {
-      throw new Error(
-        `Institutional supply already covers this request (${activeUnits}/${request.units}). Donors are not contacted.`,
-      );
-    }
+    return { actorUserId: user._id };
+  },
+});
 
-    const org = request.hospitalOrgId
-      ? await ctx.db.get(request.hospitalOrgId)
-      : null;
-    if (!org) throw new Error("The requesting hospital record could not be found.");
-
-    const result = await escalateDonorsForNeed(ctx, {
-      requestingOrg: org,
-      bloodGroup: request.bloodGroup,
-      component: request.component,
-      units: request.units - activeUnits,
-      urgency: request.urgency,
-      requestId: request._id,
-      actorUserId: user._id,
+/**
+ * Manual donor fallback. Deterministic eligibility is checked in the mutation,
+ * while the Python Random Forest only orders already-eligible, consented donors.
+ * If the ML service is unavailable, invitations still proceed by distance only.
+ */
+export const escalateRequest = action({
+  args: { requestId: v.id("bloodRequests"), note: v.optional(v.string()) },
+  handler: async (ctx, args): Promise<DonorEscalationResult> => {
+    const { actorUserId } = await ctx.runQuery(
+      internal.donorFallback.currentEscalationActor,
+      {},
+    );
+    return await ctx.runAction(internal.donorPrediction.escalateForRequest, {
+      requestId: args.requestId,
+      actorUserId,
+      note: args.note,
     });
-    await audit(ctx, {
-      actor: user,
-      action: "donorFallback.escalated",
-      entityType: "bloodRequest",
-      entityId: request.requestId,
-      detail: args.note ?? `Institutional shortfall of ${request.units - activeUnits} unit(s); ${result.invited} donor invitation(s) sent.`,
-      organizationId: request.hospitalOrgId,
-    });
-    return result;
   },
 });
 

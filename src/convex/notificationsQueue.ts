@@ -3,15 +3,19 @@ import { internal } from "./_generated/api";
 import { v } from "convex/values";
 
 const BATCH = 20;
+const MAX_ATTEMPTS = 3;
 
 export const pendingJobs = internalQuery({
   args: { limit: v.number() },
   handler: async (ctx, args) => {
+    const now = Date.now();
     const jobs = await ctx.db
       .query("notificationJobs")
       .withIndex("by_status", (q) => q.eq("status", "queued"))
-      .take(Math.max(1, Math.min(BATCH, args.limit)));
-    return jobs;
+      .take(Math.max(20, Math.min(100, args.limit * 3)));
+    return jobs
+      .filter((job) => job.nextAttemptAt == null || job.nextAttemptAt <= now)
+      .slice(0, Math.max(1, Math.min(BATCH, args.limit)));
   },
 });
 
@@ -19,11 +23,14 @@ export const markJob = internalMutation({
   args: {
     jobId: v.id("notificationJobs"),
     status: v.union(
+      v.literal("queued"),
       v.literal("sent"),
       v.literal("failed"),
       v.literal("skipped_no_provider"),
     ),
     error: v.optional(v.string()),
+    nextAttemptAt: v.optional(v.number()),
+    providerMessageId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const job = await ctx.db.get(args.jobId);
@@ -32,12 +39,18 @@ export const markJob = internalMutation({
       status: args.status,
       attempts: job.attempts + 1,
       lastError: args.error,
+      nextAttemptAt: args.nextAttemptAt,
+      providerMessageId: args.providerMessageId,
       sentAt: args.status === "sent" ? Date.now() : undefined,
     });
   },
 });
 
-type SendResult = { status: "sent" | "failed" | "skipped_no_provider"; error?: string };
+type SendResult = {
+  status: "sent" | "failed" | "skipped_no_provider";
+  error?: string;
+  providerMessageId?: string;
+};
 
 async function sendEmail(job: { recipient: string; subject: string; body: string }): Promise<SendResult> {
   const apiKey = process.env.RESEND_API_KEY;
@@ -67,7 +80,8 @@ async function sendEmail(job: { recipient: string; subject: string; body: string
     if (!response.ok) {
       return { status: "failed", error: `Email provider returned HTTP ${response.status}.` };
     }
-    return { status: "sent" };
+    const payload = (await response.json().catch(() => null)) as { id?: string } | null;
+    return { status: "sent", providerMessageId: payload?.id };
   } catch (error) {
     return {
       status: "failed",
@@ -103,7 +117,8 @@ async function sendSms(job: { recipient: string; body: string }): Promise<SendRe
     if (!response.ok) {
       return { status: "failed", error: `SMS provider returned HTTP ${response.status}.` };
     }
-    return { status: "sent" };
+    const payload = (await response.json().catch(() => null)) as { sid?: string } | null;
+    return { status: "sent", providerMessageId: payload?.sid };
   } catch (error) {
     return {
       status: "failed",
@@ -119,11 +134,18 @@ async function sendSms(job: { recipient: string; body: string }): Promise<SendRe
  */
 export const dispatchPending = internalAction({
   args: {},
-  handler: async (ctx): Promise<{ processed: number; sent: number; failed: number; skipped: number }> => {
+  handler: async (ctx): Promise<{
+    processed: number;
+    sent: number;
+    failed: number;
+    skipped: number;
+    retrying: number;
+  }> => {
     const jobs = await ctx.runQuery(internal.notificationsQueue.pendingJobs, { limit: BATCH });
     let sent = 0;
     let failed = 0;
     let skipped = 0;
+    let retrying = 0;
     for (const job of jobs) {
       let result: SendResult;
       if (job.channel === "email") result = await sendEmail(job);
@@ -134,15 +156,22 @@ export const dispatchPending = internalAction({
           error:
             "Push delivery requires Firebase Cloud Messaging credentials and a registered device token; neither is configured.",
         };
+      const attempts = job.attempts + 1;
+      const shouldRetry = result.status === "failed" && attempts < MAX_ATTEMPTS;
       await ctx.runMutation(internal.notificationsQueue.markJob, {
         jobId: job._id,
-        status: result.status,
+        status: shouldRetry ? "queued" : result.status,
         error: result.error,
+        providerMessageId: result.providerMessageId,
+        nextAttemptAt: shouldRetry
+          ? Date.now() + 60_000 * attempts
+          : undefined,
       });
       if (result.status === "sent") sent += 1;
+      else if (shouldRetry) retrying += 1;
       else if (result.status === "failed") failed += 1;
       else skipped += 1;
     }
-    return { processed: jobs.length, sent, failed, skipped };
+    return { processed: jobs.length, sent, failed, skipped, retrying };
   },
 });

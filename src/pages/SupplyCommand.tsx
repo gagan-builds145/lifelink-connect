@@ -109,7 +109,7 @@ export default function SupplyCommand() {
   const [busy, setBusy] = useState<string | null>(null);
   const [tempC, setTempC] = useState("4");
 
-  const autoAllocate = useMutation(api.allocation.autoAllocate);
+  const autoAllocate = useAction(api.allocation.autoAllocate);
   const dispatchTransfer = useMutation(api.allocation.dispatchTransfer);
   const receiveTransfer = useMutation(api.allocation.receiveTransfer);
   const cancelTransfer = useMutation(api.allocation.cancelTransfer);
@@ -210,7 +210,9 @@ export default function SupplyCommand() {
           description:
             result.invitations && result.invitations.invited > 0
               ? `${result.invitations.invited} donor invitation(s) queued. Donors are not counted as stock.`
-              : result.message,
+              : result.donorFallbackError
+                ? `Donor fallback could not be queued: ${result.donorFallbackError}`
+                : result.message,
         },
       );
     } catch (error) {

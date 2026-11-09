@@ -251,6 +251,8 @@ export const notificationQueue = query({
         subject: job.subject,
         attempts: job.attempts,
         lastError: job.lastError ?? null,
+        nextAttemptAt: job.nextAttemptAt ?? null,
+        providerMessageId: job.providerMessageId ?? null,
         createdAt: job.createdAt,
         sentAt: job.sentAt ?? null,
       }));

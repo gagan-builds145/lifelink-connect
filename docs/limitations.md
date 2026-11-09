@@ -31,25 +31,25 @@ This is a working software system, but it is **not** certified medical software,
 ## 4. AI / ML
 
 - **Bundled metrics are synthetic.** The checked-in XGBoost artifacts were trained on a deterministic generated dataset, not hospital demand. The measured MAE/RMSE and improvement versus baseline are evidence that the training/evaluation pipeline works, **not** evidence of clinical or operational accuracy.
-- **Python 3.13 was not executed here.** The service was installed, trained and tested on Python 3.10.12 because that is the available interpreter. The Dockerfile targets 3.13 and the requirements have interpreter-specific NumPy/SciPy pins, but 3.13 remains unverified in this environment.
-- **Convex integration was not executed end-to-end.** Unit/API tests exercise the FastAPI service with `TestClient`. No persistent ML server was exposed to the Convex Cloud deployment during this run, so the authenticated Convex action path has not been tested live. `ML_SERVICE_URL` and `ML_SERVICE_TOKEN` are required.
+- **Python 3.13 compatibility is verified locally, not in the Docker image.** The complete 22-test suite passed on Python 3.13.15 and 3.10.12 using the pinned requirements. The Docker image was not built because Docker is unavailable in this environment.
+- **Convex integration was not executed end-to-end.** Unit/API tests exercise the FastAPI service with `TestClient`. No persistent ML server was exposed to the Convex Cloud deployment during this run, so the authenticated Convex action path and live donor invitation scoring have not been tested through HTTPS. `ML_SERVICE_URL` and `ML_SERVICE_TOKEN` are required.
 - **No drift monitoring or automatic production retraining approval.** An admin-triggered retraining action and a scheduled refresh path exist, but drift detection, approval gates, rollback and model monitoring are not implemented.
 - **Forecast method limitations.** The served model is a global XGBoost regressor with lag/rolling/calendar features and a one-step chronological holdout. Recursive 30-day forecasts can compound error; the reported holdout metrics are not multi-step backtest guarantees.
-- **Donor models serve different roles.** The active in-app invitation ranker is a logistic model trained from Convex invitation outcomes. The Python Random Forest donor API and artifact are trained and tested separately on consented synthetic samples, but are not currently used to write invitation probabilities. Medical eligibility remains deterministic in both paths.
+- **The active donor ranker is the Python Random Forest, but its live path is unverified.** Automatic allocation now commits stock first, then calls the authenticated Python batch endpoint for already-eligible, consented donors and stores model provenance on each invitation. If the service is unavailable, invitations use an explicit distance-only fallback and no probability is stored. The Python API and explainability are tested in-process; no live Convex-to-HTTPS run was possible here. Medical eligibility remains deterministic.
 - **Anomaly alerts require human review.** Isolation Forest combined with a z-score can produce false positives or miss context. It does not identify theft, wastage, a clinical error or a cause.
 
 ## 5. Integrations and notifications
 
 - **Webhook and database-connector modes are registry labels, not executed ingestion paths.** The live implementation is a pull from `{baseUrl}/inventory`; mock sync is implemented. A webhook receiver and DB bridge must be built and secured.
 - **No push notifications.** In-app, email (Resend) and SMS (Twilio) only. Missing credentials record `skipped_no_provider`.
-- **No delivery guarantee beyond the outbox retry policy.** Provider webhooks/bounces and dead-letter dashboards are not implemented.
+- **No delivery guarantee beyond the outbox retry policy.** Failed provider calls are retried up to three times with a backoff timestamp and provider message ids, but provider webhooks, bounce handling and dead-letter dashboards are not implemented.
 - **No automatic duplicate-patient detection or clinical authorization workflow** beyond the existing request verification.
 
 ## 6. Security, reliability and testing
 
 - **No edge rate limiting/WAF.** Existing request/contact endpoints have database-backed limits, but new supply/drone/admin endpoints rely on auth and Convex platform protections.
 - **No SQL injection surface** because there is no SQL, but no automated security scan or penetration test was run.
-- **No automated API, database-concurrency, real-time, geospatial API, security, load or browser end-to-end suite.** Executed: 26 TypeScript domain tests and 21 Python ML/SITL-validation/training tests. The FastAPI endpoints were tested in-process, not through the deployed Convex action path (see [test-report.md](test-report.md)).
+- **No automated API, database-concurrency, real-time, geospatial API, security, load or browser end-to-end suite.** Executed: 28 TypeScript domain/ranking tests and 22 Python ML/SITL-validation/training tests on both Python 3.13.15 and 3.10.12. The FastAPI endpoints were tested in-process, not through the deployed Convex action path (see [test-report.md](test-report.md)).
 - **Code coverage was not measured.** No coverage tool is configured; do not claim a percentage.
 - **Concurrency correctness relies on Convex serializable mutations** and re-checking free stock. A multi-client simultaneous reservation test has not been automated.
 - **No production backup/restore drill.** Backups are a deployment concern and must be configured and tested.

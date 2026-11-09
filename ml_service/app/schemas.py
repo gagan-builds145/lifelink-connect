@@ -72,6 +72,14 @@ class DonorPredictRequest(BaseModel):
     consented: bool
 
 
+class DonorBatchItem(DonorPredictRequest):
+    donor_id: str = Field(min_length=1, max_length=128)
+
+
+class DonorBatchPredictRequest(BaseModel):
+    donors: list[DonorBatchItem] = Field(min_length=1, max_length=50)
+
+
 class ObservationIn(BaseModel):
     date: str
     units: float = Field(ge=0)

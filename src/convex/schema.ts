@@ -683,6 +683,12 @@ const schema = defineSchema(
       units: v.number(),
       distanceKm: v.optional(v.number()),
       responseProbability: v.optional(v.number()),
+      /** Python Random Forest provenance; absent when only distance fallback was used. */
+      responseModel: v.optional(v.string()),
+      responseModelVersion: v.optional(v.string()),
+      responseModelSynthetic: v.optional(v.boolean()),
+      responseExplanation: v.optional(v.string()),
+      predictedAt: v.optional(v.number()),
       status: donorInvitationStatusValidator,
       note: v.optional(v.string()),
       idempotencyKey: v.string(),
@@ -781,6 +787,10 @@ const schema = defineSchema(
       status: notificationJobStatusValidator,
       attempts: v.number(),
       lastError: v.optional(v.string()),
+      /** Backoff timestamp; absent means the job is immediately eligible. */
+      nextAttemptAt: v.optional(v.number()),
+      /** Provider-side message id when delivery was accepted. */
+      providerMessageId: v.optional(v.string()),
       createdAt: v.number(),
       sentAt: v.optional(v.number()),
     })

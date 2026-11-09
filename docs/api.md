@@ -45,13 +45,13 @@ Returns:
 
 Rules: routine/urgent = requesting city only; emergency may widen to district, state and country. Candidate filtering happens before ranking.
 
-### `autoAllocate` (mutation, requesting hospital staff or admin)
+### `autoAllocate` (action, requesting hospital staff or admin)
 
 ```ts
 { requestId: Id<"bloodRequests">, scope?: SupplyScope, maxDistanceKm?: number, note?: string }
 ```
 
-Reserves eligible pre-authorised units atomically, creates `transfers`, writes reservation and transaction rows, queues notifications, and triggers donor invitations only for the remaining shortfall. Returns `allocated`, `shortfall`, `transfers`, `invitations`, `applied`, `message`.
+Reserves eligible pre-authorised units atomically, creates `transfers`, writes reservation and transaction rows and queues notifications. After that transaction commits it calls the Python donor batch endpoint for the remaining shortfall. Returns `allocated`, `shortfall`, `transfers`, `invitations`, `donorFallbackError`, `applied`, `message`. If ML is unavailable, the donor fallback uses distance ordering and records no model probability. The deterministic reservation is not repeated by the action.
 
 Rejects:
 
@@ -100,10 +100,10 @@ Only `reserved`/`approved` transfers can be cancelled. Releases active reservati
 | --- | --- | --- | --- |
 | `setLocationConsent` | mutation | donor | `{ shareLocation, hours }`; 1–168 hours; revocable. |
 | `myConsent` | query | donor | Active/expired status, expiry timestamp, note. |
-| `myInvitations` | query | donor | Invitations with status, distance, appointment, centre and — only after acceptance — facility contact. |
+| `myInvitations` | query | donor | Invitations with status, distance, response estimate, model provenance/explanation, appointment, centre and — only after acceptance — facility contact. |
 | `respond` | mutation | donor | `{ invitationId, action: "accept" \| "decline", note? }`; only the owning donor can answer a `sent` invitation. |
 | `invitationsForOrg` | query | staff | Accepted invitations for the caller's organization. |
-| `escalateRequest` | mutation | requesting hospital staff/admin | Refuses when active reservations already cover the request. |
+| `escalateRequest` | action | requesting hospital staff/admin | Refuses when active reservations already cover the request; deterministic eligibility is followed by an authenticated donor batch prediction. |
 
 No function converts a donor into inventory. Blood becomes issuable only through licensed collection and release.
 
@@ -175,7 +175,7 @@ Mission states:
 
 ## 6. AI / ML — `src/convex/ml.ts` and `src/convex/forecasting.ts`
 
-The Python service endpoints are documented in [ml_service/README.md](../ml_service/README.md). Convex calls it with `ML_SERVICE_URL` and optional `ML_SERVICE_TOKEN`; credentials stay in the deployment environment.
+The Python service endpoints are documented in [ml_service/README.md](../ml_service/README.md). Convex calls it with `ML_SERVICE_URL` and `ML_SERVICE_TOKEN`; credentials stay in the deployment environment. Prediction and health requests have per-attempt timeouts and two attempts for idempotent calls; training is single-attempt. `/livez` is public for probes; `/health` and `/v1/*` require the bearer token when configured.
 
 | Function | Type | Access | Contract |
 | --- | --- | --- | --- |
@@ -183,10 +183,10 @@ The Python service endpoints are documented in [ml_service/README.md](../ml_serv
 | `refreshDemandForecasts` | action | staff | Gathers scoped issue/dispatch history, calls `POST /v1/predict/demand/batch`, and stores 24h/7d/30d rows with model version, synthetic-data flag and metrics. Throws on an unreachable/unprepared service rather than inventing a forecast. |
 | `trainDemandModel` | action | admin | Gathers up to 365 days of Convex transactions, calls `POST /v1/train/demand`, and registers the returned version/metrics. |
 | `runAnomalyScan` | action | staff | Calls `POST /v1/detect/anomalies` for red-cell series and persists Isolation Forest alerts with model version and synthetic flag. |
-| `mlServiceStatus` | action | staff | Reads the service `/health`; returns `reachable: false` with an error instead of pretending it is up. |
+| `trainDonorModel` | action | admin | Collects consented, answered invitation outcomes, calls `POST /v1/train/donor`, and registers the Python Random Forest version/metrics. Requires ≥40 samples and both outcomes. |
+| `mlServiceStatus` | action | staff | Reads the authenticated service `/health` with two attempts; returns `reachable: false` with an error instead of pretending it is up. |
 | `anomalyReport` | query | staff | Trailing 28-day z-score findings plus persisted sync/mission and Isolation Forest alerts. |
-| `trainDonorResponseModel` | mutation | admin | Requires ≥20 answered invitations with mixed outcomes; stores the existing in-app logistic model. The Python Random Forest donor API is available separately for consented datasets. |
-| `modelStatus` | query | staff | Active model version, training size, XGBoost description, stored XGBoost runs and service configuration flag. |
+| `modelStatus` | query | staff | Active donor/demand model versions, training sizes, XGBoost description, stored XGBoost runs and service configuration flag. |
 | `anomalySweep` | internal mutation | cron | Persists statistical demand anomalies once. |
 
 Models are decision support only. Compatibility and authorization never call them. The bundled artifacts were trained on labelled synthetic data; retraining from this deployment's transactions is an explicit admin action.
@@ -198,14 +198,16 @@ Models are decision support only. Compatibility and authorization never call the
 | `overview` | query | admin | Organization/inventory/request/transfer/drone/donor/notification/integration/ML/anomaly/audit aggregates and system health. |
 | `acknowledgeAnomaly` | mutation | admin | `{ anomalyId }`, audited. |
 | `recentSyncRuns` | query | admin | Last 25 sync runs. |
-| `notificationQueue` | query | admin | Last 40 outbox jobs with attempts and errors. |
+| `notificationQueue` | query | admin | Last 40 outbox jobs with attempts, next retry, provider message id and errors. |
 
 ## 8. Notifications
 
 - In-app notifications are inserted by `queueNotification` / `queueForOrganization` / `queueForRoles` / `queueForDonors`.
 - `notificationJobs` provides an idempotent outbox keyed by `dedupeKey`.
-- `dispatchPending` (internal mutation, cron) delivers email through Resend and SMS through Twilio when env vars exist.
+- `dispatchPending` (internal action, cron) delivers email through Resend and SMS through Twilio when env vars exist.
+- Failed attempts are requeued up to three times with a backoff timestamp; provider message ids are stored.
 - Missing credentials → `skipped_no_provider`.
+- `sent` means the provider accepted the request; bounce/webhook processing is not implemented.
 - Push notifications are **not implemented**.
 - Existing `/notifications` in-app inbox remains available.
 
@@ -229,13 +231,13 @@ The UI surfaces these messages; it must not convert them into a success state.
 
 ```ts
 import { api } from "@/convex/_generated/api";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useQuery } from "convex/react";
 
 const search = useQuery(api.allocation.searchSupply, {
   requestId,
   scope: "city",
 });
-const allocate = useMutation(api.allocation.autoAllocate);
+const allocate = useAction(api.allocation.autoAllocate);
 await allocate({ requestId, scope: "city" });
 ```
 

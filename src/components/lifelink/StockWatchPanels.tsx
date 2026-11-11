@@ -13,7 +13,7 @@ import {
   Loader2,
   TimerOff,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { BloodGroupChip } from "./ui-bits";
 
@@ -173,22 +173,6 @@ export function BatchDeadlineEditor({
   const updateStock = useMutation(api.inventory.updateStock);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
-
-  useEffect(() => {
-    setDrafts((prev) => {
-      const next = { ...prev };
-      let changed = false;
-      for (const batch of batches ?? []) {
-        if (!(batch._id in next)) {
-          next[batch._id] = batch.expiryDate;
-          changed = true;
-        }
-      }
-      // Keep the same object when nothing is new so a fresh query reference
-      // never turns into a render loop.
-      return changed ? next : prev;
-    });
-  }, [batches]);
 
   const save = async (batch: DeadlineBatch) => {
     const value = drafts[batch._id] ?? batch.expiryDate;

@@ -72,7 +72,7 @@ import {
   Truck,
   UserRound,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { toast } from "sonner";
 
@@ -115,27 +115,25 @@ export default function HospitalDashboard() {
   const [stockCity, setStockCity] = useState("all");
   const [profileBusy, setProfileBusy] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
-  const [profileForm, setProfileForm] = useState({
-    contactPerson: "",
-    phone: "",
-    address: "",
-    city: "Pune",
-    area: "",
-  });
+  const [profileDraft, setProfileDraft] = useState<{
+    contactPerson: string;
+    phone: string;
+    address: string;
+    city: string;
+    area: string;
+  } | null>(null);
 
   const org = me?.organization;
+  const profileForm = profileDraft ?? {
+    contactPerson: org?.contactPerson ?? "",
+    phone: org?.phone ?? "",
+    address: org?.address ?? "",
+    city: org?.city ?? "Pune",
+    area: org?.area ?? "",
+  };
+  const updateProfileForm = (patch: Partial<typeof profileForm>) =>
+    setProfileDraft((current) => ({ ...(current ?? profileForm), ...patch }));
   const demoPresent = analytics?.demoDataPresent || (stock ?? []).some((s) => s.isDemo);
-
-  useEffect(() => {
-    if (!org) return;
-    setProfileForm({
-      contactPerson: org.contactPerson,
-      phone: org.phone,
-      address: org.address,
-      city: org.city,
-      area: org.area ?? "",
-    });
-  }, [org?._id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const stats = useMemo(() => {
     const rows = requests ?? [];
@@ -860,6 +858,7 @@ export default function HospitalDashboard() {
                 setProfileBusy(true);
                 try {
                   await updateOrganization(profileForm);
+                  setProfileDraft(null);
                   toast.success("Hospital profile updated");
                 } catch (err) {
                   setProfileError(err instanceof Error ? err.message : "Could not save profile.");
@@ -879,26 +878,26 @@ export default function HospitalDashboard() {
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="hosp-contact">Contact person</Label>
-                  <Input id="hosp-contact" value={profileForm.contactPerson} onChange={(e) => setProfileForm((p) => ({ ...p, contactPerson: e.target.value }))} />
+                  <Input id="hosp-contact" value={profileForm.contactPerson} onChange={(e) => updateProfileForm({ contactPerson: e.target.value })} />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="hosp-phone">Phone</Label>
-                  <Input id="hosp-phone" value={profileForm.phone} onChange={(e) => setProfileForm((p) => ({ ...p, phone: e.target.value }))} />
+                  <Input id="hosp-phone" value={profileForm.phone} onChange={(e) => updateProfileForm({ phone: e.target.value })} />
                 </div>
                 <div className="space-y-1.5 sm:col-span-2">
                   <Label htmlFor="hosp-address">Address</Label>
-                  <Input id="hosp-address" value={profileForm.address} onChange={(e) => setProfileForm((p) => ({ ...p, address: e.target.value }))} />
+                  <Input id="hosp-address" value={profileForm.address} onChange={(e) => updateProfileForm({ address: e.target.value })} />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="hosp-city">City</Label>
-                  <Select value={profileForm.city} onValueChange={(v) => setProfileForm((p) => ({ ...p, city: v }))}>
+                  <Select value={profileForm.city} onValueChange={(v) => updateProfileForm({ city: v })}>
                     <SelectTrigger id="hosp-city" className="w-full"><SelectValue /></SelectTrigger>
                     <SelectContent>{CITIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="hosp-area">Area</Label>
-                  <Input id="hosp-area" value={profileForm.area} onChange={(e) => setProfileForm((p) => ({ ...p, area: e.target.value }))} />
+                  <Input id="hosp-area" value={profileForm.area} onChange={(e) => updateProfileForm({ area: e.target.value })} />
                 </div>
               </div>
               <Button type="submit" className="h-10" disabled={profileBusy}>

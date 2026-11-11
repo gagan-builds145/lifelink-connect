@@ -42,10 +42,12 @@ import {
   Undo2,
   Zap,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 type Scope = "city" | "district" | "state" | "country";
+
+const receiptCode = () => `SUP-${Date.now().toString(36).slice(-5).toUpperCase()}`;
 
 const SCOPES: Array<{ key: Scope; label: string }> = [
   { key: "city", label: "This city" },
@@ -107,7 +109,6 @@ export default function SupplyCommand() {
   const [scope, setScope] = useState<Scope>("city");
   const [component, setComponent] = useState<Component>("red_cells");
   const [busy, setBusy] = useState<string | null>(null);
-  const [tempC, setTempC] = useState("4");
 
   const autoAllocate = useAction(api.allocation.autoAllocate);
   const dispatchTransfer = useMutation(api.allocation.dispatchTransfer);
@@ -125,16 +126,12 @@ export default function SupplyCommand() {
       ),
     [requests],
   );
+  const effectiveSelectedId =
+    selectedId ?? (openRequests[0] ? String(openRequests[0]._id) : null);
   const selected = useMemo(
-    () => openRequests.find((r) => String(r._id) === selectedId) ?? null,
-    [openRequests, selectedId],
+    () => openRequests.find((r) => String(r._id) === effectiveSelectedId) ?? null,
+    [openRequests, effectiveSelectedId],
   );
-
-  useEffect(() => {
-    if (!selectedId && openRequests.length > 0) {
-      setSelectedId(String(openRequests[0]._id));
-    }
-  }, [openRequests, selectedId]);
 
   const emergency = selected?.urgency === "emergency";
   const effectiveScope: Scope = emergency ? scope : "city";
@@ -239,7 +236,7 @@ export default function SupplyCommand() {
         await receiveTransfer({
           transferId,
           note: "Receipt confirmed from the supply command centre.",
-          evidenceCode: `SUP-${String(Date.now()).slice(-5)}`,
+          evidenceCode: receiptCode(),
         });
         toast.success("Receipt confirmed", {
           description: "Units were added to your facility ledger.",
@@ -395,8 +392,7 @@ export default function SupplyCommand() {
                       setScope(r.urgency === "emergency" ? "district" : "city");
                     }}
                     className={cn(
-                      "w-full rounded-xl border p-2.5 text-left transition-colors",
-                      String(r._id) === selectedId
+                      "w-full rounded-xl border p-2.5 text-left transition-colors",                          String(r._id) === effectiveSelectedId
                         ? "border-primary/30 bg-primary/[0.045]"
                         : "border-border bg-background hover:border-primary/20",
                     )}
@@ -1011,7 +1007,9 @@ export default function SupplyCommand() {
                       <p className="mt-1 text-[11px] font-semibold">{modelStatus.donorModel.version}</p>
                       <p className="text-[9.5px] text-muted-foreground">
                         {modelStatus.donorModel.sampleSize} labelled invitation(s) · trained{" "}
-                        {formatRelative(modelStatus.donorModel.trainedAt ?? Date.now())}
+                        {modelStatus.donorModel.trainedAt
+                          ? formatRelative(modelStatus.donorModel.trainedAt)
+                          : "unknown time"}
                       </p>
                     </>
                   ) : (

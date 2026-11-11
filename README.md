@@ -31,7 +31,7 @@ It is not a static prototype. It is also **not** certified medical software or a
 | **Drone operations** (`/drones`) | ✅ bases, fleet, airspace, route proxy, 12 preflight checks |
 | **Simulated mission lifecycle** | ✅ 15 states, telemetry, failure drills, handoff code, return-to-base |
 | **Admin control room** (`/admin/dashboard`) | ✅ network health, policy, agreements, sync, ML, safety, audit |
-| **Automated tests** | ✅ 28 TypeScript domain tests + 22 Python model/training/SITL-validation tests, executed on Python 3.13.15 and 3.10.12 |
+| **Automated tests** | ✅ 41 TypeScript tests (28 domain + 13 real Convex integration) + 22 Python model/training/SITL-validation tests, executed on Python 3.13.15 and 3.10.12 |
 | Real HMS/blood-bank production connector | ❌ framework + mock only |
 | PX4/ArduPilot SITL / MAVLink | ⚠️ SITL export + MAVSDK bridge present; **not executed** because no SITL runtime is installed |
 | Live API/E2E/load/security/live-SITL suites | ❌ not included |
@@ -119,14 +119,16 @@ Convex Cloud cannot reach `127.0.0.1`; use an HTTPS tunnel in development or dep
 ```powershell
 bun tsc -b --noEmit
 bunx convex dev --once
+bun run lint
 bun test
 bun test --reporter=junit --reporter-outfile=docs/test-results.xml
+bun run build -- --minify false
 
 $env:PYTHONPATH="ml_service;drone_bridge"
 python -m pytest ml_service/tests drone_bridge/tests -q
 ```
 
-Executed results: **28 TypeScript tests / 147 assertions** and **22 Python tests on both Python 3.13.15 and 3.10.12**. Bundled ML metrics are synthetic-data evidence only. Coverage, deployed API, load, browser E2E, security and live SITL tests were not run.
+Executed results: **41 TypeScript tests / 228 assertions** and **22 Python tests on both Python 3.13.15 and 3.10.12**. The integration suite runs the real Convex modules against an in-memory transactional backend. ESLint has 0 errors and 14 Fast Refresh warnings in vendored UI/platform files. The production Vite build passed with `--minify false`; the minified bundle exceeded the runner limit during chunk rendering. Bundled ML metrics are synthetic-data evidence only. Coverage, browser E2E, live-provider, live-hospital, load, penetration and live SITL tests were not run; RBAC role guards are covered by the integration suite.
 
 ## 6. Demo data
 

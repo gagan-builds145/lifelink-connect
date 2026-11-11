@@ -7,7 +7,7 @@ import {
   type NetworkMapRoute,
   type NetworkMapZone,
 } from "@/components/lifelink/NetworkMap";
-import { BloodGroupChip, StatCard } from "@/components/lifelink/ui-bits";
+import { StatCard } from "@/components/lifelink/ui-bits";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
@@ -40,7 +40,7 @@ import {
   WifiOff,
   XCircle,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 function Section({
@@ -102,7 +102,7 @@ export default function DroneOps() {
   const [droneChoice, setDroneChoice] = useState("");
   const [routeAuthorized, setRouteAuthorized] = useState(true);
   const [containerTemp, setContainerTemp] = useState("4");
-  const [deliveryCode, setDeliveryCode] = useState("");
+  const [deliveryCodeDraft, setDeliveryCodeDraft] = useState<string | null>(null);
   const [failureKind, setFailureKind] = useState<
     "battery" | "gps" | "link" | "weather" | "navigation" | "temperature" | "landing_zone"
   >("battery");
@@ -142,27 +142,22 @@ export default function DroneOps() {
   const canOperate = user?.role === "drone_ops" || user?.role === "admin";
   const role = (user?.role ?? "drone_ops") as AppRole;
 
+  const defaultMissionId = useMemo(() => {
+    const list = missions ?? [];
+    if (list.length === 0) return null;
+    const active = list.find((m) => !["COMPLETED", "ABORTED"].includes(m.state));
+    return String((active ?? list[0])._id);
+  }, [missions]);
   const selectedMission = useMemo(
-    () => (missions ?? []).find((m) => String(m._id) === selectedId) ?? null,
-    [missions, selectedId],
+    () => (missions ?? []).find((m) => String(m._id) === (selectedId ?? defaultMissionId)) ?? null,
+    [missions, selectedId, defaultMissionId],
   );
+  const selectedMissionId = selectedMission ? String(selectedMission._id) : null;
   const detail = useQuery(
     api.drones.missionDetail,
     selectedMission ? { missionId: selectedMission._id } : "skip",
   );
-
-  useEffect(() => {
-    if (!selectedId && (missions ?? []).length > 0) {
-      const active = (missions ?? []).find(
-        (m) => !["COMPLETED", "ABORTED"].includes(m.state),
-      );
-      setSelectedId(String((active ?? missions![0])._id));
-    }
-  }, [missions, selectedId]);
-
-  useEffect(() => {
-    if (detail?.mission.deliveryCode) setDeliveryCode(detail.mission.deliveryCode);
-  }, [detail?.mission.deliveryCode]);
+  const deliveryCode = deliveryCodeDraft ?? detail?.mission.deliveryCode ?? "";
 
   const availableTransfers = (transfers ?? []).filter(
     (t) => ["reserved", "approved"].includes(t.status),
@@ -260,6 +255,7 @@ export default function DroneOps() {
         },
       );
       setSelectedId(String(result.missionId));
+      setDeliveryCodeDraft(null);
       setTab("live");
     } catch (error) {
       toast.error("Could not create the mission", {
@@ -501,10 +497,13 @@ export default function DroneOps() {
                     <button
                       key={m._id}
                       type="button"
-                      onClick={() => setSelectedId(String(m._id))}
+                      onClick={() => {
+                        setSelectedId(String(m._id));
+                        setDeliveryCodeDraft(null);
+                      }}
                       className={cn(
                         "w-full rounded-xl border p-2.5 text-left transition-colors",
-                        String(m._id) === selectedId
+                        String(m._id) === selectedMissionId
                           ? "border-primary/30 bg-primary/[0.045]"
                           : "border-border bg-background hover:border-primary/20",
                       )}
@@ -790,7 +789,7 @@ export default function DroneOps() {
                             </label>
                             <Input
                               value={deliveryCode}
-                              onChange={(event) => setDeliveryCode(event.target.value)}
+                              onChange={(event) => setDeliveryCodeDraft(event.target.value)}
                               className="mt-0.5 h-8 w-28 font-mono text-[11px] tracking-[0.15em]"
                               placeholder="123456"
                             />

@@ -32,7 +32,7 @@ This is a working software system, but it is **not** certified medical software,
 
 - **Bundled metrics are synthetic.** The checked-in XGBoost artifacts were trained on a deterministic generated dataset, not hospital demand. The measured MAE/RMSE and improvement versus baseline are evidence that the training/evaluation pipeline works, **not** evidence of clinical or operational accuracy.
 - **Python 3.13 compatibility is verified locally, not in the Docker image.** The complete 22-test suite passed on Python 3.13.15 and 3.10.12 using the pinned requirements. The Docker image was not built because Docker is unavailable in this environment.
-- **Convex integration was not executed end-to-end.** Unit/API tests exercise the FastAPI service with `TestClient`. No persistent ML server was exposed to the Convex Cloud deployment during this run, so the authenticated Convex action path and live donor invitation scoring have not been tested through HTTPS. `ML_SERVICE_URL` and `ML_SERVICE_TOKEN` are required.
+- **Convex → ML integration was not executed against Cloud.** The ML service passed a real authenticated HTTP probe, and the active donor invitation path passes in the in-memory Convex integration suite. No persistent ML server was exposed to the Convex Cloud deployment, so the production HTTPS action path remains unverified. `ML_SERVICE_URL` and `ML_SERVICE_TOKEN` are required.
 - **No drift monitoring or automatic production retraining approval.** An admin-triggered retraining action and a scheduled refresh path exist, but drift detection, approval gates, rollback and model monitoring are not implemented.
 - **Forecast method limitations.** The served model is a global XGBoost regressor with lag/rolling/calendar features and a one-step chronological holdout. Recursive 30-day forecasts can compound error; the reported holdout metrics are not multi-step backtest guarantees.
 - **The active donor ranker is the Python Random Forest, but its live path is unverified.** Automatic allocation now commits stock first, then calls the authenticated Python batch endpoint for already-eligible, consented donors and stores model provenance on each invitation. If the service is unavailable, invitations use an explicit distance-only fallback and no probability is stored. The Python API and explainability are tested in-process; no live Convex-to-HTTPS run was possible here. Medical eligibility remains deterministic.
@@ -49,9 +49,9 @@ This is a working software system, but it is **not** certified medical software,
 
 - **No edge rate limiting/WAF.** Existing request/contact endpoints have database-backed limits, but new supply/drone/admin endpoints rely on auth and Convex platform protections.
 - **No SQL injection surface** because there is no SQL, but no automated security scan or penetration test was run.
-- **No automated API, database-concurrency, real-time, geospatial API, security, load or browser end-to-end suite.** Executed: 28 TypeScript domain/ranking tests and 22 Python ML/SITL-validation/training tests on both Python 3.13.15 and 3.10.12. The FastAPI endpoints were tested in-process, not through the deployed Convex action path (see [test-report.md](test-report.md)).
+- **API and concurrency tests are local, not deployed.** Executed: 41 TypeScript tests (28 domain/ranking plus 13 real Convex integration tests), 22 Python tests on both Python 3.13.15 and 3.10.12, and an authenticated real-socket ML probe. The Convex suite uses `convex-test`, so it verifies transactions and persisted rows but not live WebSocket propagation, multi-region behavior or production contention. Role-guard smoke tests are included, but full browser E2E, load and penetration suites are still absent (see [test-report.md](test-report.md)).
 - **Code coverage was not measured.** No coverage tool is configured; do not claim a percentage.
-- **Concurrency correctness relies on Convex serializable mutations** and re-checking free stock. A multi-client simultaneous reservation test has not been automated.
+- **Concurrency correctness relies on Convex serializable mutations** and re-checking free stock. The in-memory suite verified one winner when two requests competed for the same units, but production multi-client contention is still unverified.
 - **No production backup/restore drill.** Backups are a deployment concern and must be configured and tested.
 - **No offline mode or native mobile app.**
 - **No monitoring/alerting integration** beyond the admin dashboard and Convex logs.
@@ -61,13 +61,13 @@ This is a working software system, but it is **not** certified medical software,
 | Gate | Status |
 | --- | --- |
 | Deterministic compatibility and release filters | Implemented, needs clinical sign-off |
-| Atomic reservations and protected reserve | Implemented, concurrency test not automated |
+| Atomic reservations and protected reserve | Implemented; local concurrency and protected-reserve tests pass |
 | Donor consent gate | Implemented, privacy review pending |
 | Facility integration framework | Implemented for pull + mock; production connector pending |
 | Genuine ML with chronological evaluation | XGBoost/Random Forest/Isolation Forest implemented and tested on synthetic data; real data validation pending |
 | Drone mission state machine / preflight / simulation | Implemented in software |
 | PX4/ArduPilot SITL / MAVSDK | Bridge scaffold + export implemented; **not executed** |
-| Automated API/E2E/load/live-SITL/security tests | **Not implemented** |
+| Automated browser E2E/load/live-SITL/penetration tests | **Not implemented** (API/RBAC and SITL safety checks are executed) |
 | Rate limiting, WAF, monitoring, backups | Partial / deployment work required |
 | Clinical, legal and DGCA approvals | **Not obtained** |
 | Production deployment | **Not performed** |

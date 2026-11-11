@@ -60,10 +60,8 @@ import {
   type RequestStatus,
 } from "@/lib/blood";
 import { useMutation, useQuery } from "convex/react";
-import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertTriangle,
-  ArrowRight,
   BarChart3,
   Building2,
   CalendarHeart,
@@ -74,7 +72,6 @@ import {
   FileClock,
   HeartHandshake,
   History,
-  Info,
   Loader2,
   MapPin,
   PackagePlus,
@@ -84,8 +81,6 @@ import {
   Search,
   ShieldCheck,
   Siren,
-  Sparkles,
-  Truck,
   UserRound,
   Users,
 } from "lucide-react";

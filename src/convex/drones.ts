@@ -576,7 +576,7 @@ export const planMission = mutation({
       note: "Preflight checks executed automatically.",
       actorUserId: user._id,
     });
-    mission = await transition(
+    await transition(
       ctx,
       mission,
       preflight.passed ? "PREFLIGHT_PASSED" : "HOLD",

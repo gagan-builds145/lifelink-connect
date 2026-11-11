@@ -468,17 +468,14 @@ export function planDroneRoute(input: {
 
   const zones = input.zones ?? [];
   let chosen = candidates[0];
-  let intersects: string[] = [];
   for (const candidate of candidates) {
     const hit = zones.filter(
       (z) => z.kind === "restricted" && candidate.mids.some((p) => pointInZone(p, z)),
     );
     if (hit.length === 0) {
       chosen = candidate;
-      intersects = [];
       break;
     }
-    intersects = hit.map((z) => z.id);
   }
 
   const outbound: Waypoint[] = [

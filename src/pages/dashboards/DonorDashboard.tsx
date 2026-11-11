@@ -1,7 +1,6 @@
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { DashboardShell } from "@/components/lifelink/DashboardShell";
-import { RequestTimeline } from "@/components/lifelink/RequestTimeline";
 import {
   BloodGroupChip,
   DemoBadge,
@@ -71,7 +70,7 @@ import {
   UserRound,
   Users,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { toast } from "sonner";
 
@@ -92,7 +91,6 @@ export default function DonorDashboard() {
   const setAvailability = useMutation(api.profiles.setAvailability);
   const updateProfile = useMutation(api.profiles.updateDonorProfile);
   const createOffer = useMutation(api.requests.createOffer);
-  const withdrawOffer = useMutation(api.requests.withdrawOffer);
   const registerCamp = useMutation(api.camps.register);
   const cancelCamp = useMutation(api.camps.cancelRegistration);
   const setLocationConsent = useMutation(api.donorFallback.setLocationConsent);
@@ -108,33 +106,31 @@ export default function DonorDashboard() {
   const [campBusy, setCampBusy] = useState<string | null>(null);
   const [profileBusy, setProfileBusy] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
-  const [profileForm, setProfileForm] = useState({
-    phone: "",
-    address: "",
-    city: "Pune",
-    area: "",
-    preferredCenter: "",
-    shareContact: true,
-  });
+  const [profileDraft, setProfileDraft] = useState<{
+    phone: string;
+    address: string;
+    city: string;
+    area: string;
+    preferredCenter: string;
+    shareContact: boolean;
+  } | null>(null);
 
   const donor = me?.donor;
+  const profileForm = profileDraft ?? {
+    phone: donor?.phone ?? "",
+    address: donor?.address ?? "",
+    city: donor?.city ?? "Pune",
+    area: donor?.area ?? "",
+    preferredCenter: donor?.preferredCenter ?? "",
+    shareContact: donor?.shareContact ?? true,
+  };
+  const updateProfileForm = (patch: Partial<typeof profileForm>) =>
+    setProfileDraft((current) => ({ ...(current ?? profileForm), ...patch }));
   const registrationMap = useMemo(() => {
     const map = new Map<string, string>();
     for (const reg of registrations ?? []) map.set(String(reg.campId), reg.status);
     return map;
   }, [registrations]);
-
-  useEffect(() => {
-    if (!donor) return;
-    setProfileForm({
-      phone: donor.phone,
-      address: donor.address,
-      city: donor.city,
-      area: donor.area ?? "",
-      preferredCenter: donor.preferredCenter ?? "",
-      shareContact: donor.shareContact,
-    });
-  }, [donor?._id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const demoPresent =
     (nearby ?? []).some((r) => r.isDemo) ||
@@ -224,17 +220,6 @@ export default function DonorDashboard() {
     }
   };
 
-  const withdrawn = async (id: Id<"bloodRequests">) => {
-    try {
-      await withdrawOffer({ id });
-      toast("Offer withdrawn");
-    } catch (err) {
-      toast.error("Could not withdraw", {
-        description: err instanceof Error ? err.message : "Please try again.",
-      });
-    }
-  };
-
   const handleCamp = async (campId: Id<"bloodCamps">, registered: boolean) => {
     setCampBusy(campId);
     try {
@@ -269,6 +254,7 @@ export default function DonorDashboard() {
         preferredCenter: profileForm.preferredCenter,
         shareContact: profileForm.shareContact,
       });
+      setProfileDraft(null);
       toast.success("Profile updated", { description: "Your shared donor record is up to date." });
     } catch (err) {
       setProfileError(err instanceof Error ? err.message : "Could not save profile.");
@@ -904,26 +890,26 @@ export default function DonorDashboard() {
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="profile-phone">Phone</Label>
-                  <Input id="profile-phone" value={profileForm.phone} onChange={(e) => setProfileForm((p) => ({ ...p, phone: e.target.value }))} />
+                  <Input id="profile-phone" value={profileForm.phone} onChange={(e) => updateProfileForm({ phone: e.target.value })} />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="profile-city">City</Label>
-                  <Select value={profileForm.city} onValueChange={(v) => setProfileForm((p) => ({ ...p, city: v }))}>
+                  <Select value={profileForm.city} onValueChange={(v) => updateProfileForm({ city: v })}>
                     <SelectTrigger id="profile-city" className="w-full"><SelectValue /></SelectTrigger>
                     <SelectContent>{CITIES.map((city) => <SelectItem key={city} value={city}>{city}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-1.5 sm:col-span-2">
                   <Label htmlFor="profile-address">Address / locality</Label>
-                  <Input id="profile-address" value={profileForm.address} onChange={(e) => setProfileForm((p) => ({ ...p, address: e.target.value }))} />
+                  <Input id="profile-address" value={profileForm.address} onChange={(e) => updateProfileForm({ address: e.target.value })} />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="profile-area">Area</Label>
-                  <Input id="profile-area" value={profileForm.area} onChange={(e) => setProfileForm((p) => ({ ...p, area: e.target.value }))} />
+                  <Input id="profile-area" value={profileForm.area} onChange={(e) => updateProfileForm({ area: e.target.value })} />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="profile-center">Preferred center</Label>
-                  <Input id="profile-center" value={profileForm.preferredCenter} onChange={(e) => setProfileForm((p) => ({ ...p, preferredCenter: e.target.value }))} />
+                  <Input id="profile-center" value={profileForm.preferredCenter} onChange={(e) => updateProfileForm({ preferredCenter: e.target.value })} />
                 </div>
               </div>
               <div className="flex items-center justify-between gap-4 rounded-xl border border-border bg-muted/25 p-3">
@@ -935,7 +921,7 @@ export default function DonorDashboard() {
                 </div>
                 <Switch
                   checked={profileForm.shareContact}
-                  onCheckedChange={(v) => setProfileForm((p) => ({ ...p, shareContact: v }))}
+                  onCheckedChange={(v) => updateProfileForm({ shareContact: v })}
                   aria-label="Share phone with authorized coordinators"
                 />
               </div>

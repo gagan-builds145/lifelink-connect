@@ -7,17 +7,17 @@ workspace. It is not a certification or a claim of clinical or aviation safety.
 
 | Area | Classification | Evidence / blocker |
 | --- | --- | --- |
-| Deterministic compatibility, eligibility, allocation planning | **Implemented and verified** | 28 TypeScript domain/ranking tests, 147 assertions |
+| Deterministic compatibility, eligibility, allocation planning | **Implemented and verified** | 41 TypeScript tests / 228 assertions, including real Convex reservation, dispatch, receipt and role-guard integration |
 | XGBoost demand model loading, training and prediction | **Implemented and verified** | 22 Python tests on Python 3.13.15 and 3.10.12; synthetic holdout metrics |
 | Random Forest donor batch scoring and explainability | **Implemented and verified at the API level** | Python batch test, consent rejection, top model-wide factors |
 | Isolation Forest anomaly detection | **Implemented and verified at the API level** | Python tests and persisted-alert action code |
 | ML service authentication and readiness | **Implemented and verified** | Bearer token tests; `/livez` public, `/health` authenticated when configured |
 | ML HTTP timeouts/retries | **Implemented but not load-tested** | Shared Convex client; no deployed failure-injection test |
-| Donor invitation scoring in the active allocation transaction | **Implemented but not fully verified** | Typechecks; API tested in-process; no live Convex Cloud → HTTPS run |
+| Donor invitation scoring in the active allocation transaction | **Implemented and locally verified; live ML path unverified** | Auto-allocation, consent gate, invitation, acceptance, revoked consent and distance fallback pass in `convex-test`; no live Convex Cloud → HTTPS run |
 | Resend email and Twilio SMS delivery | **Awaiting external credentials** | Outbox, retries/status recording and in-app fallback implemented; no provider credentials available |
-| Hospital/blood-bank connector framework and mock sync | **Implemented but not fully verified** | Pull adapter + mock; typechecked only in this run, with no real HMS credentials or sandbox sync |
+| Hospital/blood-bank connector framework and mock sync | **Implemented and locally verified; live sandbox untested** | Mock sync idempotency, persisted inventory and missing-credential failure recording pass in `convex-test`; no real HMS credentials or sandbox sync |
 | Browser role dashboards and screenshots | **Not executed** | No browser automation session was run in this workspace |
-| Concurrency/load/security test matrix | **Not executed** | No seeded load harness, penetration test or concurrency suite |
+| Concurrency/load/security test matrix | **Partially executed** | In-memory concurrent reservation test passes; no multi-client production load, penetration or security suite |
 | PX4/ArduPilot SITL upload, telemetry and abort | **Simulation only / not executed** | Export, validation and dry-run tests pass; no SITL/MAVSDK runtime installed |
 | Production Convex deployment | **Awaiting external credentials and approval** | Development deployment only |
 | Production ML HTTPS deployment | **Awaiting infrastructure** | Dockerfile and runbook exist; no Docker host or TLS endpoint provisioned |
@@ -48,7 +48,8 @@ workspace. It is not a certification or a claim of clinical or aviation safety.
 - No real email/SMS delivery test.
 - No real hospital connection or sandbox certification.
 - No browser/E2E screenshots or full role walkthrough.
-- No load, concurrency, security or penetration test.
+- No production load, penetration or multi-client concurrency test; only the in-memory transactional suite.
+- No minified production bundle: Vite completed the unminified production build, but minification exceeded the runner limit.
 - No SITL execution or physical drone operation.
 - No clinical, privacy or aviation approval.
 

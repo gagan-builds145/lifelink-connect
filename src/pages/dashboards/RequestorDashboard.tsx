@@ -4,7 +4,6 @@ import { DashboardShell } from "@/components/lifelink/DashboardShell";
 import { RequestForm } from "@/components/lifelink/RequestForm";
 import {
   BloodGroupChip,
-  DemoBadge,
   DemoDataBanner,
   EmptyState,
   StatCard,
@@ -61,7 +60,7 @@ import {
   Trash2,
   UserRound,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { toast } from "sonner";
 
@@ -78,23 +77,21 @@ export default function RequestorDashboard() {
   const [cancelBusy, setCancelBusy] = useState<string | null>(null);
   const [profileBusy, setProfileBusy] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
-  const [profileForm, setProfileForm] = useState({
-    phone: "",
-    city: "Pune",
-    requestorType: "family" as RequestorType,
-  });
+  const [profileDraft, setProfileDraft] = useState<{
+    phone: string;
+    city: string;
+    requestorType: RequestorType;
+  } | null>(null);
 
   const requestor = me?.requestor;
   const demoPresent = (requests ?? []).some((r) => r.isDemo);
-
-  useEffect(() => {
-    if (!requestor) return;
-    setProfileForm({
-      phone: requestor.phone,
-      city: requestor.city,
-      requestorType: requestor.requestorType,
-    });
-  }, [requestor?._id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const profileForm = profileDraft ?? {
+    phone: requestor?.phone ?? "",
+    city: requestor?.city ?? "Pune",
+    requestorType: requestor?.requestorType ?? "family",
+  };
+  const updateProfileForm = (patch: Partial<typeof profileForm>) =>
+    setProfileDraft((current) => ({ ...(current ?? profileForm), ...patch }));
 
   const stats = useMemo(() => {
     const rows = requests ?? [];
@@ -134,6 +131,7 @@ export default function RequestorDashboard() {
         city: profileForm.city,
         requestorType: profileForm.requestorType,
       });
+      setProfileDraft(null);
       toast.success("Requestor profile updated");
     } catch (err) {
       setProfileError(err instanceof Error ? err.message : "Could not save profile.");
@@ -459,18 +457,18 @@ export default function RequestorDashboard() {
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="req-prof-phone">Phone</Label>
-                  <Input id="req-prof-phone" value={profileForm.phone} onChange={(e) => setProfileForm((p) => ({ ...p, phone: e.target.value }))} />
+                  <Input id="req-prof-phone" value={profileForm.phone} onChange={(e) => updateProfileForm({ phone: e.target.value })} />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="req-prof-city">City</Label>
-                  <Select value={profileForm.city} onValueChange={(v) => setProfileForm((p) => ({ ...p, city: v }))}>
+                  <Select value={profileForm.city} onValueChange={(v) => updateProfileForm({ city: v })}>
                     <SelectTrigger id="req-prof-city" className="w-full"><SelectValue /></SelectTrigger>
                     <SelectContent>{CITIES.map((city) => <SelectItem key={city} value={city}>{city}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="req-prof-type">Relationship</Label>
-                  <Select value={profileForm.requestorType} onValueChange={(v) => setProfileForm((p) => ({ ...p, requestorType: v as RequestorType }))}>
+                  <Select value={profileForm.requestorType} onValueChange={(v) => updateProfileForm({ requestorType: v as RequestorType })}>
                     <SelectTrigger id="req-prof-type" className="w-full"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {REQUESTOR_TYPES.map((type) => <SelectItem key={type} value={type}>{REQUESTOR_TYPE_LABELS[type]}</SelectItem>)}

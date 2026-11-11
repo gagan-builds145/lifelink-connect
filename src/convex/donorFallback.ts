@@ -2,14 +2,7 @@ import { v } from "convex/values";
 import { action, internalQuery, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
-import {
-  audit,
-  getDonorProfile,
-  requireOrganization,
-  requireStaff,
-  requireUser,
-  roleOf,
-} from "./lib/helpers";
+import { audit, getDonorProfile, requireStaff, requireUser } from "./lib/helpers";
 import { queueForDonors, queueForOrganization } from "./lib/messaging";
 import { DONOR_FALLBACK_NOTE } from "../lib/supply";
 import type { DonorEscalationResult } from "./donorPrediction";

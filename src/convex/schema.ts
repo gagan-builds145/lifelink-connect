@@ -241,6 +241,8 @@ const schema = defineSchema(
 
     bloodRequests: defineTable({
       requestId: v.string(),
+      /** Client-generated retry key; a double submit returns the same request. */
+      clientRequestId: v.optional(v.string()),
       source: v.union(v.literal("requestor"), v.literal("hospital")),
       createdByUserId: v.optional(v.id("users")),
       createdByOrgId: v.optional(v.id("organizations")),
@@ -279,7 +281,8 @@ const schema = defineSchema(
       .index("by_status", ["status"])
       .index("by_city", ["city"])
       .index("by_assigned_org", ["assignedOrgId"])
-      .index("by_hospital_org", ["hospitalOrgId"]),
+      .index("by_hospital_org", ["hospitalOrgId"])
+      .index("by_client_request", ["createdByUserId", "clientRequestId"]),
 
     requestStatusHistory: defineTable({
       requestId: v.id("bloodRequests"),

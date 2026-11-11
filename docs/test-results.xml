@@ -1,53 +1,76 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="bun test" tests="28" assertions="147" failures="0" skipped="0" time="0.146227228">
-  <testsuite name="tests/donorRanking.test.ts" file="tests/donorRanking.test.ts" tests="2" assertions="2" failures="0" skipped="0" time="0.020824956" hostname="sandbox">
-    <testsuite name="donor ML ranking" file="tests/donorRanking.test.ts" line="4" tests="2" assertions="2" failures="0" skipped="0" time="0.003" hostname="sandbox">
-      <testcase name="orders scored donors by probability, then distance" classname="donor ML ranking" time="0.003645" file="tests/donorRanking.test.ts" line="5" assertions="1" />
-      <testcase name="uses distance only when no model probability exists" classname="donor ML ranking" time="0.000098" file="tests/donorRanking.test.ts" line="20" assertions="1" />
+<testsuites name="bun test" tests="41" assertions="228" failures="0" skipped="0" time="0.284565874">
+  <testsuite name="tests/donorRanking.test.ts" file="tests/donorRanking.test.ts" tests="2" assertions="2" failures="0" skipped="0" time="0.004027411" hostname="sandbox">
+    <testsuite name="donor ML ranking" file="tests/donorRanking.test.ts" line="4" tests="2" assertions="2" failures="0" skipped="0" time="0" hostname="sandbox">
+      <testcase name="orders scored donors by probability, then distance" classname="donor ML ranking" time="0.000562" file="tests/donorRanking.test.ts" line="5" assertions="1" />
+      <testcase name="uses distance only when no model probability exists" classname="donor ML ranking" time="0.000101" file="tests/donorRanking.test.ts" line="20" assertions="1" />
     </testsuite>
   </testsuite>
-  <testsuite name="tests/supply.test.ts" file="tests/supply.test.ts" tests="26" assertions="145" failures="0" skipped="0" time="0.0537043" hostname="sandbox">
-    <testsuite name="supply eligibility primitives" file="tests/supply.test.ts" line="92" tests="4" assertions="22" failures="0" skipped="0" time="0.009" hostname="sandbox">
-      <testcase name="daysUntil handles valid and invalid dates" classname="supply eligibility primitives" time="0.000426" file="tests/supply.test.ts" line="93" assertions="4" />
-      <testcase name="component-specific compatibility is deterministic" classname="supply eligibility primitives" time="0.000196" file="tests/supply.test.ts" line="100" assertions="7" />
-      <testcase name="routine requests stay city-only while emergencies can widen scope" classname="supply eligibility primitives" time="0.009312" file="tests/supply.test.ts" line="110" assertions="7" />
-      <testcase name="emergency state and country search exclude other states unless country-wide" classname="supply eligibility primitives" time="0.000104" file="tests/supply.test.ts" line="135" assertions="4" />
+  <testsuite name="tests/integration.test.ts" file="tests/integration.test.ts" tests="13" assertions="81" failures="0" skipped="0" time="0.214820475" hostname="sandbox">
+    <testsuite name="Convex blood supply workflow" file="tests/integration.test.ts" line="165" tests="7" assertions="34" failures="0" skipped="0" time="0.07" hostname="sandbox">
+      <testcase name="hospital request, atomic reservation, dispatch and receipt update the ledger" classname="Convex blood supply workflow" time="0.035082" file="tests/integration.test.ts" line="166" assertions="11" />
+      <testcase name="insufficient stock is rejected without changing the reservation" classname="Convex blood supply workflow" time="0.0049" file="tests/integration.test.ts" line="228" assertions="3" />
+      <testcase name="expired and incompatible batches are blocked before allocation" classname="Convex blood supply workflow" time="0.019891" file="tests/integration.test.ts" line="250" assertions="7" />
+      <testcase name="two requests cannot reserve the same units concurrently" classname="Convex blood supply workflow" time="0.005722" file="tests/integration.test.ts" line="316" assertions="3" />
+      <testcase name="reservation cancellation returns units to the available ledger" classname="Convex blood supply workflow" time="0.002782" file="tests/integration.test.ts" line="349" assertions="3" />
+      <testcase name="role guards reject hospital-only and staff-only actions for the wrong account" classname="Convex blood supply workflow" time="0.002148" file="tests/integration.test.ts" line="381" assertions="3" />
+      <testcase name="duplicate form retries return the same request instead of creating a second one" classname="Convex blood supply workflow" time="0.003643" file="tests/integration.test.ts" line="429" assertions="4" />
+    </testsuite>
+    <testsuite name="Convex facility connectors" file="tests/integration.test.ts" line="448" tests="1" assertions="8" failures="0" skipped="0" time="0.011" hostname="sandbox">
+      <testcase name="mock sync is idempotent and a live sync with missing credentials records failure" classname="Convex facility connectors" time="0.011982" file="tests/integration.test.ts" line="449" assertions="8" />
+    </testsuite>
+    <testsuite name="Convex donor fallback and notifications" file="tests/integration.test.ts" line="513" tests="3" assertions="29" failures="0" skipped="0" time="0.026" hostname="sandbox">
+      <testcase name="auto allocation reserves stock first, then invites a consented eligible donor once" classname="Convex donor fallback and notifications" time="0.016767" file="tests/integration.test.ts" line="514" assertions="20" />
+      <testcase name="withdrawn consent prevents donor invitations" classname="Convex donor fallback and notifications" time="0.007877" file="tests/integration.test.ts" line="602" assertions="4" />
+      <testcase name="notification retry records missing providers and does not claim delivery" classname="Convex donor fallback and notifications" time="0.003245" file="tests/integration.test.ts" line="660" assertions="5" />
+    </testsuite>
+    <testsuite name="Convex drone simulation boundary" file="tests/integration.test.ts" line="700" tests="2" assertions="10" failures="0" skipped="0" time="0.023" hostname="sandbox">
+      <testcase name="a valid simulated mission reaches preflight and can be aborted without hardware" classname="Convex drone simulation boundary" time="0.021238" file="tests/integration.test.ts" line="754" assertions="7" />
+      <testcase name="unauthorized route holds preflight and blocks dispatch" classname="Convex drone simulation boundary" time="0.002498" file="tests/integration.test.ts" line="791" assertions="3" />
+    </testsuite>
+  </testsuite>
+  <testsuite name="tests/supply.test.ts" file="tests/supply.test.ts" tests="26" assertions="145" failures="0" skipped="0" time="0.058275928" hostname="sandbox">
+    <testsuite name="supply eligibility primitives" file="tests/supply.test.ts" line="92" tests="4" assertions="22" failures="0" skipped="0" time="0" hostname="sandbox">
+      <testcase name="daysUntil handles valid and invalid dates" classname="supply eligibility primitives" time="0.000032" file="tests/supply.test.ts" line="93" assertions="4" />
+      <testcase name="component-specific compatibility is deterministic" classname="supply eligibility primitives" time="0.000048" file="tests/supply.test.ts" line="100" assertions="7" />
+      <testcase name="routine requests stay city-only while emergencies can widen scope" classname="supply eligibility primitives" time="0.000142" file="tests/supply.test.ts" line="110" assertions="7" />
+      <testcase name="emergency state and country search exclude other states unless country-wide" classname="supply eligibility primitives" time="0.00004" file="tests/supply.test.ts" line="135" assertions="4" />
     </testsuite>
     <testsuite name="candidate eligibility and ranking" file="tests/supply.test.ts" line="160" tests="4" assertions="15" failures="0" skipped="0" time="0" hostname="sandbox">
-      <testcase name="protected reserve is excluded from usable units" classname="candidate eligibility and ranking" time="0.000283" file="tests/supply.test.ts" line="161" assertions="3" />
-      <testcase name="expired, unreleased, unscreened and incompatible units are blocked" classname="candidate eligibility and ranking" time="0.000107" file="tests/supply.test.ts" line="171" assertions="5" />
-      <testcase name="a fully protected batch has no allocatable units" classname="candidate eligibility and ranking" time="0.000025" file="tests/supply.test.ts" line="191" assertions="3" />
-      <testcase name="ranking filters before scoring and prefers nearer, longer-dated stock" classname="candidate eligibility and ranking" time="0.000225" file="tests/supply.test.ts" line="200" assertions="4" />
+      <testcase name="protected reserve is excluded from usable units" classname="candidate eligibility and ranking" time="0.000065" file="tests/supply.test.ts" line="161" assertions="3" />
+      <testcase name="expired, unreleased, unscreened and incompatible units are blocked" classname="candidate eligibility and ranking" time="0.000057" file="tests/supply.test.ts" line="171" assertions="5" />
+      <testcase name="a fully protected batch has no allocatable units" classname="candidate eligibility and ranking" time="0.00002" file="tests/supply.test.ts" line="191" assertions="3" />
+      <testcase name="ranking filters before scoring and prefers nearer, longer-dated stock" classname="candidate eligibility and ranking" time="0.000099" file="tests/supply.test.ts" line="200" assertions="4" />
     </testsuite>
-    <testsuite name="allocation planning" file="tests/supply.test.ts" line="220" tests="3" assertions="13" failures="0" skipped="0" time="0.007" hostname="sandbox">
-      <testcase name="shortage maths never returns a negative shortfall" classname="allocation planning" time="0.000065" file="tests/supply.test.ts" line="221" assertions="3" />
-      <testcase name="partial allocation spans facilities, respects reserves and reports shortfall" classname="allocation planning" time="0.007907" file="tests/supply.test.ts" line="233" assertions="6" />
-      <testcase name="allocation stops at the facility cap" classname="allocation planning" time="0.000503" file="tests/supply.test.ts" line="252" assertions="4" />
+    <testsuite name="allocation planning" file="tests/supply.test.ts" line="220" tests="3" assertions="13" failures="0" skipped="0" time="0" hostname="sandbox">
+      <testcase name="shortage maths never returns a negative shortfall" classname="allocation planning" time="0.000034" file="tests/supply.test.ts" line="221" assertions="3" />
+      <testcase name="partial allocation spans facilities, respects reserves and reports shortfall" classname="allocation planning" time="0.000098" file="tests/supply.test.ts" line="233" assertions="6" />
+      <testcase name="allocation stops at the facility cap" classname="allocation planning" time="0.00013" file="tests/supply.test.ts" line="252" assertions="4" />
     </testsuite>
     <testsuite name="drone planning and preflight" file="tests/supply.test.ts" line="277" tests="5" assertions="32" failures="0" skipped="0" time="0" hostname="sandbox">
-      <testcase name="returns a multi-leg corridor with a return leg, never claiming approval" classname="drone planning and preflight" time="0.000463" file="tests/supply.test.ts" line="280" assertions="8" />
-      <testcase name="detects when both corridor alternatives enter a restricted zone" classname="drone planning and preflight" time="0.000219" file="tests/supply.test.ts" line="297" assertions="2" />
-      <testcase name="payload and storage rules are component-specific" classname="drone planning and preflight" time="0.000078" file="tests/supply.test.ts" line="311" assertions="5" />
-      <testcase name="preflight passes a safe mission and fails each critical safety gate" classname="drone planning and preflight" time="0.000619" file="tests/supply.test.ts" line="319" assertions="12" />
-      <testcase name="energy reserve makes an otherwise full battery infeasible for a long mission" classname="drone planning and preflight" time="0.000046" file="tests/supply.test.ts" line="354" assertions="5" />
+      <testcase name="returns a multi-leg corridor with a return leg, never claiming approval" classname="drone planning and preflight" time="0.000097" file="tests/supply.test.ts" line="280" assertions="8" />
+      <testcase name="detects when both corridor alternatives enter a restricted zone" classname="drone planning and preflight" time="0.000112" file="tests/supply.test.ts" line="297" assertions="2" />
+      <testcase name="payload and storage rules are component-specific" classname="drone planning and preflight" time="0.000021" file="tests/supply.test.ts" line="311" assertions="5" />
+      <testcase name="preflight passes a safe mission and fails each critical safety gate" classname="drone planning and preflight" time="0.000434" file="tests/supply.test.ts" line="319" assertions="12" />
+      <testcase name="energy reserve makes an otherwise full battery infeasible for a long mission" classname="drone planning and preflight" time="0.000041" file="tests/supply.test.ts" line="354" assertions="5" />
     </testsuite>
     <testsuite name="mission state machine" file="tests/supply.test.ts" line="370" tests="2" assertions="18" failures="0" skipped="0" time="0" hostname="sandbox">
-      <testcase name="enforces the documented happy path" classname="mission state machine" time="0.000057" file="tests/supply.test.ts" line="371" assertions="11" />
+      <testcase name="enforces the documented happy path" classname="mission state machine" time="0.000034" file="tests/supply.test.ts" line="371" assertions="11" />
       <testcase name="rejects unsafe jumps and terminal transitions" classname="mission state machine" time="0.000026" file="tests/supply.test.ts" line="391" assertions="7" />
     </testsuite>
-    <testsuite name="demand forecasting" file="tests/supply.test.ts" line="417" tests="3" assertions="19" failures="0" skipped="0" time="0.003" hostname="sandbox">
-      <testcase name="refuses to fabricate a forecast from a short series" classname="demand forecasting" time="0.000445" file="tests/supply.test.ts" line="418" assertions="4" />
-      <testcase name="produces genuine chronological holdout metrics and all horizons" classname="demand forecasting" time="0.002683" file="tests/supply.test.ts" line="426" assertions="13" />
-      <testcase name="de-duplicates dates and sorts chronologically" classname="demand forecasting" time="0.001702" file="tests/supply.test.ts" line="443" assertions="2" />
+    <testsuite name="demand forecasting" file="tests/supply.test.ts" line="417" tests="3" assertions="19" failures="0" skipped="0" time="0.002" hostname="sandbox">
+      <testcase name="refuses to fabricate a forecast from a short series" classname="demand forecasting" time="0.000339" file="tests/supply.test.ts" line="418" assertions="4" />
+      <testcase name="produces genuine chronological holdout metrics and all horizons" classname="demand forecasting" time="0.002421" file="tests/supply.test.ts" line="426" assertions="13" />
+      <testcase name="de-duplicates dates and sorts chronologically" classname="demand forecasting" time="0.000389" file="tests/supply.test.ts" line="443" assertions="2" />
     </testsuite>
-    <testsuite name="anomaly detection" file="tests/supply.test.ts" line="453" tests="2" assertions="5" failures="0" skipped="0" time="0.002" hostname="sandbox">
-      <testcase name="flags a demand spike and a collapse with explainable z-scores" classname="anomaly detection" time="0.000536" file="tests/supply.test.ts" line="454" assertions="4" />
-      <testcase name="does not flag stable demand" classname="anomaly detection" time="0.002699" file="tests/supply.test.ts" line="468" assertions="1" />
+    <testsuite name="anomaly detection" file="tests/supply.test.ts" line="453" tests="2" assertions="5" failures="0" skipped="0" time="0.019" hostname="sandbox">
+      <testcase name="flags a demand spike and a collapse with explainable z-scores" classname="anomaly detection" time="0.000471" file="tests/supply.test.ts" line="454" assertions="4" />
+      <testcase name="does not flag stable demand" classname="anomaly detection" time="0.01935" file="tests/supply.test.ts" line="468" assertions="1" />
     </testsuite>
-    <testsuite name="donor fallback" file="tests/supply.test.ts" line="491" tests="3" assertions="21" failures="0" skipped="0" time="0.013" hostname="sandbox">
-      <testcase name="requires consent, availability, interval and compatibility" classname="donor fallback" time="0.000212" file="tests/supply.test.ts" line="492" assertions="7" />
-      <testcase name="refuses to train on too few or one-sided outcomes" classname="donor fallback" time="0.010932" file="tests/supply.test.ts" line="553" assertions="7" />
-      <testcase name="response probability is bounded and untrained deployments return no fake score" classname="donor fallback" time="0.003934" file="tests/supply.test.ts" line="567" assertions="7" />
+    <testsuite name="donor fallback" file="tests/supply.test.ts" line="491" tests="3" assertions="21" failures="0" skipped="0" time="0.019" hostname="sandbox">
+      <testcase name="requires consent, availability, interval and compatibility" classname="donor fallback" time="0.000163" file="tests/supply.test.ts" line="492" assertions="7" />
+      <testcase name="refuses to train on too few or one-sided outcomes" classname="donor fallback" time="0.013863" file="tests/supply.test.ts" line="553" assertions="7" />
+      <testcase name="response probability is bounded and untrained deployments return no fake score" classname="donor fallback" time="0.006036" file="tests/supply.test.ts" line="567" assertions="7" />
     </testsuite>
   </testsuite>
 </testsuites>

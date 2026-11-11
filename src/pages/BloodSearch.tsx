@@ -47,7 +47,7 @@ import {
   Siren,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { toast } from "sonner";
 
@@ -56,7 +56,7 @@ export default function BloodSearch() {
   const { user } = useAuth();
   const [group, setGroup] = useState(params.get("group") ?? "all");
   const [component, setComponent] = useState(params.get("component") ?? "all");
-  const [city, setCity] = useState(params.get("city") ?? "Pune");
+  const [cityOverride, setCityOverride] = useState(params.get("city") ?? "");
   const [scope, setScope] = useState<SearchScope>(() => {
     const raw = params.get("scope");
     return raw === "state" || raw === "country" ? raw : "city";
@@ -65,13 +65,8 @@ export default function BloodSearch() {
 
   // A signed-in account starts from the city stored on the profile; visitors
   // start from the network's home city and can change it.
-  useEffect(() => {
-    if (params.get("city")) return;
-    const home = (user as { city?: string | null } | null | undefined)?.city;
-    if (home && CITIES.includes(home)) setCity(home);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.city]);
-
+  const homeCity = (user as { city?: string | null } | null | undefined)?.city;
+  const city = cityOverride || (homeCity && CITIES.includes(homeCity) ? homeCity : "Pune");
   const scopeCity = scope === "country" ? undefined : city;
   const stock = useQuery(api.inventory.publicStock, {
     bloodGroup: group === "all" ? undefined : (group as (typeof BLOOD_GROUPS)[number]),
@@ -212,7 +207,7 @@ export default function BloodSearch() {
               </div>
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold uppercase tracking-[0.13em] text-muted-foreground">City</label>
-                <Select value={city} onValueChange={setCity}>
+                <Select value={city} onValueChange={setCityOverride}>
                   <SelectTrigger className="h-10 w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {CITIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}

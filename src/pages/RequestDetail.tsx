@@ -22,7 +22,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -41,9 +40,7 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import { useMutation, useQuery } from "convex/react";
 import {
-  AlertTriangle,
   ArrowLeft,
-  Building2,
   CheckCircle2,
   Clock3,
   Download,
@@ -51,20 +48,16 @@ import {
   FileText,
   HeartHandshake,
   Hospital,
-  Info,
   Loader2,
   Mail,
   MapPin,
   Phone,
   ShieldCheck,
-  Siren,
   Truck,
   Undo2,
-  UserRound,
-  Users,
   XCircle,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link, useParams } from "react-router";
 import { toast } from "sonner";
 
@@ -102,20 +95,14 @@ export default function RequestDetail() {
   const acceptOffer = useMutation(api.requests.acceptOffer);
 
   const [busy, setBusy] = useState<string | null>(null);
-  const [unitCount, setUnitCount] = useState("1");
+  const [unitCountDraft, setUnitCountDraft] = useState<string | null>(null);
   const [batchId, setBatchId] = useState("");
+  const unitCount = unitCountDraft ?? String(detail?.request.units ?? 1);
+  const effectiveBatchId = batchId || (batches?.[0] ? String(batches[0]._id) : "");
   const [dialog, setDialog] = useState<"reject" | "cancel" | "offer" | "release" | null>(null);
   const [note, setNote] = useState("");
   const [offerNote, setOfferNote] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (batches && batches.length > 0 && !batchId) setBatchId(String(batches[0]._id));
-  }, [batches, batchId]);
-
-  useEffect(() => {
-    if (detail?.request.units) setUnitCount(String(detail.request.units));
-  }, [detail?.request._id, detail?.request.units]);
 
   if (detail === undefined) {
     return (
@@ -178,7 +165,7 @@ export default function RequestDetail() {
   };
 
   const reserve = async () => {
-    if (!batchId) {
+    if (!effectiveBatchId) {
       setActionError("Select a verified batch first.");
       return;
     }
@@ -187,7 +174,7 @@ export default function RequestDetail() {
     try {
       await reserveStock({
         id: request._id,
-        inventoryId: batchId as Id<"inventory">,
+        inventoryId: effectiveBatchId as Id<"inventory">,
         units: Number(unitCount),
       });
       toast.success("Stock reserved", {
@@ -581,7 +568,7 @@ export default function RequestDetail() {
                       </p>
                     ) : (
                       <>
-                        <Select value={batchId} onValueChange={setBatchId}>
+                        <Select value={effectiveBatchId} onValueChange={setBatchId}>
                           <SelectTrigger className="mt-2 h-9 w-full text-[10.5px]"><SelectValue placeholder="Choose batch" /></SelectTrigger>
                           <SelectContent>
                             {batches.map((b) => (
@@ -597,7 +584,7 @@ export default function RequestDetail() {
                             min={1}
                             max={request.units}
                             value={unitCount}
-                            onChange={(e) => setUnitCount(e.target.value)}
+                            onChange={(e) => setUnitCountDraft(e.target.value)}
                             className="h-9 w-20 text-[11px]"
                             aria-label="Units to reserve"
                           />

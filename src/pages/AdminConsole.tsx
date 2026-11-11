@@ -124,7 +124,6 @@ export default function AdminConsole() {
   const integrations = useQuery(api.integrations.listIntegrations);
   const modelStatus = useQuery(api.forecasting.modelStatus);
   const anomalies = useQuery(api.forecasting.anomalyReport, {});
-  const missions = useQuery(api.drones.missions);
 
   const [tab, setTab] = useState("overview");
   const [busy, setBusy] = useState<string | null>(null);
@@ -947,7 +946,11 @@ export default function AdminConsole() {
                   </p>
                   <p className="mt-2 rounded-lg border border-border bg-background px-2 py-1.5 text-[9px] leading-4 text-muted-foreground">
                     {modelStatus?.demandModel.active
-                      ? `${modelStatus.demandModel.version} · trained ${formatRelative(modelStatus.demandModel.trainedAt ?? Date.now())} · ${modelStatus.demandModel.sampleSize} rows`
+                      ? `${modelStatus.demandModel.version} · trained ${
+                          modelStatus.demandModel.trainedAt
+                            ? formatRelative(modelStatus.demandModel.trainedAt)
+                            : "unknown time"
+                        } · ${modelStatus.demandModel.sampleSize} rows`
                       : "No Convex-retrained XGBoost model is registered yet. Forecast refresh still uses the bundled labelled-synthetic artifact."}
                   </p>
                   <div className="mt-3 grid grid-cols-3 gap-1.5 text-center">
@@ -1065,7 +1068,11 @@ export default function AdminConsole() {
                       <p className="text-[11px] font-semibold">{modelStatus.donorModel.version}</p>
                       <p className="mt-1 text-[10px] leading-5 text-muted-foreground">
                         Trained on {modelStatus.donorModel.sampleSize} consented invitation
-                        outcome(s) at {formatDateTime(modelStatus.donorModel.trainedAt ?? Date.now())}.
+                        outcome(s) at{" "}
+                        {modelStatus.donorModel.trainedAt
+                          ? formatDateTime(modelStatus.donorModel.trainedAt)
+                          : "an unknown time"}
+                        .
                         {typeof modelStatus.donorModel.metrics?.roc_auc === "number"
                           ? ` Holdout ROC-AUC ${modelStatus.donorModel.metrics.roc_auc}.`
                           : " No holdout metric is available for this historical model."}

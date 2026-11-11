@@ -57,6 +57,7 @@ export function RequestForm({
 }) {
   const createRequest = useMutation(api.requests.create);
   const [busy, setBusy] = useState(false);
+  const [clientRequestId, setClientRequestId] = useState(() => crypto.randomUUID());
   const [error, setError] = useState<string | null>(null);
   const [document, setDocument] = useState<UploadedDoc | null>(null);
   const [consent, setConsent] = useState(false);
@@ -139,7 +140,9 @@ export function RequestForm({
         doctorContact: form.doctorContact.trim() || undefined,
         documentId: document?.documentId,
         consent: true,
+        clientRequestId,
       });
+      setClientRequestId(crypto.randomUUID());
       toast.success(`Request ${created.requestId} submitted`, {
         description:
           "It is queued for verification. Status changes will appear in your dashboard and notifications.",

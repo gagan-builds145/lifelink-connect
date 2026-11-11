@@ -15,7 +15,11 @@ LifeLink exposes a Convex function API, not REST. Functions are called through t
 
 Public-safe queries return masked data. They never expose patient identity, donor contact data, precise donor location or private documents.
 
-## 2. Supply search and allocation — `src/convex/allocation.ts`
+## 2. Request submission retry — `src/convex/requests.ts`
+
+`create` accepts an optional `clientRequestId` generated once by the request form. The server scopes it to the signed-in user and returns the existing `{ id, requestId, duplicate: true }` when the same submission is retried after a network failure. The `bloodRequests.by_client_request` index enforces lookup by `(createdByUserId, clientRequestId)`; the key is not used as an authorization token.
+
+## 3. Supply search and allocation — `src/convex/allocation.ts`
 
 ### `searchSupply` (query, staff)
 
@@ -94,7 +98,7 @@ Only `reserved`/`approved` transfers can be cancelled. Releases active reservati
 | `networkFacilities` | query | hospital, red_cross, admin, drone_ops | Verified facility directory with policy flags and coordinates. |
 | `grantDroneOps` | mutation | admin | Convert an existing staff account to `drone_ops`; donors/requestors are refused. |
 
-## 3. Donor fallback — `src/convex/donorFallback.ts`
+## 4. Donor fallback — `src/convex/donorFallback.ts`
 
 | Function | Type | Access | Contract |
 | --- | --- | --- | --- |
@@ -107,7 +111,7 @@ Only `reserved`/`approved` transfers can be cancelled. Releases active reservati
 
 No function converts a donor into inventory. Blood becomes issuable only through licensed collection and release.
 
-## 4. Facility integrations — `src/convex/integrations.ts`
+## 5. Facility integrations — `src/convex/integrations.ts`
 
 | Function | Type | Access | Contract |
 | --- | --- | --- | --- |
@@ -143,7 +147,7 @@ Credentials are read via `process.env[credentialEnvVar]` in a `"use node"` actio
 
 Failure semantics: failed auth/network/schema → run `failed`, `lastError` set, anomaly recorded, zero batches written.
 
-## 5. Drone operations — `src/convex/drones.ts`
+## 6. Drone operations — `src/convex/drones.ts`
 
 ### Registration and fleet (drone ops/admin)
 
@@ -173,7 +177,7 @@ Mission states:
 
 `PLANNED → PREFLIGHT_CHECKING → PREFLIGHT_PASSED → DISPATCHED_TO_PICKUP → AT_PICKUP → PAYLOAD_LOADING → PAYLOAD_LOADED → IN_TRANSIT_TO_DESTINATION → AT_DESTINATION → DELIVERED → RETURNING_TO_BASE → COMPLETED`, plus `HOLD`, `ABORTED`, `EMERGENCY_LANDING`.
 
-## 6. AI / ML — `src/convex/ml.ts` and `src/convex/forecasting.ts`
+## 7. AI / ML — `src/convex/ml.ts` and `src/convex/forecasting.ts`
 
 The Python service endpoints are documented in [ml_service/README.md](../ml_service/README.md). Convex calls it with `ML_SERVICE_URL` and `ML_SERVICE_TOKEN`; credentials stay in the deployment environment. Prediction and health requests have per-attempt timeouts and two attempts for idempotent calls; training is single-attempt. `/livez` is public for probes; `/health` and `/v1/*` require the bearer token when configured.
 
@@ -191,7 +195,7 @@ The Python service endpoints are documented in [ml_service/README.md](../ml_serv
 
 Models are decision support only. Compatibility and authorization never call them. The bundled artifacts were trained on labelled synthetic data; retraining from this deployment's transactions is an explicit admin action.
 
-## 7. Admin — `src/convex/admin.ts`
+## 8. Admin — `src/convex/admin.ts`
 
 | Function | Type | Access | Contract |
 | --- | --- | --- | --- |
@@ -200,7 +204,7 @@ Models are decision support only. Compatibility and authorization never call the
 | `recentSyncRuns` | query | admin | Last 25 sync runs. |
 | `notificationQueue` | query | admin | Last 40 outbox jobs with attempts, next retry, provider message id and errors. |
 
-## 8. Notifications
+## 9. Notifications
 
 - In-app notifications are inserted by `queueNotification` / `queueForOrganization` / `queueForRoles` / `queueForDonors`.
 - `notificationJobs` provides an idempotent outbox keyed by `dedupeKey`.
@@ -211,7 +215,7 @@ Models are decision support only. Compatibility and authorization never call the
 - Push notifications are **not implemented**.
 - Existing `/notifications` in-app inbox remains available.
 
-## 9. Errors
+## 10. Errors
 
 Convex returns thrown errors as rejected promises. Typical messages:
 
@@ -227,7 +231,7 @@ Convex returns thrown errors as rejected promises. Typical messages:
 
 The UI surfaces these messages; it must not convert them into a success state.
 
-## 10. Client example
+## 11. Client example
 
 ```ts
 import { api } from "@/convex/_generated/api";

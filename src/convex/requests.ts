@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import type { MutationCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
   audit,
@@ -66,7 +67,6 @@ const OPEN_REQUEST_STATUSES: ReadonlySet<Doc<"bloodRequests">["status"]> = new S
 ]);
 
 async function isFullViewer(
-  ctx: any,
   user: Doc<"users">,
   request: Doc<"bloodRequests">,
 ) {
@@ -85,7 +85,7 @@ async function isFullViewer(
 }
 
 async function addHistory(
-  ctx: any,
+  ctx: MutationCtx,
   request: Doc<"bloodRequests">,
   status: Doc<"bloodRequests">["status"],
   actorRole: string,
@@ -108,12 +108,12 @@ async function addHistory(
  * identity, contact details or a precise address.
  */
 async function notifyCompatibleDonors(
-  ctx: any,
+  ctx: MutationCtx,
   request: Doc<"bloodRequests">,
 ) {
   const donors = await ctx.db
     .query("donorProfiles")
-    .withIndex("by_availability", (q: any) => q.eq("available", true))
+    .withIndex("by_availability", (q) => q.eq("available", true))
     .collect();
   const requestState = stateOfCity(request.city);
   let notified = 0;
@@ -165,11 +165,24 @@ export const create = mutation({
     doctorContact: v.optional(v.string()),
     documentId: v.optional(v.id("documentMetadata")),
     consent: v.boolean(),
+    /** Stable key from the form; retries after a network failure are idempotent. */
+    clientRequestId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
     if (args.consent !== true) {
       throw new Error("You must confirm the declaration before submitting a request.");
+    }
+    if (args.clientRequestId) {
+      const existing = await ctx.db
+        .query("bloodRequests")
+        .withIndex("by_client_request", (q) =>
+          q.eq("createdByUserId", user._id).eq("clientRequestId", args.clientRequestId),
+        )
+        .first();
+      if (existing) {
+        return { id: existing._id, requestId: existing.requestId, duplicate: true };
+      }
     }
     await enforceRateLimit(ctx, `request-create:${user._id}`, 6);
 
@@ -221,6 +234,7 @@ export const create = mutation({
     const now = Date.now();
     const id = await ctx.db.insert("bloodRequests", {
       requestId,
+      clientRequestId: args.clientRequestId,
       source: args.source,
       createdByUserId: user._id,
       createdByOrgId: organization?._id,
@@ -291,7 +305,7 @@ export const create = mutation({
       organizationId: organization?._id,
     });
 
-    return { id, requestId };
+    return { id, requestId, duplicate: false };
   },
 });
 
@@ -365,7 +379,7 @@ export const getDetail = query({
     const request = await ctx.db.get(args.id);
     if (!request) return null;
 
-    const full = await isFullViewer(ctx, user, request);
+    const full = await isFullViewer(user, request);
     const donor = await getDonorProfile(ctx, user._id);
     const donorCompatible =
       donor != null &&
@@ -722,9 +736,15 @@ export const reserveStock = mutation({
     }
     const units = requireUnits(args.units);
     if (units > request.units) throw new Error("Cannot reserve more units than requested.");
-    const free = item.unitsAvailable - item.unitsReserved;
+    const protectedReserve = Math.max(
+      0,
+      item.protectedReserve ?? org.protectedReserveDefault ?? 0,
+    );
+    const free = Math.max(0, item.unitsAvailable - item.unitsReserved - protectedReserve);
     if (units > free) {
-      throw new Error(`Only ${free} unreserved unit(s) are available in this batch.`);
+      throw new Error(
+        `Only ${free} unreserved unit(s) are available outside the protected reserve.`,
+      );
     }
     const existingReservations = await ctx.db
       .query("inventoryReservations")

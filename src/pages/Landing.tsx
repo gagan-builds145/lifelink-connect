@@ -56,7 +56,6 @@ import {
   Search,
   ShieldCheck,
   Siren,
-  Sparkles,
   Stethoscope,
   Truck,
   Users,

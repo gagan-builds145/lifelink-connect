@@ -13,11 +13,7 @@ import {
   requireUser,
   roleOf,
 } from "./lib/helpers";
-import {
-  bloodGroupValidator,
-  componentValidator,
-  transactionTypeValidator,
-} from "./validators";
+import { bloodGroupValidator, componentValidator } from "./validators";
 import { evaluateStockLevel } from "./lib/stockWatch";
 
 const todayIso = () => new Date().toISOString().slice(0, 10);

@@ -4,7 +4,7 @@ import { dashboardPathForRole, hasDashboardRole, ROLE_LABELS, type AppRole } fro
 import { cn } from "@/lib/utils";
 import { ArrowUpRight, Menu, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Link, useLocation } from "react-router";
+import { Link } from "react-router";
 import { LifeLinkLogo } from "./Logo";
 
 const NAV = [
@@ -19,7 +19,6 @@ export function SiteHeader() {
   const { isAuthenticated, user } = useAuth();
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const location = useLocation();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 12);
@@ -28,9 +27,7 @@ export function SiteHeader() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  useEffect(() => {
-    setOpen(false);
-  }, [location.pathname]);
+  const closeMenu = () => setOpen(false);
 
   const role = (user?.role ?? undefined) as AppRole | undefined;
   // A signed-in session without a finished role still has no dashboard, so it
@@ -113,6 +110,7 @@ export function SiteHeader() {
               <Link
                 key={item.href}
                 to={item.href}
+                onClick={closeMenu}
                 className="rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
               >
                 {item.label}
@@ -122,15 +120,15 @@ export function SiteHeader() {
           <div className="mt-4 grid gap-2 border-t border-border pt-4">
             {signedInWithWorkspace ? (
               <Button asChild className="w-full">
-                <Link to={dashboardPathForRole(role)}>Open dashboard</Link>
+                <Link to={dashboardPathForRole(role)} onClick={closeMenu}>Open dashboard</Link>
               </Button>
             ) : (
               <>
                 <Button asChild variant="outline" className="w-full">
-                  <Link to="/login">Log in</Link>
+                  <Link to="/login" onClick={closeMenu}>Log in</Link>
                 </Button>
                 <Button asChild className="w-full">
-                  <Link to="/signup">Create account</Link>
+                  <Link to="/signup" onClick={closeMenu}>Create account</Link>
                 </Button>
               </>
             )}

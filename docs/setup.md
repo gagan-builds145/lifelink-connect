@@ -63,9 +63,10 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
 The training script creates `artifacts/` and synthetic `data/` CSVs. This
-workspace executed the complete suite on **Python 3.13.15 and 3.10.12**. The
-trained artifacts are included, and retraining is reproducible. The Dockerfile
-targets Python 3.13 and requires `ML_SERVICE_TOKEN`.
+workspace created fresh isolated environments and executed the complete suite on
+**Python 3.13.15 and 3.10.12**. The trained artifacts are included, and
+retraining is reproducible. The Dockerfile targets Python 3.13 and requires
+`ML_SERVICE_TOKEN`.
 
 Expose the service to Convex over HTTPS (Convex Cloud cannot call
 `127.0.0.1`). In development, a tunnel is acceptable; in production, deploy the
@@ -132,22 +133,32 @@ bun tsc -b --noEmit
 # Push Convex functions / regenerate types
 bunx convex dev --once
 
-# Unit tests (supply engine)
+# Lint (0 errors expected; warnings are Fast Refresh-only)
+bun run lint
+
+# Domain, ranking and real Convex integration tests
 bun test
 
 # TypeScript JUnit evidence
 bun test --reporter=junit --reporter-outfile=docs/test-results.xml
+
+# Production bundle. Standard minification exceeded this runner's limit; the
+# unminified production build is the verified result here.
+bun run build -- --minify false
 
 # Python ML + SITL-validation tests (activate the ML venv first)
 $env:PYTHONPATH="ml_service;drone_bridge"
 python -m pytest ml_service/tests drone_bridge/tests -q --junitxml=docs/python-test-results.xml
 ```
 
-The suites cover deterministic domain rules, model artifact loading/prediction,
-donor batch scoring and explainability, consent refusal, anomaly detection,
-auth-token enforcement, model retraining and SITL export validation. Python
-3.13.15 and 3.10.12 both pass 22 tests. There is **no**
-Playwright/browser/API/concurrency/live-SITL/load suite. See
+The suites cover deterministic domain rules, HTTP/API prediction, model
+artifact loading and training, donor consent and explainability, anomaly
+detection, auth-token enforcement, real Convex reservation/dispatch/receipt,
+concurrent reservation contention, duplicate request retry, donor invitations,
+notification retry recording, simulated mission dispatch/abort and SITL export
+validation. TypeScript: **41 passed / 228 assertions**. Python: **22 passed** on
+both 3.13.15 and 3.10.12. There is **no** Playwright/browser,
+live-provider, live-hospital, production-load or live-SITL suite. See
 [test-report.md](test-report.md) and [limitations.md](limitations.md).
 
 ## 8. Manual acceptance walkthrough

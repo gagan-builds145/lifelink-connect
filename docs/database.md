@@ -21,7 +21,7 @@ Convex owns the schema in `src/convex/schema.ts`. Convex applies schema and inde
 
 | Table | Purpose | Key fields |
 | --- | --- | --- |
-| `bloodRequests` | Shared request lifecycle | `requestId`, `status`, `urgency`, `bloodGroup`, `component`, `units`, `hospitalOrgId`, `isDemo` |
+| `bloodRequests` | Shared request lifecycle | `requestId`, `clientRequestId` (idempotent submit key), `status`, `urgency`, `bloodGroup`, `component`, `units`, `hospitalOrgId`, `isDemo` |
 | `requestStatusHistory` | Append-only timeline | `requestId`, `status`, `actorUserId`, `actorRole`, `createdAt` |
 | `inventory` | Physical batch stock | `batchRef`, `organizationId`, `bloodGroup`, `component`, `unitsAvailable`, `unitsReserved`, `expiryDate`, `storageTempC`, `verified`, `screened`, `released`, `protectedReserve`, `isDemo` |
 | `inventoryTransactions` | Stock movement ledger | `inventoryId`, `type` (`reserve`, `release`, `dispatch`, `receipt`, `issue`, `adjustment`), `units`, `requestId`, `actorUserId`, `isDemo` |
@@ -85,6 +85,7 @@ An invitation is not stock. Only released `inventory` rows can be allocated.
 
 New indexes include:
 
+- `bloodRequests.by_client_request` (`createdByUserId`, `clientRequestId`)
 - `facilityIntegrations.by_organization`
 - `facilitySyncRuns.by_integration`, `by_organization`
 - `transferAgreements.by_requesting`, `by_supplying`

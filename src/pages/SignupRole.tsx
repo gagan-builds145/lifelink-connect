@@ -1,8 +1,7 @@
 import { SiteFooter } from "@/components/lifelink/SiteFooter";
 import { SiteHeader } from "@/components/lifelink/SiteHeader";
 import { Button } from "@/components/ui/button";
-import { useAuth } from "@/hooks/use-auth";
-import { dashboardPathForRole, hasDashboardRole, ROLE_CARDS } from "@/lib/roles";
+import { dashboardPathForRole, ROLE_CARDS } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import {
@@ -11,10 +10,7 @@ import {
   Droplets,
   HeartHandshake,
   Hospital,
-  LockKeyhole,
-  ShieldCheck,
   Stethoscope,
-  UserRound,
 } from "lucide-react";
 import { Link } from "react-router";
 
@@ -33,8 +29,6 @@ const accents = {
 } as const;
 
 export default function SignupRole() {
-  const { isAuthenticated, user } = useAuth();
-
   return (
     <div className="min-h-screen bg-background">
       <SiteHeader />
@@ -48,39 +42,9 @@ export default function SignupRole() {
             transition={{ duration: 0.5 }}
             className="max-w-2xl"
           >
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/[0.055] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-primary">
-              <UserRound className="size-3" />
-              Step 1 of 2 · Choose your role
-            </span>
-            <h1 className="mt-5 text-balance font-display text-[36px] font-extrabold leading-[1.05] tracking-tight sm:text-[46px]">
-              How will you use <span className="text-primary">LifeLink?</span>
+            <h1 className="text-balance font-display text-[36px] font-extrabold leading-[1.05] tracking-tight sm:text-[46px]">
+              Choose Your <span className="text-primary">Role</span>
             </h1>
-            <p className="mt-4 max-w-xl text-[14px] leading-7 text-muted-foreground">
-              Your role determines the workspace, permissions and data you can access.
-              The backend validates every role assignment — it never trusts the browser
-              selection alone.
-            </p>
-            <div className="mt-4 flex items-center gap-2 rounded-xl border border-border bg-card p-3 text-[11.5px] leading-5 text-muted-foreground">
-              <LockKeyhole className="size-4 shrink-0 text-primary" />
-              Donor and requestor accounts are self-service. Red Cross and hospital
-              accounts register their organization during sign-up, linked on the server
-              to your verified email.
-            </div>
-            {isAuthenticated && (
-              <p className="mt-3 text-[11.5px] text-muted-foreground">
-                Signed in as <strong className="text-foreground">{user?.name ?? user?.email ?? "your account"}</strong>.{" "}
-                {hasDashboardRole(user?.role) ? (
-                  <>
-                    You can continue with a role, or{" "}
-                    <Link to={dashboardPathForRole(user?.role)} className="font-semibold text-primary hover:underline">
-                      open your dashboard
-                    </Link>.
-                  </>
-                ) : (
-                  "Choose a role below to finish setting up your account."
-                )}
-              </p>
-            )}
           </motion.div>
 
           <div className="mt-10 grid gap-3 sm:grid-cols-2">
@@ -126,12 +90,7 @@ export default function SignupRole() {
             })}
           </div>
 
-          <div className="mt-8 flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
-            <p className="flex items-start gap-2 text-[11.5px] leading-5 text-muted-foreground">
-              <ShieldCheck className="mt-0.5 size-4 shrink-0 text-teal-600" />
-              Every account is verified by email code. Staff accounts are linked to a
-              verified organization and every inventory or status change is audit logged.
-            </p>
+          <div className="mt-8 flex justify-center sm:justify-end">
             <Button asChild variant="ghost" size="sm" className="w-fit gap-1.5 text-[11.5px]">
               <Link to="/login">Already registered? Log in <ArrowRight className="size-3" /></Link>
             </Button>

@@ -1,0 +1,18 @@
+{
+  "cookies": [],
+  "origins": [
+    {
+      "origin": "http://127.0.0.1:5173",
+      "localStorage": [
+        {
+          "name": "__convexAuthRefreshToken_httpsproficientbullfrog937convexcloud",
+          "value": "jd7dxjf8fnre6405fxtq2hs5rs8j0qey|jh7c682qyzdfh7gt7gkw59qfys8j1fg4"
+        },
+        {
+          "name": "__convexAuthJWT_httpsproficientbullfrog937convexcloud",
+          "value": "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJqeDc1ZDYzNnllOGthNHc4aDY3a2NkNHpwMThqMWt0enxqaDdjNjgycXl6ZGZoN2d0N2drdzU5cWZ5czhqMWZnNCIsImlhdCI6MTc5NDM4MTUxOSwiaXNzIjoiaHR0cHM6Ly9wcm9maWNpZW50LWJ1bGxmcm9nLTkzNy5jb252ZXguc2l0ZSIsImF1ZCI6ImNvbnZleCIsImV4cCI6MTc5NDM4NTExOX0.HAxeFa932f1vs9WxJD3apdFVJikQ9IbaLCcZoKZZdL4kl-ARF8x0nK0fZ3xZYn9uWM9G46t8GfSRZXTuVRJkzrMvVcxh-7VSdz_cGI8D_7RSXGnqfWASHZ_I59JcNSG-wL2dOqNd8iAyP-_PYfDZpa2akGgkKy6Duvw5alWmmd8DL0NukeIlARoM_1q5lyfQwmH0CMpQEec_jjYga5n0esj1zZob7PQO5wkLQeE7kXDJUNgMxUQC0znYqCsu1hpaYM9v0EI2AK52_mCDjX6fj_GojZf7NGZqbvC1zUhLN1glsAq9NlJwBpy32xLUT0QSWDcrKQTpxCYsxaNxBp3Wlw"
+        }
+      ]
+    }
+  ]
+}

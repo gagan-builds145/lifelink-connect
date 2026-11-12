@@ -66,9 +66,9 @@ function finiteOrNull(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-/* ------------------------------------------------------------------ *\
- * Authorized data access
- * ------------------------------------------------------------------ */
+/* ------------------------------------------------------------------ */
+/* Authorized data access
+/* ------------------------------------------------------------------ */
 
 export const authorizeMlAction = internalQuery({
   args: {
@@ -148,281 +148,6 @@ export async function recordMlAuthFailure(
   });
 }
 
-
-    return {
-      scope: args.organizationId ? ("hospital" as const) : ("network" as const),
-      organizationName,
-      actorUserId: user._id,
-      role,
-    };
-  },
-});
-
-/**
- * Aggregated issue/dispatch history. Internal because an action must authorize
- * and scope the request before this data leaves Convex.
- */
-export const collectDemandHistory = internalQuery({
-  args: {
-    organizationId: v.optional(v.id("organizations")),
-    days: v.number(),
-  },
-  handler: async (ctx, args) => {
-    const days = Math.max(30, Math.min(730, Math.trunc(args.days)));
-    const start = Date.now() - days * DAY_MS;
-    const transactions = await ctx.db.query("inventoryTransactions").collect();
-    const byKey = new Map<string, Map<string, number>>();
-    let includesDemo = false;
-    let totalUnits = 0;
-    for (const tx of transactions) {
-      if (!DEMAND_TYPES.has(tx.type)) continue;
-      if (tx.createdAt < start) continue;
-      if (args.organizationId && tx.organizationId !== args.organizationId) continue;
-      const key = `${tx.bloodGroup}:${tx.component}`;
-      const byDay = byKey.get(key) ?? new Map<string, number>();
-      const day = dayKey(tx.createdAt);
-      byDay.set(day, (byDay.get(day) ?? 0) + tx.units);
-      byKey.set(key, byDay);
-      totalUnits += tx.units;
-      if (tx.isDemo) includesDemo = true;
-    }
-    const records: Array<{
-      date: string;
-      bloodGroup: BloodGroup;
-      component: Component;
-      units: number;
-      isSynthetic: boolean;
-    }> = [];
-    for (const [key, byDay] of byKey) {
-      const [bloodGroup, component] = key.split(":") as [BloodGroup, Component];
-      for (const [date, units] of byDay) {
-        records.push({
-          date,
-          bloodGroup,
-          component,
-          units,
-          isSynthetic: includesDemo,
-        });
-      }
-    }
-    return {
-      days,
-      start,
-      includesDemo,
-      totalUnits,
-      records: records.sort((a, b) => a.date.localeCompare(b.date)),
-    };
-  },
-});
-
-export const collectDonorTrainingSamples = internalQuery({
-  args: {},
-  handler: async (ctx) => {
-    await requireAdmin(ctx);
-    const now = Date.now();
-    const [invitations, donors, donations, consents, requests] = await Promise.all([
-      ctx.db.query("donorInvitations").collect(),
-      ctx.db.query("donorProfiles").collect(),
-      ctx.db.query("donations").collect(),
-      ctx.db.query("donorConsents").collect(),
-      ctx.db.query("bloodRequests").collect(),
-    ]);
-    const donorById = new Map(donors.map((donor) => [String(donor._id), donor]));
-    const requestById = new Map(requests.map((request) => [String(request._id), request]));
-    const consentByProfile = new Map(
-      consents.map((consent) => [String(consent.donorProfileId), consent]),
-    );
-    const answeredByDonor = new Map<string, { accepted: number; total: number }>();
-    for (const invitation of invitations) {
-      if (invitation.status !== "accepted" && invitation.status !== "declined") continue;
-      const key = String(invitation.donorProfileId);
-      const current = answeredByDonor.get(key) ?? { accepted: 0, total: 0 };
-      current.total += 1;
-      if (invitation.status === "accepted") current.accepted += 1;
-      answeredByDonor.set(key, current);
-    }
-
-    const samples: Array<{
-      distance_km: number;
-      days_since_donation: number;
-      previous_donations: number;
-      prior_response_rate: number;
-      consented: boolean;
-      responded: boolean;
-      is_synthetic: boolean;
-    }> = [];
-    let includesDemo = false;
-    for (const invitation of invitations) {
-      if (invitation.status !== "accepted" && invitation.status !== "declined") continue;
-      const donor = donorById.get(String(invitation.donorProfileId));
-      const consent = consentByProfile.get(String(invitation.donorProfileId));
-      if (!donor) continue;
-      // Training on donor data requires a currently active location-sharing
-      // consent. Revoked or expired consent is excluded rather than inferred.
-      if (
-        consent?.shareLocation !== true ||
-        consent.revokedAt != null ||
-        consent.expiresAt <= now
-      ) {
-        continue;
-      }
-      const request = invitation.requestId
-        ? requestById.get(String(invitation.requestId))
-        : null;
-      const donationCount = donations.filter(
-        (donation) => donation.donorProfileId === invitation.donorProfileId,
-      ).length;
-      const responses = answeredByDonor.get(String(invitation.donorProfileId));
-      samples.push({
-        distance_km: Math.max(0, invitation.distanceKm ?? 25),
-        days_since_donation: donor.lastDonationDate
-          ? Math.max(
-              0,
-              Math.floor(
-                (invitation.createdAt - new Date(donor.lastDonationDate).getTime()) /
-                  DAY_MS,
-              ),
-            )
-          : 365,
-        previous_donations: donationCount,
-        prior_response_rate:
-          responses && responses.total > 0
-            ? Math.min(1, Math.max(0, responses.accepted / responses.total))
-            : 0.5,
-        consented: true,
-        responded: invitation.status === "accepted",
-        is_synthetic: request?.isDemo === true,
-      });
-      if (request?.isDemo === true) includesDemo = true;
-    }
-    return {
-      samples,
-      includesDemo,
-      accepted: samples.filter((sample) => sample.responded).length,
-      declined: samples.filter((sample) => !sample.responded).length,
-    };
-  },
-});
-
-export const storeDonorModelMetadata = internalMutation({
-  args: {
-    version: v.string(),
-    trainedAt: v.number(),
-    sampleSize: v.number(),
-    metricsJson: v.string(),
-    payload: v.string(),
-    actorUserId: v.id("users"),
-  },
-  handler: async (ctx, args) => {
-    const existing = await ctx.db
-      .query("mlModels")
-      .withIndex("by_kind", (q) => q.eq("kind", "donor_response").eq("active", true))
-      .collect();
-    for (const row of existing) {
-      await ctx.db.patch(row._id, { active: false });
-    }
-    await ctx.db.insert("mlModels", {
-      kind: "donor_response",
-      version: args.version,
-      trainedAt: args.trainedAt,
-      sampleSize: args.sampleSize,
-      payload: args.payload,
-      metricsJson: args.metricsJson,
-      active: true,
-    });
-    const actor = await ctx.db.get(args.actorUserId);
-    if (actor) {
-      await audit(ctx, {
-        actor,
-        action: "ml.donorModelRegistered",
-        entityType: "mlModel",
-        entityId: args.version,
-        detail: `Python Random Forest donor model ${args.version} registered from ${args.sampleSize} consented invitation outcome(s).`,
-      });
-    }
-    return { stored: true };
-  },
-});
-
-export const trainDonorModel = action({
-  args: {},
-  handler: async (ctx): Promise<{
-    trained: boolean;
-    version: string;
-    sampleSize: number;
-    synthetic: boolean;
-    metrics: Record<string, unknown>;
-    message: string;
-  }> => {
-    const auth = await ctx.runQuery(internal.ml.authorizeMlAction, {
-      mode: "train",
-    });
-    const data = await ctx.runQuery(internal.ml.collectDonorTrainingSamples, {});
-    if (data.samples.length < 40) {
-      throw new Error(
-        `Only ${data.samples.length} consented, answered invitation(s) are available. At least 40 are required to train. No model was stored.`,
-      );
-    }
-    if (data.accepted < 8 || data.declined < 8) {
-      throw new Error(
-        `The training set needs at least 8 accepted and 8 declined outcomes; found ${data.accepted} accepted and ${data.declined} declined. No model was stored.`,
-      );
-    }
-    let response: Response;
-    try {
-      response = await mlFetch("/v1/train/donor", {
-        method: "POST",
-        body: JSON.stringify({
-          samples: data.samples,
-          dataset_label: data.includesDemo
-            ? "LifeLink invitation outcomes including labelled demo requests"
-            : "LifeLink recorded invitation outcomes from consented donors",
-        }),
-      }, { timeoutMs: 120_000, attempts: 1 });
-    } catch (error) {
-      throw new Error(
-        `Could not reach the ML training service: ${
-          error instanceof Error ? error.message : "network error"
-        }`,
-      );
-    }
-    const payload = (await response.json()) as Record<string, unknown>;
-    if (!response.ok) {
-      throw new Error(
-        `Donor training failed (HTTP ${response.status}): ${JSON.stringify(payload).slice(0, 500)}`,
-      );
-    }
-    const version = String(payload.version ?? "rf-donor-unknown");
-    const metrics = (payload.metrics as Record<string, unknown>) ?? {};
-    const sampleSize = Number(payload.sample_size ?? data.samples.length);
-    const trainedAt = Date.parse(String(payload.trained_at ?? "")) || Date.now();
-    await ctx.runMutation(internal.ml.storeDonorModelMetadata, {
-      version,
-      trainedAt,
-      sampleSize,
-      metricsJson: JSON.stringify(metrics),
-      payload: JSON.stringify({
-        source: "python_service",
-        model: payload.model,
-        datasetLabel: payload.dataset_label,
-        synthetic: payload.synthetic,
-        featureImportances: payload.feature_importances,
-        constraints: payload.constraints,
-      }),
-      actorUserId: auth.actorUserId,
-    });
-    return {
-      trained: true,
-      version,
-      sampleSize,
-      synthetic: payload.synthetic === true,
-      metrics,
-      message:
-        "Python Random Forest stored. It only orders already-eligible, consented invitations; deterministic medical eligibility is unchanged.",
-    };
-  },
-});
-
 function continuousPoints(
   records: Array<{
     date: string;
@@ -448,9 +173,9 @@ function continuousPoints(
   return points;
 }
 
-/* ------------------------------------------------------------------ *\
- * Prediction persistence and reads
- * ------------------------------------------------------------------ */
+/* ------------------------------------------------------------------ */
+/* Prediction persistence and reads
+/* ------------------------------------------------------------------ */
 
 const forecastRowValidator = v.object({
   bloodGroup: BLOOD_GROUP_VALIDATOR,
@@ -612,9 +337,9 @@ export const latestDemandForecast = query({
   },
 });
 
-/* ------------------------------------------------------------------ *\
- * Public actions
- * ------------------------------------------------------------------ */
+/* ------------------------------------------------------------------ */
+/* Public actions
+/* ------------------------------------------------------------------ */
 
 export const refreshDemandForecasts = action({
   args: {
@@ -1086,9 +811,9 @@ export const mlServiceStatus = action({
   },
 });
 
-/* ------------------------------------------------------------------ *\
- * Scheduled refresh
- * ------------------------------------------------------------------ */
+/* ------------------------------------------------------------------ */
+/* Scheduled refresh
+/* ------------------------------------------------------------------ */
 
 /**
  * Daily network forecast when the service is configured. A missing service is

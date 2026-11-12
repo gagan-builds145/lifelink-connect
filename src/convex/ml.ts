@@ -78,6 +78,7 @@ export const authorizeMlAction = internalQuery({
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
     const role = roleOf(user);
+
     if (args.mode === "train" && role !== "admin") {
       await recordSecurityEvent(ctx, {
         kind: "unauthorized_access",
@@ -90,6 +91,7 @@ export const authorizeMlAction = internalQuery({
       });
       throw safeError("Only administrators can retrain the production demand model.");
     }
+
     if (args.mode === "predict") {
       await requireStaff(ctx);
     }
@@ -145,6 +147,7 @@ export async function recordMlAuthFailure(
     entityId,
   });
 }
+
 
     return {
       scope: args.organizationId ? ("hospital" as const) : ("network" as const),

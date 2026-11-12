@@ -874,13 +874,9 @@ const schema = defineSchema(
         v.literal("drone_ops"),
         v.literal("integration"),
       ),
-      /** Canonical client identifier when available, e.g. hashed IP or session id. Never raw tokens. */
       clientRef: v.optional(v.string()),
-      /** Machine-readable reason, safe for logs and dashboards. */
       reason: v.string(),
-      /** One-line human summary without sensitive identifiers. */
       summary: v.string(),
-      /** Optional entity id for triage, e.g. requestId, transferId, missionId. Nullable and redacted where sensitive. */
       entityType: v.optional(v.string()),
       entityId: v.optional(v.string()),
       organizationId: v.optional(v.id("organizations")),

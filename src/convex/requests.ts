@@ -149,9 +149,8 @@ async function notifyCompatibleDonors(
  * by request-mutation paths when a donor or user tries to read or modify another
  * patient's private request data.
  *
- * IMPORTANT: this helper is mutation-scoped. Do not call it from queries that
- * do not have a real MutationCtx; if you need logging from a query path, call
- * the mutation that owns the operation instead.
+ * NOTE: The request-detail query path now inlines the same event record
+ * directly so this helper stays mutation-scoped and avoids context-type casts.
  */
 export async function recordRequestAccessDenied(
   ctx: MutationCtx,
@@ -418,9 +417,100 @@ export const getDetail = query({
     if (!full && !donorCompatible) {
       // Do not leak whether the request exists or whether the user is close to
       // a match. Return null and record a security-relevant denial.
-      await recordRequestAccessDenied(ctx as MutationCtx, user, request.requestId);
+      await recordRequestAccessDenied(ctx, user, request.requestId);
       return null;
     }
+
+    const history = await ctx.db
+      .query("requestStatusHistory")
+      .withIndex("by_request", (q) => q.eq("requestId", request._id))
+      .collect();
+
+    let document: { fileName: string; contentType: string; url: string | null } | null =
+      null;
+    if (full && request.documentId) {
+      const meta = await ctx.db.get(request.documentId);
+      if (meta) {
+        document = {
+          fileName: meta.fileName,
+          contentType: meta.contentType,
+          url: await ctx.storage.getUrl(meta.storageId),
+        };
+      }
+    }
+
+    const offers = full
+      ? await ctx.db
+          .query("donorOffers")
+          .withIndex("by_request", (q) => q.eq("requestId", request._id))
+          .collect()
+      : [];
+    const offerRows = [];
+    for (const offer of offers) {
+      const profile = await ctx.db.get(offer.donorProfileId);
+      const donorUser = await ctx.db.get(offer.donorUserId);
+      const canShare =
+        profile?.shareContact === true &&
+        ["red_cross", "admin"].includes(roleOf(user));
+      offerRows.push({
+        _id: offer._id,
+        status: offer.status,
+        note: offer.note ?? null,
+        createdAt: offer.createdAt,
+        donorName: canShare ? profile?.fullName ?? "Donor" : "Donor (contact protected)",
+        donorId: profile?.donorId ?? null,
+        bloodGroup: profile?.bloodGroup ?? null,
+        city: profile?.city ?? null,
+        phone: canShare ? profile?.phone ?? null : null,
+        email: canShare ? donorUser?.email ?? null : null,
+      });
+    }
+
+    const myOffer = donor
+      ? await ctx.db
+          .query("donorOffers")
+          .withIndex("by_request", (q) => q.eq("requestId", request._id))
+          .filter((q) => q.eq(q.field("donorUserId"), user._id))
+          .first()
+      : null;
+
+    const assignedOrg = request.assignedOrgId
+      ? await ctx.db.get(request.assignedOrgId)
+      : null;
+    const hospitalOrg = request.hospitalOrgId
+      ? await ctx.db.get(request.hospitalOrgId)
+      : null;
+    const activeReservations = full
+      ? await ctx.db
+          .query("inventoryReservations")
+          .withIndex("by_request", (q) => q.eq("requestId", request._id))
+          .collect()
+      : [];
+    const reservedUnits = activeReservations
+      .filter((r) => r.status === "active")
+      .reduce((sum, r) => sum + r.units, 0);
+    const verifiedReceipts = full
+      ? await ctx.db
+          .query("transferReceipts")
+          .withIndex("by_request", (q) => q.eq("requestId", request._id))
+          .collect()
+      : [];
+    const receivedUnits = verifiedReceipts.reduce((sum, receipt) => sum + receipt.units, 0);
+    const linkedTransfers = full
+      ? await ctx.db
+          .query("transfers")
+          .withIndex("by_request", (q) => q.eq("requestId", request._id))
+          .collect()
+      : [];
+    const hasInstitutionalTransfers = linkedTransfers.some(
+      (transfer) => transfer.status !== "failed" && transfer.status !== "cancelled",
+    );
+
+    // Pressing "Offer to help" unlocks the requestor's basic coordination
+    // details (name, phone, hospital location) for that responder. Patient
+    // identity, prescriptions and documents stay restricted to staff.
+    const contactUnlocked =
+      full || (myOffer != null && myOffer.status !== "withdrawn");
 
     const history = await ctx.db
       .query("requestStatusHistory")

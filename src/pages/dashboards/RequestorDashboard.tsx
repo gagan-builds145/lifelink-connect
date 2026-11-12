@@ -97,7 +97,7 @@ export default function RequestorDashboard() {
   const stats = useMemo(() => {
     const rows = requests ?? [];
     return {
-      active: rows.filter((r) => ["pending", "under_verification", "approved", "dispatched"].includes(r.status)).length,
+      active: rows.filter((r) => ["pending", "under_verification", "approved", "dispatched", "partially_fulfilled"].includes(r.status)).length,
       pending: rows.filter((r) => r.status === "pending" || r.status === "under_verification").length,
       fulfilled: rows.filter((r) => r.status === "fulfilled" || r.status === "received").length,
       emergency: rows.filter((r) => r.urgency === "emergency" && !["fulfilled", "rejected", "cancelled"].includes(r.status)).length,

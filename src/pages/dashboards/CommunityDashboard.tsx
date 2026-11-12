@@ -32,7 +32,13 @@ import { Link } from "react-router";
 
 type Tab = "overview" | "donor" | "requests";
 
-const ACTIVE_STATUSES = ["pending", "under_verification", "approved", "dispatched"];
+const ACTIVE_STATUSES = [
+  "pending",
+  "under_verification",
+  "approved",
+  "dispatched",
+  "partially_fulfilled",
+];
 
 export default function CommunityDashboard() {
   const [tab, setTab] = useState<Tab>("overview");

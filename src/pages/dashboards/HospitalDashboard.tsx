@@ -139,7 +139,7 @@ export default function HospitalDashboard() {
   const stats = useMemo(() => {
     const rows = requests ?? [];
     return {
-      current: rows.filter((r) => ["pending", "under_verification", "approved", "dispatched"].includes(r.status)).length,
+      current: rows.filter((r) => ["pending", "under_verification", "approved", "dispatched", "partially_fulfilled"].includes(r.status)).length,
       emergency: rows.filter((r) => r.urgency === "emergency" && !["received", "fulfilled", "rejected", "cancelled"].includes(r.status)).length,
       pending: rows.filter((r) => r.status === "pending" || r.status === "under_verification").length,
       approved: rows.filter((r) => r.status === "approved").length,
@@ -545,7 +545,7 @@ export default function HospitalDashboard() {
             <div className="rounded-2xl border border-border bg-card p-4">
               <h3 className="text-[12.5px] font-bold">Statuses you will see</h3>
               <div className="mt-2.5 flex flex-wrap gap-1.5">
-                {["pending", "under_verification", "approved", "dispatched", "received", "rejected"].map((s) => (
+                {["pending", "under_verification", "approved", "dispatched", "partially_fulfilled", "received", "rejected"].map((s) => (
                   <StatusBadge key={s} status={s} />
                 ))}
               </div>

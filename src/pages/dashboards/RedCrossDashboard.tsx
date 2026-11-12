@@ -912,7 +912,7 @@ export default function RedCrossDashboard() {
                   <SelectTrigger className="h-9 w-[150px] text-[11px]"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All statuses</SelectItem>
-                    {["pending", "under_verification", "approved", "dispatched", "received", "fulfilled", "rejected", "cancelled"].map((s) => (
+                    {["pending", "under_verification", "approved", "dispatched", "partially_fulfilled", "received", "fulfilled", "rejected", "cancelled"].map((s) => (
                       <SelectItem key={s} value={s}>{STATUS_LABELS[s as RequestStatus]}</SelectItem>
                     ))}
                   </SelectContent>

@@ -98,7 +98,7 @@ export default function RequestDetail() {
   const [busy, setBusy] = useState<string | null>(null);
   const [unitCountDraft, setUnitCountDraft] = useState<string | null>(null);
   const [batchId, setBatchId] = useState("");
-  const unitCount = unitCountDraft ?? String(detail?.request.units ?? 1);
+  const unitCount = unitCountDraft ?? String(detail?.request.remainingUnits ?? detail?.request.units ?? 1);
   const effectiveBatchId = batchId || (batches?.[0] ? String(batches[0]._id) : "");
   const [dialog, setDialog] = useState<"reject" | "cancel" | "offer" | "release" | null>(null);
   const [note, setNote] = useState("");
@@ -279,6 +279,12 @@ export default function RequestDetail() {
                   {COMPONENT_LABELS[request.component as Component]} · {request.units} unit(s) ·{" "}
                   {request.city}
                 </p>
+                {full && request.receivedUnits > 0 && (
+                  <p className="mt-1 text-[10.5px] font-medium text-teal-700">
+                    Verified receipts: {request.receivedUnits}/{request.units} unit(s) ·{" "}
+                    {request.remainingUnits} remaining
+                  </p>
+                )}
                 <p className="mt-2 flex flex-wrap items-center gap-2 text-[10.5px] text-muted-foreground">
                   <Clock3 className="size-3" />
                   Updated {formatRelative(request.updatedAt)} · created {formatDateTime(request.createdAt)}
@@ -583,7 +589,7 @@ export default function RequestDetail() {
                           <Input
                             type="number"
                             min={1}
-                            max={request.units}
+                            max={request.remainingUnits}
                             value={unitCount}
                             onChange={(e) => setUnitCountDraft(e.target.value)}
                             className="h-9 w-20 text-[11px]"
@@ -595,21 +601,30 @@ export default function RequestDetail() {
                           </Button>
                         </div>
                         <p className="mt-1.5 text-[9.5px] leading-4 text-muted-foreground">
-                          Reserve all {request.units} requested unit(s) before dispatch.
+                          Reserve the remaining {request.remainingUnits} requested unit(s) before dispatch.
                         </p>
                       </>
                     )}
                   </div>
                 )}
 
-                {isRedCross && status === "approved" && (
+                {isRedCross && ["approved", "partially_fulfilled"].includes(status) && !request.hasInstitutionalTransfers && (
                   <Button className="w-full gap-2" disabled={busy === "dispatch"} onClick={() => void dispatchNow()}>
                     {busy === "dispatch" ? <Loader2 className="size-4 animate-spin" /> : <Truck className="size-4" />}
                     Record dispatch
                   </Button>
                 )}
+                {isRedCross && request.hasInstitutionalTransfers && ["approved", "partially_fulfilled", "dispatched"].includes(status) && (
+                  <p className="rounded-lg border border-border bg-muted/30 p-2.5 text-[10.5px] leading-5 text-muted-foreground">
+                    Institutional custody is active. Use the{" "}
+                    <Link to="/supply" className="font-semibold text-primary hover:underline">
+                      Transfers &amp; custody workspace
+                    </Link>{" "}
+                    to release or receive the reserved stock.
+                  </p>
+                )}
 
-                {isRedCross && status === "approved" && request.reservedUnits > 0 && (
+                {isRedCross && status === "approved" && request.reservedUnits > 0 && !request.hasInstitutionalTransfers && (
                   <Button
                     variant="outline"
                     className="w-full gap-2 text-muted-foreground hover:text-primary"
@@ -621,7 +636,7 @@ export default function RequestDetail() {
                   </Button>
                 )}
 
-                {isRedCross && (["dispatched", "received"].includes(status) || (status === "approved" && request.reservedUnits === 0)) && (
+                {isRedCross && !request.hasInstitutionalTransfers && (["dispatched", "received"].includes(status) || (status === "approved" && request.reservedUnits === 0)) && (
                   <Button variant="outline" className="w-full gap-2" disabled={busy === "fulfilled"} onClick={() => void runStatus("fulfilled", "Fulfilment confirmed by Red Cross staff.")}>
                     {busy === "fulfilled" ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
                     Mark fulfilled

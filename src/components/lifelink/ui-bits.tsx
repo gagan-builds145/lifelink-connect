@@ -10,6 +10,7 @@ const STATUS_TONES: Record<RequestStatus, string> = {
   approved: "border-teal-200 bg-teal-50 text-teal-800",
   dispatched: "border-indigo-200 bg-indigo-50 text-indigo-800",
   received: "border-emerald-200 bg-emerald-50 text-emerald-800",
+  partially_fulfilled: "border-cyan-200 bg-cyan-50 text-cyan-800",
   fulfilled: "border-emerald-200 bg-emerald-50 text-emerald-800",
   rejected: "border-rose-200 bg-rose-50 text-rose-800",
   cancelled: "border-border bg-muted text-muted-foreground",

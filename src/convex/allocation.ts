@@ -31,7 +31,8 @@ import {
   type SupplyNeed,
   type SupplyScope,
 } from "../lib/supply";
-import { cityCoords } from "../lib/blood";
+import { cityCoords, compatibility } from "../lib/blood";
+import { reconcileRequestReceipt, requestCoverage } from "./lib/requestLifecycle";
 import type { DonorEscalationResult } from "./donorPrediction";
 
 type AllocationCoreResult = {
@@ -65,7 +66,12 @@ const scopeValidator = v.union(
   v.literal("country"),
 );
 
-const OPEN_FOR_ALLOCATION = new Set(["pending", "under_verification", "approved"]);
+const OPEN_FOR_ALLOCATION = new Set([
+  "pending",
+  "under_verification",
+  "approved",
+  "partially_fulfilled",
+]);
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
 function orgPoint(org: Doc<"organizations"> | null | undefined): GeoPoint | null {
@@ -83,6 +89,7 @@ type ResolvedNeed = {
   requesterPoint: GeoPoint | null;
   remainingUnits: number;
   activeReserved: number;
+  verifiedReceived: number;
 };
 
 async function resolveNeed(
@@ -111,13 +118,7 @@ async function resolveNeed(
     const requesterOrg = request.hospitalOrgId
       ? await ctx.db.get(request.hospitalOrgId)
       : null;
-    const reservations = await ctx.db
-      .query("inventoryReservations")
-      .withIndex("by_request", (q) => q.eq("requestId", request._id))
-      .collect();
-    const activeReserved = reservations
-      .filter((r) => r.status === "active")
-      .reduce((sum, r) => sum + r.units, 0);
+    const coverage = await requestCoverage(ctx, request);
     return {
       request,
       need: {
@@ -131,8 +132,9 @@ async function resolveNeed(
       },
       requesterOrg,
       requesterPoint: orgPoint(requesterOrg) ?? cityCoords(request.city),
-      remainingUnits: Math.max(0, request.units - activeReserved),
-      activeReserved,
+      remainingUnits: coverage.remainingUnits,
+      activeReserved: coverage.reservedUnits,
+      verifiedReceived: coverage.receivedUnits,
     };
   }
 
@@ -157,6 +159,7 @@ async function resolveNeed(
     requesterPoint: orgPoint(requesterOrg) ?? cityCoords(args.city),
     remainingUnits: Math.max(0, Math.round(args.units)),
     activeReserved: 0,
+    verifiedReceived: 0,
   };
 }
 
@@ -398,7 +401,11 @@ export const autoAllocateCore = internalMutation({
     if (!OPEN_FOR_ALLOCATION.has(request.status)) {
       throw new Error("This request is already closed or fulfilled.");
     }
-    if (request.source === "requestor" && request.status !== "approved") {
+    if (
+      request.source === "requestor" &&
+      request.status !== "approved" &&
+      request.status !== "partially_fulfilled"
+    ) {
       throw new Error(
         "Patient-originated requests must be verified before stock is reserved. Institutional reserves do not bypass that check.",
       );
@@ -447,6 +454,7 @@ export const autoAllocateCore = internalMutation({
       string,
       {
         supplyingOrgId: Id<"organizations">;
+        bloodGroup: Doc<"bloodRequests">["bloodGroup"];
         agreementId?: Id<"transferAgreements">;
         lines: typeof plan.allocations;
         reservationIds: Id<"inventoryReservations">[];
@@ -509,9 +517,12 @@ export const autoAllocateCore = internalMutation({
           a.status === "active" &&
           a.autoAllocate,
       );
-      const key = String(org._id);
+      // One transfer per supplier and verified source group. This keeps the
+      // receiving label, compatibility check and inventory credit unambiguous.
+      const key = `${String(org._id)}:${batch.bloodGroup}`;
       const group = transferGroups.get(key) ?? {
         supplyingOrgId: org._id,
+        bloodGroup: batch.bloodGroup,
         agreementId: agreement?._id,
         lines: [],
         reservationIds: [],
@@ -539,7 +550,7 @@ export const autoAllocateCore = internalMutation({
         requestId: request._id,
         requestingOrgId: resolved.requesterOrg._id,
         supplyingOrgId: group.supplyingOrgId,
-        bloodGroup: request.bloodGroup,
+        bloodGroup: group.bloodGroup,
         component: request.component,
         units: group.units,
         status: "reserved",
@@ -567,11 +578,11 @@ export const autoAllocateCore = internalMutation({
     }
 
     await queueForOrganization(ctx, resolved.requesterOrg._id, {
-      title: `Automatic allocation: ${allocated}/${request.units} unit(s) reserved`,
+      title: `Automatic allocation: ${allocated}/${resolved.remainingUnits} unit(s) reserved`,
       body:
-        allocated >= request.units
+        allocated >= resolved.remainingUnits
           ? `Units are reserved across ${transferResults.length} facilit${transferResults.length === 1 ? "y" : "ies"}. Dispatch and delivery still require staff confirmation.`
-          : `Only ${allocated} of ${request.units} unit(s) could be reserved. The institutional shortfall is being escalated to donors.`,
+          : `Only ${allocated} of ${resolved.remainingUnits} remaining unit(s) could be reserved. The institutional shortfall is being escalated to donors.`,
       kind: "request",
       dedupeKey: `auto-allocation:${request._id}:${allocated}:${now}`,
       requestId: request._id,
@@ -595,12 +606,12 @@ export const autoAllocateCore = internalMutation({
       action: "allocation.auto",
       entityType: "bloodRequest",
       entityId: request.requestId,
-      detail: `Reserved ${allocated} unit(s) from ${transferResults.map((t) => `${t.supplyingName} (${t.units})`).join(", ") || "no facility"}. Shortfall ${Math.max(0, request.units - resolved.activeReserved - allocated)}.`,
+      detail: `Reserved ${allocated} unit(s) from ${transferResults.map((t) => `${t.supplyingName} (${t.units})`).join(", ") || "no facility"}. Shortfall ${Math.max(0, resolved.remainingUnits - allocated)}.`,
       organizationId: resolved.requesterOrg._id,
       isDemo: request.isDemo,
     });
 
-    const remainingAfter = Math.max(0, request.units - resolved.activeReserved - allocated);
+    const remainingAfter = Math.max(0, resolved.remainingUnits - allocated);
 
     return {
       allocated,
@@ -614,7 +625,7 @@ export const autoAllocateCore = internalMutation({
       applied,
       message:
         remainingAfter === 0
-          ? "Institutional supply covers the request. Dispatch and clinical release still require staff action."
+          ? "Institutional supply covers the remaining need. Dispatch and clinical release still require staff action."
           : `Institutional shortfall of ${remainingAfter} unit(s). Donor eligibility evaluation is queued; donors are not counted as stock.`,
     };
   },
@@ -695,6 +706,12 @@ export const transfersForMe = query({
     const orgById = new Map(orgs.map((o) => [o._id, o]));
     const requests = await ctx.db.query("bloodRequests").collect();
     const requestById = new Map(requests.map((r) => [r._id, r]));
+    // Older transfers stored the request group rather than the actual source
+    // batch group. Resolve the verified source label for the receipt dialog.
+    const reservations = await ctx.db.query("inventoryReservations").collect();
+    const reservationById = new Map(reservations.map((row) => [row._id, row]));
+    const inventory = await ctx.db.query("inventory").collect();
+    const batchById = new Map(inventory.map((batch) => [batch._id, batch]));
     const missions = await ctx.db.query("droneMissions").collect();
     const missionByTransfer = new Map(
       missions.filter((m) => m.transferId).map((m) => [String(m.transferId), m]),
@@ -709,12 +726,20 @@ export const transfersForMe = query({
         const request = transfer.requestId ? requestById.get(transfer.requestId) : null;
         const mission = missionByTransfer.get(String(transfer._id));
         const isSupplier = orgId != null && transfer.supplyingOrgId === orgId;
+        const sourceGroups = new Set(
+          transfer.reservationIds
+            .map((id) => reservationById.get(id)?.inventoryId)
+            .filter((id): id is Id<"inventory"> => id != null)
+            .map((id) => batchById.get(id)?.bloodGroup)
+            .filter((group): group is Doc<"inventory">["bloodGroup"] => group != null),
+        );
         return {
           _id: transfer._id,
           transferId: transfer.transferId,
           requestCode: request?.requestId ?? null,
           requestId: transfer.requestId ?? null,
           bloodGroup: transfer.bloodGroup,
+          sourceBloodGroup: sourceGroups.size === 1 ? [...sourceGroups][0] : transfer.bloodGroup,
           component: transfer.component,
           units: transfer.units,
           status: transfer.status,
@@ -836,10 +861,38 @@ export const dispatchTransfer = mutation({
   },
 });
 
-/** Receiving facility confirms delivery and the units enter its own ledger. */
+/**
+ * Receiving facility confirms custody and clinically verifies the delivered
+ * units. The inventory credit and request reconciliation happen atomically.
+ * A retry returns the original receipt without writing inventory again.
+ */
 export const receiveTransfer = mutation({
   args: {
     transferId: v.id("transfers"),
+    receivedUnits: v.number(),
+    verifiedBloodGroup: v.union(
+      v.literal("A+"),
+      v.literal("A-"),
+      v.literal("B+"),
+      v.literal("B-"),
+      v.literal("AB+"),
+      v.literal("AB-"),
+      v.literal("O+"),
+      v.literal("O-"),
+    ),
+    verifiedComponent: v.union(
+      v.literal("whole_blood"),
+      v.literal("red_cells"),
+      v.literal("platelets"),
+      v.literal("plasma"),
+    ),
+    verification: v.object({
+      labelVerified: v.boolean(),
+      screeningAndReleaseConfirmed: v.boolean(),
+      temperatureOk: v.boolean(),
+      packagingIntact: v.boolean(),
+      crossMatchConfirmed: v.boolean(),
+    }),
     note: v.optional(v.string()),
     evidenceCode: v.optional(v.string()),
   },
@@ -851,30 +904,132 @@ export const receiveTransfer = mutation({
     if (role !== "admin" && user.organizationId !== transfer.requestingOrgId) {
       throw new Error("Only the receiving facility can confirm this transfer.");
     }
+    const org = await ctx.db.get(transfer.requestingOrgId);
+    if (!org || org.status !== "verified") {
+      throw new Error("The receiving facility is not a verified organization.");
+    }
+
+    // Idempotency: a network retry must never create a second inventory batch.
+    const existingReceipt = await ctx.db
+      .query("transferReceipts")
+      .withIndex("by_transfer", (q) => q.eq("transferId", transfer._id))
+      .first();
+    if (existingReceipt) {
+      const request = transfer.requestId ? await ctx.db.get(transfer.requestId) : null;
+      return {
+        ok: true,
+        duplicate: true,
+        receiptId: existingReceipt._id,
+        receiptBatchId: existingReceipt.inventoryId,
+        receivedUnits: existingReceipt.units,
+        requestStatus: request?.status ?? null,
+      };
+    }
+    if (transfer.status === "failed") {
+      throw new Error("A failed transfer cannot be received or credited.");
+    }
+    if (transfer.status === "cancelled") {
+      throw new Error("A cancelled transfer cannot be received or credited.");
+    }
     if (!["dispatched", "in_transit"].includes(transfer.status)) {
       throw new Error("Only a dispatched or in-transit transfer can be received.");
     }
-    const now = Date.now();
-    const reservations = [];
-    for (const id of transfer.reservationIds) {
-      const reservation = await ctx.db.get(id);
-      if (reservation) reservations.push(reservation);
+    if (!Number.isInteger(args.receivedUnits) || args.receivedUnits < 1) {
+      throw new Error("Received units must be a whole number of at least 1.");
     }
-    const batches = [];
-    for (const reservation of reservations) {
+    if (args.receivedUnits > transfer.units) {
+      throw new Error(
+        `Received units cannot exceed the ${transfer.units} unit(s) dispatched on ${transfer.transferId}.`,
+      );
+    }
+    if (!Object.values(args.verification).every(Boolean)) {
+      throw new Error(
+        "Receipt verification is incomplete. Confirm the label, screening/release, temperature, packaging and cross-match checks.",
+      );
+    }
+
+    const request = transfer.requestId ? await ctx.db.get(transfer.requestId) : null;
+    if (transfer.requestId && !request) {
+      throw new Error("The linked blood request could not be found.");
+    }
+    if (request) {
+      if (request.status === "cancelled" || request.status === "rejected") {
+        throw new Error(`A ${request.status} request cannot receive or fulfil blood stock.`);
+      }
+      if (args.verifiedComponent !== request.component) {
+        throw new Error("The verified component does not match the blood request.");
+      }
+      const compat = compatibility(
+        args.verifiedBloodGroup,
+        request.bloodGroup,
+        request.component,
+      );
+      if (!compat.compatible) {
+        throw new Error(`The verified blood group is not compatible with the request. ${compat.note}`);
+      }
+    }
+
+    const sourceBatches = [];
+    const seenBatches = new Set<string>();
+    for (const reservationId of transfer.reservationIds) {
+      const reservation = await ctx.db.get(reservationId);
+      if (!reservation) continue;
       const batch = await ctx.db.get(reservation.inventoryId);
-      if (batch) batches.push(batch);
+      if (!batch || seenBatches.has(String(batch._id))) continue;
+      seenBatches.add(String(batch._id));
+      sourceBatches.push(batch);
     }
-    const earliestExpiry =
-      batches.map((b) => b.expiryDate).sort()[0] ?? new Date(now + 21 * 86_400_000).toISOString().slice(0, 10);
-    const org = await ctx.db.get(transfer.requestingOrgId);
+    if (sourceBatches.length === 0) {
+      throw new Error("The dispatched source batches could not be resolved for verification.");
+    }
+    const sourceGroups = new Set(sourceBatches.map((batch) => batch.bloodGroup));
+    if (sourceGroups.size !== 1) {
+      throw new Error(
+        "This transfer contains mixed blood groups. Split the receipt by verified group before crediting inventory.",
+      );
+    }
+    const sourceGroup = sourceBatches[0].bloodGroup;
+    if (
+      sourceBatches.some(
+        (batch) =>
+          batch.organizationId !== transfer.supplyingOrgId ||
+          batch.component !== transfer.component ||
+          !batch.verified ||
+          batch.screened === false ||
+          batch.released === false,
+      )
+    ) {
+      throw new Error(
+        "The source batches do not satisfy the dispatch, component, screening or release conditions.",
+      );
+    }
+    if (args.verifiedBloodGroup !== sourceGroup) {
+      throw new Error(
+        `The verified blood group ${args.verifiedBloodGroup} does not match the dispatched batch group ${sourceGroup}.`,
+      );
+    }
+    if (args.verifiedComponent !== transfer.component) {
+      throw new Error(
+        `The verified component ${args.verifiedComponent} does not match the dispatched component ${transfer.component}.`,
+      );
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    if (sourceBatches.some((batch) => batch.expiryDate < today)) {
+      throw new Error("An expired source batch cannot be credited on receipt.");
+    }
+
+    const now = Date.now();
+    const earliestExpiry = [...sourceBatches].map((batch) => batch.expiryDate).sort()[0];
+    const earliestCollection = [...sourceBatches]
+      .map((batch) => batch.collectionDate)
+      .sort()[0];
     const receiptBatchId = await ctx.db.insert("inventory", {
       organizationId: transfer.requestingOrgId,
-      bloodGroup: transfer.bloodGroup,
-      component: transfer.component,
-      unitsAvailable: transfer.units,
+      bloodGroup: args.verifiedBloodGroup,
+      component: args.verifiedComponent,
+      unitsAvailable: args.receivedUnits,
       unitsReserved: 0,
-      collectionDate: new Date(now - 7 * 86_400_000).toISOString().slice(0, 10),
+      collectionDate: earliestCollection,
       expiryDate: earliestExpiry,
       storageLocation: "Received transfer · confirm storage on arrival",
       batchRef: transfer.transferId,
@@ -884,51 +1039,72 @@ export const receiveTransfer = mutation({
       released: true,
       protectedReserve: 0,
       lastUpdated: now,
-      isDemo: org?.isDemo ?? false,
+      isDemo: org.isDemo ?? false,
+      createdAt: now,
+    });
+    const receiptId = await ctx.db.insert("transferReceipts", {
+      transferId: transfer._id,
+      requestId: transfer.requestId,
+      receivingOrgId: transfer.requestingOrgId,
+      supplyingOrgId: transfer.supplyingOrgId,
+      inventoryId: receiptBatchId,
+      units: args.receivedUnits,
+      bloodGroup: args.verifiedBloodGroup,
+      component: args.verifiedComponent,
+      labelVerified: args.verification.labelVerified,
+      screeningAndReleaseConfirmed: args.verification.screeningAndReleaseConfirmed,
+      temperatureOk: args.verification.temperatureOk,
+      packagingIntact: args.verification.packagingIntact,
+      crossMatchConfirmed: args.verification.crossMatchConfirmed,
+      note: args.note,
+      evidenceCode: args.evidenceCode,
+      receivedByUserId: user._id,
+      receivedByRole: role,
+      isDemo: org.isDemo ?? false,
       createdAt: now,
     });
     await ctx.db.insert("inventoryTransactions", {
       inventoryId: receiptBatchId,
       organizationId: transfer.requestingOrgId,
       type: "receipt",
-      units: transfer.units,
-      bloodGroup: transfer.bloodGroup,
-      component: transfer.component,
+      units: args.receivedUnits,
+      bloodGroup: args.verifiedBloodGroup,
+      component: args.verifiedComponent,
       requestId: transfer.requestId,
       actorUserId: user._id,
       actorRole: role,
-      note: args.note ?? `Received under ${transfer.transferId}${args.evidenceCode ? ` · evidence ${args.evidenceCode}` : ""}`,
-      isDemo: org?.isDemo ?? false,
+      note:
+        args.note ??
+        `Verified receipt under ${transfer.transferId}${args.evidenceCode ? ` · evidence ${args.evidenceCode}` : ""}`,
+      isDemo: org.isDemo ?? false,
       createdAt: now,
     });
     await ctx.db.patch(transfer._id, {
       status: "received",
       receivedAt: now,
       updatedAt: now,
-      note: args.note ?? transfer.note,
+      note:
+        args.receivedUnits < transfer.units
+          ? `${args.note ?? "Receipt confirmed"} · short receipt ${args.receivedUnits}/${transfer.units} unit(s).`
+          : args.note ?? transfer.note,
     });
 
-    if (transfer.requestId) {
-      const request = await ctx.db.get(transfer.requestId);
-      if (request && ["approved", "dispatched"].includes(request.status)) {
-        await ctx.db.patch(request._id, { status: "received", updatedAt: now });
-        await ctx.db.insert("requestStatusHistory", {
-          requestId: request._id,
-          status: "received",
-          actorUserId: user._id,
-          actorRole: role,
-          note: args.note ?? `Transfer ${transfer.transferId} received at ${org?.name ?? "facility"}.`,
-          isDemo: request.isDemo,
-          createdAt: now,
-        });
-      }
-    }
+    const reconciliation = request
+      ? await reconcileRequestReceipt(ctx, {
+          request,
+          actor: user,
+          note:
+            args.note ??
+            `Transfer ${transfer.transferId}: ${args.receivedUnits} unit(s) verified at ${org.name}.`,
+        })
+      : null;
 
     await queueForOrganization(ctx, transfer.supplyingOrgId, {
       title: `Transfer ${transfer.transferId} received`,
-      body: `${org?.name ?? "The receiving facility"} confirmed ${transfer.units} unit(s) of ${transfer.bloodGroup} ${transfer.component.replace(/_/g, " ")}.${args.evidenceCode ? ` Handoff evidence: ${args.evidenceCode}.` : ""}`,
+      body: `${org.name} verified ${args.receivedUnits} of ${transfer.units} unit(s) of ${args.verifiedBloodGroup} ${args.verifiedComponent.replace(/_/g, " ")}.${args.evidenceCode ? ` Handoff evidence: ${args.evidenceCode}.` : ""}`,
       kind: "request",
       dedupeKey: `transfer-received:${transfer._id}`,
+      requestId: transfer.requestId,
       link: "/supply",
     });
     await audit(ctx, {
@@ -936,10 +1112,18 @@ export const receiveTransfer = mutation({
       action: "transfer.received",
       entityType: "transfer",
       entityId: transfer.transferId,
-      detail: `Receipt confirmed for ${transfer.units} unit(s). New batch ${transfer.transferId} added to ${org?.name ?? "the receiving facility"}.`,
+      detail: `Verified receipt for ${args.receivedUnits}/${transfer.units} unit(s). New batch ${transfer.transferId} added to ${org.name}.`,
       organizationId: transfer.requestingOrgId,
+      isDemo: org.isDemo ?? false,
     });
-    return { ok: true, receiptBatchId };
+    return {
+      ok: true,
+      duplicate: false,
+      receiptId,
+      receiptBatchId,
+      receivedUnits: args.receivedUnits,
+      requestStatus: reconciliation?.status ?? request?.status ?? null,
+    };
   },
 });
 

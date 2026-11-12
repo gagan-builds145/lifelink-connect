@@ -29,6 +29,7 @@ import {
 } from "./validators";
 import { compatibility, locationRule, scoreMatch, stateOfCity, URGENCY_LABELS } from "../lib/blood";
 import { evaluateStockLevel } from "./lib/stockWatch";
+import { requestCoverage, verifiedReceivedUnits } from "./lib/requestLifecycle";
 
 const MAX_DOC_BYTES = 5 * 1024 * 1024;
 const ALLOWED_DOC_TYPES = ["application/pdf", "image/jpeg", "image/png"];
@@ -64,6 +65,7 @@ const OPEN_REQUEST_STATUSES: ReadonlySet<Doc<"bloodRequests">["status"]> = new S
   "pending",
   "under_verification",
   "approved",
+  "partially_fulfilled",
 ]);
 
 async function isFullViewer(
@@ -457,6 +459,22 @@ export const getDetail = query({
     const reservedUnits = activeReservations
       .filter((r) => r.status === "active")
       .reduce((sum, r) => sum + r.units, 0);
+    const verifiedReceipts = full
+      ? await ctx.db
+          .query("transferReceipts")
+          .withIndex("by_request", (q) => q.eq("requestId", request._id))
+          .collect()
+      : [];
+    const receivedUnits = verifiedReceipts.reduce((sum, receipt) => sum + receipt.units, 0);
+    const linkedTransfers = full
+      ? await ctx.db
+          .query("transfers")
+          .withIndex("by_request", (q) => q.eq("requestId", request._id))
+          .collect()
+      : [];
+    const hasInstitutionalTransfers = linkedTransfers.some(
+      (transfer) => transfer.status !== "failed" && transfer.status !== "cancelled",
+    );
 
     // Pressing "Offer to help" unlocks the requestor's basic coordination
     // details (name, phone, hospital location) for that responder. Patient
@@ -488,6 +506,9 @@ export const getDetail = query({
         assignedOrgName: assignedOrg?.name ?? null,
         assignedOrgPhone: full ? assignedOrg?.phone ?? null : null,
         reservedUnits,
+        receivedUnits,
+        remainingUnits: Math.max(0, request.units - receivedUnits),
+        hasInstitutionalTransfers,
         documentId: full ? request.documentId ?? null : null,
       },
       history: history
@@ -525,6 +546,12 @@ export const updateStatus = mutation({
     const now = Date.now();
     const note = args.note?.trim() || undefined;
 
+    if (status === "partially_fulfilled") {
+      throw new Error(
+        "Partial fulfilment is recorded automatically from verified transfer receipts.",
+      );
+    }
+
     if (status === "cancelled") {
       const isOwner =
         request.createdByUserId === user._id ||
@@ -533,6 +560,75 @@ export const updateStatus = mutation({
           request.hospitalOrgId === user.organizationId);
       if (!isOwner || !["pending", "under_verification"].includes(request.status)) {
         throw new Error("Only the request owner can cancel a pending request.");
+      }
+      const linkedTransfers = await ctx.db
+        .query("transfers")
+        .withIndex("by_request", (q) => q.eq("requestId", request._id))
+        .collect();
+      if (
+        linkedTransfers.some((transfer) =>
+          ["dispatched", "in_transit", "received"].includes(transfer.status),
+        )
+      ) {
+        throw new Error(
+          "Blood is already in transfer custody. Record the transfer outcome instead of cancelling the request.",
+        );
+      }
+      // A pending request may already have reserved transfers from automatic
+      // allocation. Release those holds in the same transaction as cancellation.
+      for (const transfer of linkedTransfers) {
+        if (transfer.status !== "reserved" && transfer.status !== "approved") continue;
+        for (const reservationId of transfer.reservationIds) {
+          const reservation = await ctx.db.get(reservationId);
+          if (!reservation || reservation.status !== "active") continue;
+          const batch = await ctx.db.get(reservation.inventoryId);
+          if (batch) {
+            const held = Math.min(batch.unitsReserved, reservation.units);
+            await ctx.db.patch(batch._id, {
+              unitsReserved: Math.max(0, batch.unitsReserved - held),
+              lastUpdated: now,
+            });
+            await ctx.db.insert("inventoryTransactions", {
+              inventoryId: batch._id,
+              organizationId: batch.organizationId,
+              type: "release",
+              units: held,
+              bloodGroup: batch.bloodGroup,
+              component: batch.component,
+              requestId: request._id,
+              actorUserId: user._id,
+              actorRole: role,
+              note: `Request ${request.requestId} cancelled; transfer ${transfer.transferId} released.`,
+              isDemo: batch.isDemo,
+              createdAt: now,
+            });
+          }
+          await ctx.db.patch(reservation._id, {
+            status: "released",
+            units: 0,
+            updatedAt: now,
+          });
+        }
+        await ctx.db.patch(transfer._id, {
+          status: "cancelled",
+          updatedAt: now,
+          note: `Request ${request.requestId} cancelled by its owner.`,
+        });
+        await notifyOrganization(ctx, transfer.supplyingOrgId, {
+          title: `Transfer ${transfer.transferId} cancelled`,
+          body: `The requestor cancelled ${request.requestId}. Reserved units were returned to available stock.`,
+          kind: "inventory",
+          requestId: request._id,
+          link: "/supply",
+        });
+        await audit(ctx, {
+          actor: user,
+          action: "transfer.cancelled",
+          entityType: "transfer",
+          entityId: transfer.transferId,
+          detail: `Cancelled because request ${request.requestId} was cancelled. Reserved units released.`,
+          organizationId: transfer.supplyingOrgId,
+        });
       }
       await ctx.db.patch(request._id, {
         status: "cancelled",
@@ -633,6 +729,7 @@ export const updateStatus = mutation({
       approved: ["fulfilled"],
       dispatched: ["fulfilled"],
       received: ["fulfilled"],
+      partially_fulfilled: ["fulfilled"],
     };
     if (!allowed[request.status]?.includes(status)) {
       throw new Error(`Cannot move a request from ${request.status} to ${status}.`);
@@ -645,6 +742,21 @@ export const updateStatus = mutation({
       if (reservations.some((r) => r.status === "active")) {
         throw new Error(
           "This request still has reserved stock. Dispatch it first or release the reservation before marking it fulfilled.",
+        );
+      }
+      const receivedUnits = await verifiedReceivedUnits(ctx, request._id);
+      const transfers = await ctx.db
+        .query("transfers")
+        .withIndex("by_request", (q) => q.eq("requestId", request._id))
+        .collect();
+      const activeTransfer = transfers.some((transfer) =>
+        ["reserved", "approved", "dispatched", "in_transit", "received"].includes(
+          transfer.status,
+        ),
+      );
+      if ((activeTransfer || receivedUnits > 0) && receivedUnits < request.units) {
+        throw new Error(
+          `Only ${receivedUnits}/${request.units} unit(s) have been verified. A transfer-backed request must remain partially fulfilled until the balance is received.`,
         );
       }
     }
@@ -720,8 +832,8 @@ export const reserveStock = mutation({
     const org = await requireOrganization(ctx, user, ["red_cross", "blood_bank"]);
     const request = await ctx.db.get(args.id);
     if (!request) throw new Error("Request not found.");
-    if (!["under_verification", "approved"].includes(request.status)) {
-      throw new Error("Stock can only be reserved for a verified or approved request.");
+    if (!["under_verification", "approved", "partially_fulfilled"].includes(request.status)) {
+      throw new Error("Stock can only be reserved for an open or partially fulfilled request.");
     }
     if (request.assignedOrgId && request.assignedOrgId !== org._id) {
       throw new Error("This request is assigned to another Red Cross branch.");
@@ -735,7 +847,12 @@ export const reserveStock = mutation({
       throw new Error("The selected batch does not match the requested group and component.");
     }
     const units = requireUnits(args.units);
-    if (units > request.units) throw new Error("Cannot reserve more units than requested.");
+    const coverage = await requestCoverage(ctx, request);
+    if (coverage.remainingUnits === 0) {
+      throw new Error(
+        "All requested units are already verified, reserved, or in an in-flight transfer.",
+      );
+    }
     const protectedReserve = Math.max(
       0,
       item.protectedReserve ?? org.protectedReserveDefault ?? 0,
@@ -746,16 +863,9 @@ export const reserveStock = mutation({
         `Only ${free} unreserved unit(s) are available outside the protected reserve.`,
       );
     }
-    const existingReservations = await ctx.db
-      .query("inventoryReservations")
-      .withIndex("by_request", (q) => q.eq("requestId", request._id))
-      .collect();
-    const alreadyReserved = existingReservations
-      .filter((r) => r.status === "active")
-      .reduce((sum, r) => sum + r.units, 0);
-    if (alreadyReserved + units > request.units) {
+    if (units > coverage.remainingUnits) {
       throw new Error(
-        `This request already has ${alreadyReserved} unit(s) reserved and only needs ${request.units}.`,
+        `This request only needs ${coverage.remainingUnits} more unit(s) after verified receipts, active reservations and in-flight transfers.`,
       );
     }
 
@@ -802,7 +912,7 @@ export const reserveStock = mutation({
     await addHistory(
       ctx,
       request,
-      "approved",
+      request.status === "under_verification" ? "approved" : request.status,
       roleOf(user),
       user._id,
       `${request.status === "under_verification" ? "Verified. " : ""}${units} unit(s) reserved from batch ${item.batchRef} at ${org.name}.`,
@@ -843,11 +953,24 @@ export const releaseReservation = mutation({
     const org = await requireOrganization(ctx, user, ["red_cross", "blood_bank"]);
     const request = await ctx.db.get(args.id);
     if (!request) throw new Error("Request not found.");
-    if (!["under_verification", "approved"].includes(request.status)) {
+    if (!["under_verification", "approved", "partially_fulfilled"].includes(request.status)) {
       throw new Error("Reserved stock can only be released before dispatch.");
     }
     if (request.assignedOrgId !== org._id) {
       throw new Error("This request is assigned to another Red Cross branch.");
+    }
+    const linkedTransfers = await ctx.db
+      .query("transfers")
+      .withIndex("by_request", (q) => q.eq("requestId", request._id))
+      .collect();
+    if (
+      linkedTransfers.some((transfer) =>
+        ["reserved", "approved", "dispatched", "in_transit"].includes(transfer.status),
+      )
+    ) {
+      throw new Error(
+        "This request has an institutional transfer. Cancel the transfer to release its reservation.",
+      );
     }
 
     const reservations = await ctx.db
@@ -893,7 +1016,7 @@ export const releaseReservation = mutation({
     await addHistory(
       ctx,
       request,
-      "approved",
+      request.status,
       roleOf(user),
       user._id,
       args.note ?? `Released ${released} reserved unit(s) back to available stock.`,
@@ -917,11 +1040,24 @@ export const dispatch = mutation({
     const org = await requireOrganization(ctx, user, ["red_cross", "blood_bank"]);
     const request = await ctx.db.get(args.id);
     if (!request) throw new Error("Request not found.");
-    if (request.status !== "approved") {
-      throw new Error("Only approved requests can be dispatched.");
+    if (!["approved", "partially_fulfilled"].includes(request.status)) {
+      throw new Error("Only approved or partially fulfilled requests can be dispatched.");
     }
     if (request.assignedOrgId !== org._id) {
       throw new Error("This request is not assigned to your organization.");
+    }
+    const linkedTransfers = await ctx.db
+      .query("transfers")
+      .withIndex("by_request", (q) => q.eq("requestId", request._id))
+      .collect();
+    if (
+      linkedTransfers.some(
+        (transfer) => transfer.status !== "failed" && transfer.status !== "cancelled",
+      )
+    ) {
+      throw new Error(
+        "This request has an institutional transfer. Dispatch it from the Transfers & custody workspace to preserve the custody record.",
+      );
     }
     // Consume exactly the units that were reserved against specific batches for
     // this request. This keeps the ledger correct even when a batch is fully
@@ -934,13 +1070,19 @@ export const dispatch = mutation({
       .filter((r) => r.status === "active" && r.organizationId === org._id)
       .sort((a, b) => a.createdAt - b.createdAt);
     const reservedUnits = active.reduce((sum, r) => sum + r.units, 0);
-    if (reservedUnits < request.units) {
+    const coverage = await requestCoverage(ctx, request);
+    const { receivedUnits, inFlightUnits } = coverage;
+    const unitsToDispatch = Math.max(0, request.units - receivedUnits - inFlightUnits);
+    if (unitsToDispatch === 0) {
+      throw new Error("All requested units are already verified or in flight.");
+    }
+    if (reservedUnits < unitsToDispatch) {
       throw new Error(
-        `Reserve all ${request.units} unit(s) before dispatching (currently ${reservedUnits}).`,
+        `Reserve all ${unitsToDispatch} remaining unit(s) before dispatching (currently ${reservedUnits}).`,
       );
     }
 
-    let remaining = request.units;
+    let remaining = unitsToDispatch;
     const now = Date.now();
     const consumed: string[] = [];
     for (const reservation of active) {
@@ -985,14 +1127,17 @@ export const dispatch = mutation({
       throw new Error("Insufficient verified reserved stock to dispatch this request.");
     }
 
-    await ctx.db.patch(request._id, { status: "dispatched", updatedAt: now });
+    await ctx.db.patch(request._id, {
+      status: receivedUnits > 0 ? "partially_fulfilled" : "dispatched",
+      updatedAt: now,
+    });
     // Dispatching removes units from the branch ledger; escalate the shortfall
     // automatically (donor alerts only for Red Cross origin stock).
     await evaluateStockLevel(ctx, org, request.bloodGroup, request.component);
     await addHistory(
       ctx,
       request,
-      "dispatched",
+      receivedUnits > 0 ? "partially_fulfilled" : "dispatched",
       roleOf(user),
       user._id,
       args.note ?? `Dispatched ${consumed.join(", ")}.`,
@@ -1000,7 +1145,7 @@ export const dispatch = mutation({
     if (request.createdByUserId) {
       await notifyUser(ctx, request.createdByUserId, {
         title: `Request ${request.requestId} dispatched`,
-        body: `${org.name} dispatched the blood components. The hospital must confirm receipt.`,
+        body: `${org.name} dispatched the blood components. The hospital must verify and confirm receipt.`,
         kind: "request",
         requestId: request._id,
         link: `/requests/${request._id}`,
@@ -1009,7 +1154,7 @@ export const dispatch = mutation({
     if (request.hospitalOrgId) {
       await notifyOrganization(ctx, request.hospitalOrgId, {
         title: `Incoming blood components for ${request.requestId}`,
-        body: `${request.bloodGroup} ${request.component.replace("_", " ")} · ${request.units} unit(s) dispatched by ${org.name}.`,
+        body: `${request.bloodGroup} ${request.component.replace("_", " ")} · ${unitsToDispatch} remaining unit(s) dispatched by ${org.name}.`,
         kind: "request",
         requestId: request._id,
         link: `/requests/${request._id}`,

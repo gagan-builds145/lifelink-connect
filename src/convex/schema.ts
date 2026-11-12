@@ -480,6 +480,35 @@ const schema = defineSchema(
       .index("by_requesting", ["requestingOrgId"])
       .index("by_supplying", ["supplyingOrgId"]),
 
+    /* ---------------------------------------------------------------- *
+     * Verified transfer receipts
+     * ---------------------------------------------------------------- */
+    transferReceipts: defineTable({
+      transferId: v.id("transfers"),
+      requestId: v.optional(v.id("bloodRequests")),
+      receivingOrgId: v.id("organizations"),
+      supplyingOrgId: v.id("organizations"),
+      /** New batch written to the receiving facility's inventory ledger. */
+      inventoryId: v.id("inventory"),
+      units: v.number(),
+      bloodGroup: bloodGroupValidator,
+      component: componentValidator,
+      /** Clinical and custody checks completed by the receiving facility. */
+      labelVerified: v.boolean(),
+      screeningAndReleaseConfirmed: v.boolean(),
+      temperatureOk: v.boolean(),
+      packagingIntact: v.boolean(),
+      crossMatchConfirmed: v.boolean(),
+      note: v.optional(v.string()),
+      evidenceCode: v.optional(v.string()),
+      receivedByUserId: v.id("users"),
+      receivedByRole: v.string(),
+      isDemo: v.optional(v.boolean()),
+      createdAt: v.number(),
+    })
+      .index("by_transfer", ["transferId"])
+      .index("by_request", ["requestId"]),
+
     transfers: defineTable({
       transferId: v.string(),
       requestId: v.optional(v.id("bloodRequests")),

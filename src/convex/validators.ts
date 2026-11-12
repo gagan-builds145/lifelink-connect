@@ -30,6 +30,7 @@ export const requestStatusValidator = v.union(
   v.literal("approved"),
   v.literal("dispatched"),
   v.literal("received"),
+  v.literal("partially_fulfilled"),
   v.literal("fulfilled"),
   v.literal("rejected"),
   v.literal("cancelled"),

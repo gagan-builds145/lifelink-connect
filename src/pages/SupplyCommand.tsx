@@ -1,4 +1,5 @@
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { DashboardShell } from "@/components/lifelink/DashboardShell";
 import { NETWORK_MAP_NOTE, NetworkMap, type NetworkMapPoint } from "@/components/lifelink/NetworkMap";
 import {
@@ -10,11 +11,24 @@ import {
   UrgencyBadge,
 } from "@/components/lifelink/ui-bits";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/use-auth";
 import {
   COMPONENT_LABELS,
   formatDateTime,
   formatRelative,
+  type BloodGroup,
   type Component,
 } from "@/lib/blood";
 import { ROLE_LABELS, type AppRole } from "@/lib/roles";
@@ -48,6 +62,44 @@ import { toast } from "sonner";
 type Scope = "city" | "district" | "state" | "country";
 
 const receiptCode = () => `SUP-${Date.now().toString(36).slice(-5).toUpperCase()}`;
+
+const RECEIPT_VERIFICATION = [
+  {
+    key: "labelVerified",
+    label: "Label, blood group and component verified",
+    hint: "The physical label matches this transfer and the linked request.",
+  },
+  {
+    key: "screeningAndReleaseConfirmed",
+    label: "Screening and release conditions confirmed",
+    hint: "Only screened, released units are accepted into the ledger.",
+  },
+  {
+    key: "temperatureOk",
+    label: "Storage temperature and cold-chain check passed",
+    hint: "Record any excursion instead of confirming receipt.",
+  },
+  {
+    key: "packagingIntact",
+    label: "Packaging intact and no leakage",
+    hint: "Damaged units must be quarantined, not credited.",
+  },
+  {
+    key: "crossMatchConfirmed",
+    label: "Cross-match / laboratory confirmation recorded",
+    hint: "ABO/Rh rules are advisory; qualified staff make the final release decision.",
+  },
+] as const;
+
+type ReceiptVerificationKey = (typeof RECEIPT_VERIFICATION)[number]["key"];
+
+type ReceiptTarget = {
+  _id: Id<"transfers">;
+  transferId: string;
+  units: number;
+  bloodGroup: BloodGroup;
+  component: Component;
+};
 
 const SCOPES: Array<{ key: Scope; label: string }> = [
   { key: "city", label: "This city" },
@@ -109,6 +161,16 @@ export default function SupplyCommand() {
   const [scope, setScope] = useState<Scope>("city");
   const [component, setComponent] = useState<Component>("red_cells");
   const [busy, setBusy] = useState<string | null>(null);
+  const [receiptTarget, setReceiptTarget] = useState<ReceiptTarget | null>(null);
+  const [receiptUnits, setReceiptUnits] = useState("");
+  const [receiptNote, setReceiptNote] = useState("");
+  const [receiptChecks, setReceiptChecks] = useState<Record<ReceiptVerificationKey, boolean>>({
+    labelVerified: false,
+    screeningAndReleaseConfirmed: false,
+    temperatureOk: false,
+    packagingIntact: false,
+    crossMatchConfirmed: false,
+  });
 
   const autoAllocate = useAction(api.allocation.autoAllocate);
   const dispatchTransfer = useMutation(api.allocation.dispatchTransfer);
@@ -120,11 +182,20 @@ export default function SupplyCommand() {
   const runLiveSync = useAction(api.integrations.runLiveSync);
 
   const canSuperviseTransfers = user?.role === "admin";
+  const receiptVerificationComplete = RECEIPT_VERIFICATION.every(
+    (check) => receiptChecks[check.key],
+  );
 
   const openRequests = useMemo(
     () =>
       (requests ?? []).filter((r) =>
-        ["pending", "under_verification", "approved", "dispatched"].includes(r.status),
+        [
+          "pending",
+          "under_verification",
+          "approved",
+          "dispatched",
+          "partially_fulfilled",
+        ].includes(r.status),
       ),
     [requests],
   );
@@ -223,8 +294,56 @@ export default function SupplyCommand() {
     }
   };
 
+  const openReceipt = (transfer: ReceiptTarget) => {
+    setReceiptTarget(transfer);
+    setReceiptUnits(String(transfer.units));
+    setReceiptNote("");
+    setReceiptChecks({
+      labelVerified: false,
+      screeningAndReleaseConfirmed: false,
+      temperatureOk: false,
+      packagingIntact: false,
+      crossMatchConfirmed: false,
+    });
+  };
+
+  const submitReceipt = async () => {
+    if (!receiptTarget) return;
+    const units = Number(receiptUnits);
+    if (!Number.isInteger(units) || units < 1 || units > receiptTarget.units) {
+      toast.error("Check the verified quantity", {
+        description: `Enter a whole number between 1 and ${receiptTarget.units}.`,
+      });
+      return;
+    }
+    setBusy(`receive:${receiptTarget._id}`);
+    try {
+      const result = await receiveTransfer({
+        transferId: receiptTarget._id,
+        receivedUnits: units,
+        verifiedBloodGroup: receiptTarget.bloodGroup,
+        verifiedComponent: receiptTarget.component,
+        verification: receiptChecks,
+        note: receiptNote.trim() || undefined,
+        evidenceCode: receiptCode(),
+      });
+      toast.success(result.duplicate ? "Receipt already recorded" : "Receipt verified", {
+        description: result.duplicate
+          ? "This retry was matched to the existing receipt. Inventory was not credited twice."
+          : `${result.receivedUnits} unit(s) credited. Request status: ${String(result.requestStatus ?? "unchanged").replace(/_/g, " ")}.`,
+      });
+      setReceiptTarget(null);
+    } catch (error) {
+      toast.error("Could not verify receipt", {
+        description: friendlyError(error),
+      });
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const doTransferAction = async (
-    action: "dispatch" | "receive" | "cancel",
+    action: "dispatch" | "cancel",
     transferId: Parameters<typeof dispatchTransfer>[0]["transferId"],
   ) => {
     setBusy(`${action}:${transferId}`);
@@ -232,16 +351,7 @@ export default function SupplyCommand() {
       if (action === "dispatch") {
         const result = await dispatchTransfer({ transferId });
         toast.success(`Released ${result.units} unit(s)`, {
-          description: "The receiving facility must confirm receipt.",
-        });
-      } else if (action === "receive") {
-        await receiveTransfer({
-          transferId,
-          note: "Receipt confirmed from the supply command centre.",
-          evidenceCode: receiptCode(),
-        });
-        toast.success("Receipt confirmed", {
-          description: "Units were added to your facility ledger.",
+          description: "The receiving facility must verify and confirm receipt.",
         });
       } else {
         const result = await cancelTransfer({ transferId });
@@ -703,7 +813,15 @@ export default function SupplyCommand() {
                           <Button
                             size="sm"
                             className="h-7 gap-1 text-[9.5px]"
-                            onClick={() => void doTransferAction("receive", t._id)}
+                            onClick={() =>
+                              openReceipt({
+                                _id: t._id,
+                                transferId: t.transferId,
+                                units: t.units,
+                                bloodGroup: t.sourceBloodGroup,
+                                component: t.component,
+                              })
+                            }
                             disabled={busy === `receive:${t._id}`}
                           >
                             {busy === `receive:${t._id}` ? (
@@ -760,8 +878,8 @@ export default function SupplyCommand() {
                 </li>
                 <li className="flex gap-2">
                   <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-teal-600" />
-                  Receipt creates a new released batch in the receiving facility's ledger with the
-                  earliest expiry and a transfer reference.
+                  Receipt verifies the component, group, quantity, screening/release, cold chain,
+                  packaging and cross-match before crediting only the accepted units.
                 </li>
               </ul>
             </Panel>
@@ -770,8 +888,8 @@ export default function SupplyCommand() {
                 <li>1. Request verified or hospital-originated · auto-allocation allowed.</li>
                 <li>2. Eligible units reserved atomically across up to five pre-authorised facilities.</li>
                 <li>3. Supplying facility releases the exact batches; a transfer enters custody.</li>
-                <li>4. Receiving facility confirms receipt with a handoff reference.</li>
-                <li>5. New stock is written to the shared ledger and the audit trail.</li>
+                <li>4. Receiving facility verifies the physical units and release conditions.</li>
+                <li>5. Only verified units are credited; the request becomes partially fulfilled or fulfilled.</li>
               </ol>
             </Panel>
           </div>
@@ -1210,6 +1328,106 @@ Accept: application/json
           </div>
         </div>
       )}
+
+      <Dialog
+        open={receiptTarget != null}
+        onOpenChange={(open) => {
+          if (!open) setReceiptTarget(null);
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Verify receipt · {receiptTarget?.transferId}</DialogTitle>
+            <DialogDescription>
+              Confirm the physical units and release checks before anything is credited. A
+              retry after a successful receipt is idempotent and will not add stock twice.
+            </DialogDescription>
+          </DialogHeader>
+          {receiptTarget && (
+            <div className="space-y-4">
+              <div className="rounded-xl border border-border bg-muted/30 p-3 text-[11px]">
+                <p className="font-semibold">
+                  Dispatched: {receiptTarget.units} × {receiptTarget.bloodGroup}{" "}
+                  {COMPONENT_LABELS[receiptTarget.component]}
+                </p>
+                <p className="mt-1 text-[10px] leading-4 text-muted-foreground">
+                  Verify the label, component, group and quantity against the request. Partial
+                  quantities are allowed; the request will remain partially fulfilled until the
+                  cumulative verified quantity reaches the requested amount.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="receipt-units">Verified units received</Label>
+                <Input
+                  id="receipt-units"
+                  type="number"
+                  min={1}
+                  max={receiptTarget.units}
+                  step={1}
+                  value={receiptUnits}
+                  onChange={(event) => setReceiptUnits(event.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                {RECEIPT_VERIFICATION.map((check) => (
+                  <div key={check.key} className="flex items-start gap-2.5 rounded-lg border border-border p-2.5">
+                    <Checkbox
+                      id={`receipt-${check.key}`}
+                      checked={receiptChecks[check.key]}
+                      onCheckedChange={(checked) =>
+                        setReceiptChecks((current) => ({
+                          ...current,
+                          [check.key]: checked === true,
+                        }))
+                      }
+                      className="mt-0.5"
+                    />
+                    <div>
+                      <Label htmlFor={`receipt-${check.key}`} className="text-[11px] leading-4">
+                        {check.label}
+                      </Label>
+                      <p className="mt-0.5 text-[9.5px] leading-4 text-muted-foreground">
+                        {check.hint}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="receipt-note">Receipt note or discrepancy</Label>
+                <Textarea
+                  id="receipt-note"
+                  value={receiptNote}
+                  onChange={(event) => setReceiptNote(event.target.value)}
+                  placeholder="Handoff reference, short shipment, temperature excursion, quarantined units…"
+                  className="min-h-20 text-[11px]"
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReceiptTarget(null)}>
+              Cancel
+            </Button>
+            <Button
+              className="gap-1.5"
+              disabled={
+                busy === `receive:${receiptTarget?._id}` ||
+                !receiptVerificationComplete ||
+                !receiptUnits
+              }
+              onClick={() => void submitReceipt()}
+            >
+              {busy === `receive:${receiptTarget?._id}` ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <ShieldCheck className="size-3.5" />
+              )}
+              Verify receipt & credit inventory
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardShell>
   );
 }

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { convexTest, type TestConvex } from "convex-test";
 import schema from "../src/convex/schema";
 import { api, internal } from "../src/convex/_generated/api";
+import type { Id } from "../src/convex/_generated/dataModel";
 
 /**
  * Bun does not provide Vite's import.meta.glob, so register the real Convex
@@ -812,5 +813,657 @@ describe("Convex drone simulation boundary", () => {
     await expect(
       asDrone.mutation(api.drones.dispatchMission, { missionId: mission!._id }),
     ).rejects.toThrow(/passed every preflight/i);
+  });
+});
+
+describe("Transfer receipt and request fulfilment lifecycle", () => {
+  type TestGroup = "A+" | "A-" | "B+" | "B-" | "AB+" | "AB-" | "O+" | "O-";
+  type TestComponent = "whole_blood" | "red_cells" | "platelets" | "plasma";
+
+  const verifiedChecks = {
+    labelVerified: true,
+    screeningAndReleaseConfirmed: true,
+    temperatureOk: true,
+    packagingIntact: true,
+    crossMatchConfirmed: true,
+  };
+
+  async function addSource(
+    t: TestApp,
+    options: {
+      label: string;
+      units: number;
+      bloodGroup?: TestGroup;
+      component?: TestComponent;
+    },
+  ) {
+    return await t.run(async (ctx) => {
+      const now = Date.now();
+      const suffix = `${options.label}-${Math.random().toString(36).slice(2, 7)}`;
+      const org = await ctx.db.insert("organizations", {
+        orgId: `RC-${suffix}`,
+        type: "red_cross",
+        name: `Receipt Source ${suffix}`,
+        contactPerson: "Test Blood Bank Officer",
+        phone: "02025501999",
+        email: `source.${suffix}@test.example`,
+        address: "99 Test Blood Bank Road",
+        city: "Pune",
+        latitude: 18.52,
+        longitude: 73.86,
+        status: "verified",
+        transferAuthorized: true,
+        autoAllocate: true,
+        protectedReserveDefault: 0,
+        createdAt: now,
+        updatedAt: now,
+      });
+      const user = await ctx.db.insert("users", {
+        name: `Receipt Source User ${suffix}`,
+        email: `source.user.${suffix}@test.example`,
+        role: "red_cross",
+        organizationId: org,
+        city: "Pune",
+        phone: "9876500000",
+        profileCompleted: true,
+        createdAt: now,
+      });
+      const batch = await ctx.db.insert("inventory", {
+        organizationId: org,
+        bloodGroup: options.bloodGroup ?? "O+",
+        component: options.component ?? "red_cells",
+        unitsAvailable: options.units,
+        unitsReserved: 0,
+        collectionDate: iso(-10),
+        expiryDate: iso(30),
+        storageLocation: "Verified receipt test rack",
+        batchRef: `SRC-${suffix}`,
+        lowStockThreshold: 0,
+        verified: true,
+        screened: true,
+        released: true,
+        protectedReserve: 0,
+        lastUpdated: now,
+        createdAt: now,
+      });
+      return { org, user, batch };
+    });
+  }
+
+  async function approve(t: TestApp, network: Network, id: Id<"bloodRequests">) {
+    const asRedCross = t.withIdentity({ subject: String(network.redCrossUser) });
+    await asRedCross.mutation(api.requests.updateStatus, {
+      id,
+      status: "under_verification",
+    });
+    await asRedCross.mutation(api.requests.updateStatus, {
+      id,
+      status: "approved",
+      assignedOrgId: network.redCrossOrg,
+    });
+  }
+
+  async function prepareSingleSource(
+    t: TestApp,
+    network: Network,
+    options: {
+      requestUnits: number;
+      sourceUnits: number;
+      bloodGroup?: TestGroup;
+      component?: TestComponent;
+    },
+  ) {
+    await t.run((ctx) =>
+      ctx.db.patch(network.batch, {
+        unitsAvailable: 0,
+        unitsReserved: 0,
+        protectedReserve: 0,
+      }),
+    );
+    const source = await addSource(t, {
+      label: "single",
+      units: options.sourceUnits,
+      bloodGroup: options.bloodGroup,
+      component: options.component,
+    });
+    const created = await createRequest(t, network, {
+      units: options.requestUnits,
+      bloodGroup: options.bloodGroup ?? "O+",
+      component: options.component ?? "red_cells",
+    });
+    await approve(t, network, created.id);
+    const asHospital = t.withIdentity({ subject: String(network.hospitalUser) });
+    const allocation = await asHospital.action(api.allocation.autoAllocate, {
+      requestId: created.id,
+      scope: "city",
+    });
+    const transfer = await t.run((ctx) =>
+      ctx.db
+        .query("transfers")
+        .withIndex("by_request", (q) => q.eq("requestId", created.id))
+        .first(),
+    );
+    if (!transfer) throw new Error("Test setup expected an allocated transfer.");
+    await t.withIdentity({ subject: String(source.user) }).mutation(
+      api.allocation.dispatchTransfer,
+      { transferId: transfer._id },
+    );
+    return { created, source, transfer, allocation, asHospital };
+  }
+
+  async function hospitalBatches(t: TestApp, network: Network) {
+    return await t.run((ctx) =>
+      ctx.db
+        .query("inventory")
+        .withIndex("by_organization", (q) => q.eq("organizationId", network.hospitalOrg))
+        .collect(),
+    );
+  }
+
+  test("full verified receipt credits inventory once and fulfils the request", async () => {
+    const t = convexTest(schema, modules);
+    const network = await setupNetwork(t);
+    const { created, transfer, asHospital, allocation } = await prepareSingleSource(t, network, {
+      requestUnits: 3,
+      sourceUnits: 4,
+    });
+    expect(allocation.allocated).toBe(3);
+    expect(transfer.units).toBe(3);
+    expect(transfer.bloodGroup).toBe("O+");
+
+    const result = await asHospital.mutation(api.allocation.receiveTransfer, {
+      transferId: transfer._id,
+      receivedUnits: 3,
+      verifiedBloodGroup: "O+",
+      verifiedComponent: "red_cells",
+      verification: verifiedChecks,
+      note: "Synthetic full verified receipt.",
+    });
+    expect(result.duplicate).toBe(false);
+    expect(result.receivedUnits).toBe(3);
+    expect(result.requestStatus).toBe("fulfilled");
+
+    const request = await t.run((ctx) => ctx.db.get(created.id));
+    expect(request?.status).toBe("fulfilled");
+    const receipts = await t.run((ctx) =>
+      ctx.db
+        .query("transferReceipts")
+        .withIndex("by_request", (q) => q.eq("requestId", created.id))
+        .collect(),
+    );
+    expect(receipts).toHaveLength(1);
+    expect(receipts[0].units).toBe(3);
+    const batches = await hospitalBatches(t, network);
+    expect(batches).toHaveLength(1);
+    expect(batches[0].unitsAvailable).toBe(3);
+    expect(batches[0].batchRef).toBe(transfer.transferId);
+    const transactions = await t.run((ctx) =>
+      ctx.db
+        .query("inventoryTransactions")
+        .withIndex("by_request", (q) => q.eq("requestId", created.id))
+        .collect(),
+    );
+    expect(transactions.filter((row) => row.type === "receipt")).toHaveLength(1);
+    const audits = await t.run((ctx) => ctx.db.query("auditLogs").collect());
+    expect(audits.some((row) => row.action === "request.fulfilled")).toBe(true);
+    expect(audits.some((row) => row.action === "transfer.received")).toBe(true);
+  });
+
+  test("a compatible source group is credited under its verified label", async () => {
+    const t = convexTest(schema, modules);
+    const network = await setupNetwork(t);
+    await t.run((ctx) =>
+      ctx.db.patch(network.batch, { unitsAvailable: 0, unitsReserved: 0, protectedReserve: 0 }),
+    );
+    const source = await addSource(t, { label: "compatible", units: 2, bloodGroup: "O-" });
+    const created = await createRequest(t, network, { units: 2, bloodGroup: "O+" });
+    await approve(t, network, created.id);
+    const asHospital = t.withIdentity({ subject: String(network.hospitalUser) });
+    await asHospital.action(api.allocation.autoAllocate, {
+      requestId: created.id,
+      scope: "city",
+    });
+    const transfer = await t.run((ctx) =>
+      ctx.db
+        .query("transfers")
+        .withIndex("by_request", (q) => q.eq("requestId", created.id))
+        .first(),
+    );
+    expect(transfer?.bloodGroup).toBe("O-");
+    await t.withIdentity({ subject: String(source.user) }).mutation(
+      api.allocation.dispatchTransfer,
+      { transferId: transfer!._id },
+    );
+    const result = await asHospital.mutation(api.allocation.receiveTransfer, {
+      transferId: transfer!._id,
+      receivedUnits: 2,
+      verifiedBloodGroup: "O-",
+      verifiedComponent: "red_cells",
+      verification: verifiedChecks,
+    });
+    expect(result.requestStatus).toBe("fulfilled");
+    const batches = await hospitalBatches(t, network);
+    expect(batches).toHaveLength(1);
+    expect(batches[0].bloodGroup).toBe("O-");
+    expect(batches[0].unitsAvailable).toBe(2);
+  });
+
+  test("partial verified receipt leaves the request partially fulfilled", async () => {
+    const t = convexTest(schema, modules);
+    const network = await setupNetwork(t);
+    const { created, transfer, asHospital } = await prepareSingleSource(t, network, {
+      requestUnits: 4,
+      sourceUnits: 2,
+    });
+
+    const result = await asHospital.mutation(api.allocation.receiveTransfer, {
+      transferId: transfer._id,
+      receivedUnits: 2,
+      verifiedBloodGroup: "O+",
+      verifiedComponent: "red_cells",
+      verification: verifiedChecks,
+    });
+    expect(result.receivedUnits).toBe(2);
+    expect(result.requestStatus).toBe("partially_fulfilled");
+    const request = await t.run((ctx) => ctx.db.get(created.id));
+    expect(request?.status).toBe("partially_fulfilled");
+    expect(request?.units).toBe(4);
+    const detail = await asHospital.query(api.requests.getDetail, { id: created.id });
+    expect(detail?.request.receivedUnits).toBe(2);
+    expect(detail?.request.remainingUnits).toBe(2);
+    await expect(
+      t.withIdentity({ subject: String(network.redCrossUser) }).mutation(
+        api.requests.updateStatus,
+        { id: created.id, status: "fulfilled", note: "Attempt to bypass verified quantity." },
+      ),
+    ).rejects.toThrow(/must remain partially fulfilled/i);
+  });
+
+  test("multiple transfers complete one request in verified increments", async () => {
+    const t = convexTest(schema, modules);
+    const network = await setupNetwork(t);
+    await t.run((ctx) =>
+      ctx.db.patch(network.batch, { unitsAvailable: 0, unitsReserved: 0, protectedReserve: 0 }),
+    );
+    const firstSource = await addSource(t, { label: "multi-a", units: 2 });
+    const secondSource = await addSource(t, { label: "multi-b", units: 2 });
+    const created = await createRequest(t, network, { units: 3 });
+    await approve(t, network, created.id);
+    const asHospital = t.withIdentity({ subject: String(network.hospitalUser) });
+    const allocation = await asHospital.action(api.allocation.autoAllocate, {
+      requestId: created.id,
+      scope: "city",
+    });
+    expect(allocation.allocated).toBe(3);
+    expect(allocation.transfers).toHaveLength(2);
+    const transfers = await t.run((ctx) =>
+      ctx.db
+        .query("transfers")
+        .withIndex("by_request", (q) => q.eq("requestId", created.id))
+        .collect(),
+    );
+    expect(transfers).toHaveLength(2);
+
+    for (const transfer of transfers) {
+      const supplier = transfer.supplyingOrgId === firstSource.org ? firstSource : secondSource;
+      await t.withIdentity({ subject: String(supplier.user) }).mutation(
+        api.allocation.dispatchTransfer,
+        { transferId: transfer._id },
+      );
+    }
+
+    const first = transfers[0];
+    const firstResult = await asHospital.mutation(api.allocation.receiveTransfer, {
+      transferId: first._id,
+      receivedUnits: first.units,
+      verifiedBloodGroup: "O+",
+      verifiedComponent: "red_cells",
+      verification: verifiedChecks,
+    });
+    expect(firstResult.requestStatus).toBe("partially_fulfilled");
+    const second = transfers[1];
+    const secondResult = await asHospital.mutation(api.allocation.receiveTransfer, {
+      transferId: second._id,
+      receivedUnits: second.units,
+      verifiedBloodGroup: "O+",
+      verifiedComponent: "red_cells",
+      verification: verifiedChecks,
+    });
+    expect(secondResult.requestStatus).toBe("fulfilled");
+    const request = await t.run((ctx) => ctx.db.get(created.id));
+    expect(request?.status).toBe("fulfilled");
+    expect((await hospitalBatches(t, network)).reduce((sum, b) => sum + b.unitsAvailable, 0)).toBe(3);
+    const receipts = await t.run((ctx) =>
+      ctx.db
+        .query("transferReceipts")
+        .withIndex("by_request", (q) => q.eq("requestId", created.id))
+        .collect(),
+    );
+    expect(receipts.reduce((sum, receipt) => sum + receipt.units, 0)).toBe(3);
+  });
+
+  test("incomplete verification is rejected before any inventory or request change", async () => {
+    const t = convexTest(schema, modules);
+    const network = await setupNetwork(t);
+    const { created, transfer, asHospital } = await prepareSingleSource(t, network, {
+      requestUnits: 2,
+      sourceUnits: 2,
+    });
+
+    await expect(
+      asHospital.mutation(api.allocation.receiveTransfer, {
+        transferId: transfer._id,
+        receivedUnits: 2,
+        verifiedBloodGroup: "O+",
+        verifiedComponent: "red_cells",
+        verification: { ...verifiedChecks, temperatureOk: false },
+      }),
+    ).rejects.toThrow(/verification is incomplete/i);
+    expect((await t.run((ctx) => ctx.db.get(created.id)))?.status).toBe("approved");
+    expect(await hospitalBatches(t, network)).toHaveLength(0);
+    const receipts = await t.run((ctx) => ctx.db.query("transferReceipts").collect());
+    expect(receipts).toHaveLength(0);
+  });
+
+  test("duplicate receipt confirmation is idempotent and never credits twice", async () => {
+    const t = convexTest(schema, modules);
+    const network = await setupNetwork(t);
+    const { transfer, asHospital, created } = await prepareSingleSource(t, network, {
+      requestUnits: 2,
+      sourceUnits: 2,
+    });
+    const args = {
+      transferId: transfer._id,
+      receivedUnits: 2,
+      verifiedBloodGroup: "O+" as const,
+      verifiedComponent: "red_cells" as const,
+      verification: verifiedChecks,
+    };
+    const first = await asHospital.mutation(api.allocation.receiveTransfer, args);
+    const second = await asHospital.mutation(api.allocation.receiveTransfer, args);
+    expect(first.duplicate).toBe(false);
+    expect(second.duplicate).toBe(true);
+    expect(second.receiptBatchId).toBe(first.receiptBatchId);
+    expect(await hospitalBatches(t, network)).toHaveLength(1);
+    const receipts = await t.run((ctx) =>
+      ctx.db
+        .query("transferReceipts")
+        .withIndex("by_request", (q) => q.eq("requestId", created.id))
+        .collect(),
+    );
+    expect(receipts).toHaveLength(1);
+    const receiptTransactions = await t.run((ctx) =>
+      ctx.db
+        .query("inventoryTransactions")
+        .withIndex("by_request", (q) => q.eq("requestId", created.id))
+        .collect(),
+    );
+    expect(receiptTransactions.filter((row) => row.type === "receipt")).toHaveLength(1);
+  });
+
+  test("incorrect component, quantity or group cannot be credited", async () => {
+    const t = convexTest(schema, modules);
+    const network = await setupNetwork(t);
+    const { transfer, asHospital, created } = await prepareSingleSource(t, network, {
+      requestUnits: 2,
+      sourceUnits: 2,
+    });
+
+    await expect(
+      asHospital.mutation(api.allocation.receiveTransfer, {
+        transferId: transfer._id,
+        receivedUnits: 2,
+        verifiedBloodGroup: "O+",
+        verifiedComponent: "platelets",
+        verification: verifiedChecks,
+      }),
+    ).rejects.toThrow(/component/i);
+    await expect(
+      asHospital.mutation(api.allocation.receiveTransfer, {
+        transferId: transfer._id,
+        receivedUnits: 3,
+        verifiedBloodGroup: "O+",
+        verifiedComponent: "red_cells",
+        verification: verifiedChecks,
+      }),
+    ).rejects.toThrow(/cannot exceed/i);
+    await expect(
+      asHospital.mutation(api.allocation.receiveTransfer, {
+        transferId: transfer._id,
+        receivedUnits: 2,
+        verifiedBloodGroup: "A+",
+        verifiedComponent: "red_cells",
+        verification: verifiedChecks,
+      }),
+    ).rejects.toThrow(/not compatible/i);
+    expect((await t.run((ctx) => ctx.db.get(created.id)))?.status).toBe("approved");
+    expect(await hospitalBatches(t, network)).toHaveLength(0);
+    expect(await t.run((ctx) => ctx.db.query("transferReceipts").collect())).toHaveLength(0);
+  });
+
+  test("only the receiving facility or an authorized staff account can verify receipt", async () => {
+    const t = convexTest(schema, modules);
+    const network = await setupNetwork(t);
+    const { transfer } = await prepareSingleSource(t, network, {
+      requestUnits: 1,
+      sourceUnits: 1,
+    });
+    const otherHospitalUser = await t.run(async (ctx) => {
+      const now = Date.now();
+      const org = await ctx.db.insert("organizations", {
+        orgId: "HOSP-OTHER-001",
+        type: "hospital",
+        name: "Other Hospital",
+        contactPerson: "Other Coordinator",
+        phone: "02026128999",
+        email: "other.hospital@test.example",
+        address: "8 Other Road",
+        city: "Pune",
+        status: "verified",
+        createdAt: now,
+        updatedAt: now,
+      });
+      return await ctx.db.insert("users", {
+        name: "Other Hospital User",
+        email: "other.hospital.user@test.example",
+        role: "hospital",
+        organizationId: org,
+        city: "Pune",
+        phone: "9876543999",
+        profileCompleted: true,
+        createdAt: now,
+      });
+    });
+    const donorUser = await t.run((ctx) =>
+      ctx.db.insert("users", {
+        name: "Receipt Donor",
+        email: "receipt.donor@test.example",
+        role: "donor",
+        city: "Pune",
+        phone: "9876543998",
+        profileCompleted: true,
+        createdAt: Date.now(),
+      }),
+    );
+    const args = {
+      transferId: transfer._id,
+      receivedUnits: 1,
+      verifiedBloodGroup: "O+" as const,
+      verifiedComponent: "red_cells" as const,
+      verification: verifiedChecks,
+    };
+    await expect(
+      t.withIdentity({ subject: String(otherHospitalUser) }).mutation(
+        api.allocation.receiveTransfer,
+        args,
+      ),
+    ).rejects.toThrow(/only the receiving facility/i);
+    await expect(
+      t.withIdentity({ subject: String(donorUser) }).mutation(
+        api.allocation.receiveTransfer,
+        args,
+      ),
+    ).rejects.toThrow(/not authorized/i);
+    expect(await hospitalBatches(t, network)).toHaveLength(0);
+    expect(await t.run((ctx) => ctx.db.query("transferReceipts").collect())).toHaveLength(0);
+
+    const adminUser = await t.run((ctx) =>
+      ctx.db.insert("users", {
+        name: "Receipt Admin",
+        email: "receipt.admin@test.example",
+        role: "admin",
+        city: "Pune",
+        phone: "9876543997",
+        profileCompleted: true,
+        createdAt: Date.now(),
+      }),
+    );
+    const adminResult = await t.withIdentity({ subject: String(adminUser) }).mutation(
+      api.allocation.receiveTransfer,
+      args,
+    );
+    expect(adminResult.requestStatus).toBe("fulfilled");
+    expect(await hospitalBatches(t, network)).toHaveLength(1);
+  });
+
+  test("cancelling a pending request releases its reserved transfer atomically", async () => {
+    const t = convexTest(schema, modules);
+    const network = await setupNetwork(t);
+    await t.run((ctx) =>
+      ctx.db.patch(network.batch, { unitsAvailable: 0, unitsReserved: 0, protectedReserve: 0 }),
+    );
+    const source = await addSource(t, { label: "cancel-release", units: 2 });
+    const created = await createRequest(t, network, { units: 2 });
+    const asHospital = t.withIdentity({ subject: String(network.hospitalUser) });
+    const allocation = await asHospital.action(api.allocation.autoAllocate, {
+      requestId: created.id,
+      scope: "city",
+    });
+    expect(allocation.allocated).toBe(2);
+    const transfer = await t.run((ctx) =>
+      ctx.db
+        .query("transfers")
+        .withIndex("by_request", (q) => q.eq("requestId", created.id))
+        .first(),
+    );
+    expect(transfer?.status).toBe("reserved");
+
+    await asHospital.mutation(api.requests.updateStatus, {
+      id: created.id,
+      status: "cancelled",
+      note: "Synthetic cancellation with a reserved transfer.",
+    });
+    expect((await t.run((ctx) => ctx.db.get(created.id)))?.status).toBe("cancelled");
+    expect((await t.run((ctx) => ctx.db.get(transfer!._id)))?.status).toBe("cancelled");
+    expect((await t.run((ctx) => ctx.db.get(source.batch)))?.unitsReserved).toBe(0);
+    const releases = await t.run((ctx) =>
+      ctx.db
+        .query("inventoryTransactions")
+        .withIndex("by_request", (q) => q.eq("requestId", created.id))
+        .collect(),
+    );
+    expect(releases.filter((row) => row.type === "release")).toHaveLength(1);
+  });
+
+  test("a cancelled request cannot be fulfilled by a later transfer receipt", async () => {
+    const t = convexTest(schema, modules);
+    const network = await setupNetwork(t);
+    const created = await createRequest(t, network, { units: 1 });
+    const asHospital = t.withIdentity({ subject: String(network.hospitalUser) });
+    await asHospital.mutation(api.requests.updateStatus, {
+      id: created.id,
+      status: "cancelled",
+      note: "Synthetic cancellation before dispatch.",
+    });
+    const transfer = await t.run((ctx) =>
+      ctx.db.insert("transfers", {
+        transferId: "TRF-CANCELLED-TEST",
+        requestId: created.id,
+        requestingOrgId: network.hospitalOrg,
+        supplyingOrgId: network.redCrossOrg,
+        bloodGroup: "O+",
+        component: "red_cells",
+        units: 1,
+        status: "dispatched",
+        reservationIds: [],
+        auto: false,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }),
+    );
+    await expect(
+      asHospital.mutation(api.allocation.receiveTransfer, {
+        transferId: transfer,
+        receivedUnits: 1,
+        verifiedBloodGroup: "O+",
+        verifiedComponent: "red_cells",
+        verification: verifiedChecks,
+      }),
+    ).rejects.toThrow(/cancelled request/i);
+    expect((await t.run((ctx) => ctx.db.get(created.id)))?.status).toBe("cancelled");
+    expect(await hospitalBatches(t, network)).toHaveLength(0);
+  });
+
+  test("a failed transfer is never received or credited", async () => {
+    const t = convexTest(schema, modules);
+    const network = await setupNetwork(t);
+    const { created, transfer, asHospital } = await prepareSingleSource(t, network, {
+      requestUnits: 1,
+      sourceUnits: 1,
+    });
+    await t.run((ctx) =>
+      ctx.db.patch(transfer._id, { status: "failed", updatedAt: Date.now() }),
+    );
+    await expect(
+      asHospital.mutation(api.allocation.receiveTransfer, {
+        transferId: transfer._id,
+        receivedUnits: 1,
+        verifiedBloodGroup: "O+",
+        verifiedComponent: "red_cells",
+        verification: verifiedChecks,
+      }),
+    ).rejects.toThrow(/failed transfer/i);
+    expect((await t.run((ctx) => ctx.db.get(created.id)))?.status).toBe("approved");
+    expect(await hospitalBatches(t, network)).toHaveLength(0);
+    expect(await t.run((ctx) => ctx.db.query("transferReceipts").collect())).toHaveLength(0);
+  });
+
+  test("concurrent receipt attempts produce one ledger credit", async () => {
+    const t = convexTest(schema, modules);
+    const network = await setupNetwork(t);
+    const { created, transfer, asHospital } = await prepareSingleSource(t, network, {
+      requestUnits: 2,
+      sourceUnits: 2,
+    });
+    const args = {
+      transferId: transfer._id,
+      receivedUnits: 2,
+      verifiedBloodGroup: "O+" as const,
+      verifiedComponent: "red_cells" as const,
+      verification: verifiedChecks,
+    };
+    const results = await Promise.allSettled([
+      asHospital.mutation(api.allocation.receiveTransfer, args),
+      asHospital.mutation(api.allocation.receiveTransfer, args),
+    ]);
+    expect(results.every((result) => result.status === "fulfilled")).toBe(true);
+    const receipts = await t.run((ctx) =>
+      ctx.db
+        .query("transferReceipts")
+        .withIndex("by_request", (q) => q.eq("requestId", created.id))
+        .collect(),
+    );
+    expect(receipts).toHaveLength(1);
+    const batches = await hospitalBatches(t, network);
+    expect(batches).toHaveLength(1);
+    expect(batches[0].unitsAvailable).toBe(2);
+    const receiptTransactions = await t.run((ctx) =>
+      ctx.db
+        .query("inventoryTransactions")
+        .withIndex("by_request", (q) => q.eq("requestId", created.id))
+        .collect(),
+    );
+    expect(receiptTransactions.filter((row) => row.type === "receipt")).toHaveLength(1);
+    expect((await t.run((ctx) => ctx.db.get(created.id)))?.status).toBe("fulfilled");
   });
 });

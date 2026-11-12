@@ -57,6 +57,7 @@ import {
   Undo2,
   XCircle,
 } from "lucide-react";
+import { friendlyError } from "@/lib/utils";
 import { useState } from "react";
 import { Link, useParams } from "react-router";
 import { toast } from "sonner";
@@ -141,7 +142,7 @@ export default function RequestDetail() {
   const status = request.status;
 
   const refreshError = (err: unknown, fallback: string) =>
-    setActionError(err instanceof Error ? err.message : fallback);
+    setActionError(friendlyError(err, fallback));
 
   const runStatus = async (
     next: "under_verification" | "approved" | "fulfilled" | "received" | "rejected" | "cancelled",

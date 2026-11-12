@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import L from "leaflet";
+import { AlertTriangle } from "lucide-react";
 import "leaflet/dist/leaflet.css";
 
 export type NetworkMapPoint = {
@@ -27,6 +28,20 @@ export type NetworkMapZone = {
   radiusKm: number;
   label: string;
 };
+
+const CARTO_API_KEY = (
+  import.meta.env.VITE_CARTO_API_KEY as string | undefined
+)?.trim();
+
+const CARTO_TILES = `https://{s}.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}{r}.png${
+  CARTO_API_KEY ? `?key=${encodeURIComponent(CARTO_API_KEY)}` : ""
+}`;
+const OSM_TILES = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
+
+const CARTO_ATTRIBUTION =
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
+const OSM_ATTRIBUTION =
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
 const TONES: Record<NetworkMapPoint["kind"], string> = {
   facility: "#0f766e",
@@ -95,9 +110,9 @@ export function NetworkMap({
       attributionControl: true,
       scrollWheelZoom: false,
     }).setView([18.5204, 73.8567], 11);
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+    L.tileLayer(CARTO_API_KEY ? CARTO_TILES : OSM_TILES, {
       maxZoom: 19,
-      attribution: "&copy; OpenStreetMap contributors &copy; CARTO",
+      attribution: CARTO_API_KEY ? CARTO_ATTRIBUTION : OSM_ATTRIBUTION,
       subdomains: "abcd",
     }).addTo(map);
     layerRef.current = L.layerGroup().addTo(map);
@@ -164,6 +179,19 @@ export function NetworkMap({
 
   return (
     <div className={className}>
+      {!CARTO_API_KEY && (
+        <div
+          role="status"
+          className="mb-2 flex items-start gap-2 rounded-xl border border-amber-300/70 bg-amber-50 px-3 py-2 text-[10.5px] leading-5 text-amber-900"
+        >
+          <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+          <span>
+            CARTO is not configured, so the map is using OpenStreetMap tiles. Add
+            <code className="mx-1 rounded bg-white/70 px-1">VITE_CARTO_API_KEY</code>
+            to the frontend environment to restore CARTO basemaps.
+          </span>
+        </div>
+      )}
       <div
         ref={containerRef}
         style={{ height }}

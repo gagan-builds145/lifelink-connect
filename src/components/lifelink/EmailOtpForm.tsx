@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/use-auth";
-import { cn } from "@/lib/utils";
+import { cn, friendlyError } from "@/lib/utils";
 import { ArrowLeft, ArrowRight, Loader2, Mail, ShieldCheck, UserRound } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
@@ -60,9 +60,7 @@ export function EmailOtpForm({
       });
     } catch (err) {
       setError(
-        err instanceof Error
-          ? err.message
-          : "Could not request a code. Check the email service configuration.",
+        friendlyError(err, "Could not request a code. Check the email service configuration."),
       );
     } finally {
       setBusy(false);
@@ -103,9 +101,7 @@ export function EmailOtpForm({
       if (onVerified) onVerified();
       else navigate(redirectTo, { replace: true });
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Guest access is unavailable right now.",
-      );
+      setError(friendlyError(err, "Guest access is unavailable right now."));
     } finally {
       setGuestBusy(false);
     }

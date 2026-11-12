@@ -84,6 +84,7 @@ import {
   UserRound,
   Users,
 } from "lucide-react";
+import { friendlyError } from "@/lib/utils";
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import {
@@ -144,7 +145,7 @@ function AddStockDialog({
       });
       onOpenChange(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not add stock.");
+      setError(friendlyError(err, "Could not add stock."));
     } finally {
       setBusy(false);
     }
@@ -274,7 +275,7 @@ function MovementDialog({
                 onClose();
                 onDone();
               } catch (err) {
-                toast.error("Could not record movement", { description: err instanceof Error ? err.message : "Try again." });
+                toast.error("Could not record movement", { description: friendlyError(err) });
               } finally {
                 setBusy(false);
               }
@@ -383,7 +384,7 @@ function CampDialog({
                 toast.success("Camp published");
                 onOpenChange(false);
               } catch (err) {
-                setError(err instanceof Error ? err.message : "Could not publish camp.");
+                setError(friendlyError(err, "Could not publish camp."));
               } finally {
                 setBusy(false);
               }
@@ -453,7 +454,7 @@ function CampRegistrationsDialog({
                           });
                           toast.success("Donation recorded");
                         } catch (err) {
-                          toast.error("Could not record donation", { description: err instanceof Error ? err.message : "Try again." });
+                          toast.error("Could not record donation", { description: friendlyError(err) });
                         } finally {
                           setBusy(null);
                         }
@@ -539,7 +540,7 @@ function RecordDonationDialog({
                 toast.success("Donation recorded");
                 onClose();
               } catch (err) {
-                toast.error("Could not record donation", { description: err instanceof Error ? err.message : "Try again." });
+                toast.error("Could not record donation", { description: friendlyError(err) });
               } finally {
                 setBusy(false);
               }
@@ -618,7 +619,7 @@ export default function RedCrossDashboard() {
       });
     } catch (err) {
       toast.error("Could not send your offer", {
-        description: err instanceof Error ? err.message : "Try again.",
+        description: friendlyError(err),
       });
     } finally {
       setHelpBusy(null);
@@ -631,7 +632,7 @@ export default function RedCrossDashboard() {
       await updateStatus({ id, status: "under_verification", note: "Document review started by Red Cross staff." });
       toast.success(`Request ${requestId} moved to verification`);
     } catch (err) {
-      toast.error("Could not update request", { description: err instanceof Error ? err.message : "Try again." });
+      toast.error("Could not update request", { description: friendlyError(err) });
     } finally {
       setVerifyBusy(null);
     }
@@ -855,8 +856,8 @@ export default function RedCrossDashboard() {
             </section>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
-            <section className="rounded-2xl border border-border bg-card p-5">
+          <div className="grid min-w-0 gap-4 lg:grid-cols-[1fr_1fr]">
+            <section className="min-w-0 rounded-2xl border border-border bg-card p-5">
               <h2 className="text-[14px] font-bold">Verified stock by group</h2>
               <div className="mt-4 grid grid-cols-4 gap-2">
                 {analytics?.groupStock.map((item) => (
@@ -868,7 +869,7 @@ export default function RedCrossDashboard() {
                 ))}
               </div>
             </section>
-            <section className="rounded-2xl border border-border bg-card p-5">
+            <section className="min-w-0 rounded-2xl border border-border bg-card p-5">
               <div className="flex items-center justify-between">
                 <h2 className="text-[14px] font-bold">Recent audit events</h2>
                 <Button variant="ghost" size="sm" className="h-7 text-[10.5px]" onClick={() => setTab("audit")}>View trail</Button>
@@ -1175,7 +1176,7 @@ export default function RedCrossDashboard() {
                           await updateCampStatus({ campId: camp._id, status: v as "upcoming" | "ongoing" | "completed" | "cancelled" });
                           toast.success("Camp status updated");
                         } catch (err) {
-                          toast.error("Could not update camp", { description: err instanceof Error ? err.message : "Try again." });
+                          toast.error("Could not update camp", { description: friendlyError(err) });
                         }
                       }}
                     >

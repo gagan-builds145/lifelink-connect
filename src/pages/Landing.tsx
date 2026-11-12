@@ -259,12 +259,12 @@ function SearchWidget({
   return (
     <div
       className={cn(
-        "rounded-2xl border p-3",
+        "min-w-0 rounded-2xl border p-3",
         light ? "border-white/15 bg-white/[0.055]" : "border-border bg-card",
       )}
     >
-      <div className="grid gap-2.5 sm:grid-cols-[110px_1fr_1fr_auto]">
-        <div>
+      <div className="grid min-w-0 gap-2.5 sm:grid-cols-[110px_1fr_1fr_auto]">
+        <div className="min-w-0">
           <Label className={cn("mb-1 block text-[10px] font-bold uppercase tracking-[0.12em]", light ? "text-white/50" : "text-muted-foreground")}>
             Blood group
           </Label>
@@ -277,7 +277,7 @@ function SearchWidget({
             </SelectContent>
           </Select>
         </div>
-        <div>
+        <div className="min-w-0">
           <Label className={cn("mb-1 block text-[10px] font-bold uppercase tracking-[0.12em]", light ? "text-white/50" : "text-muted-foreground")}>
             Component
           </Label>
@@ -290,7 +290,7 @@ function SearchWidget({
             </SelectContent>
           </Select>
         </div>
-        <div>
+        <div className="min-w-0">
           <Label className={cn("mb-1 block text-[10px] font-bold uppercase tracking-[0.12em]", light ? "text-white/50" : "text-muted-foreground")}>
             City
           </Label>
@@ -641,14 +641,14 @@ export default function Landing() {
 
       {/* SEARCH */}
       <section id="blood-search" className="mx-auto w-full max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-20">
-        <div className="grid gap-10 lg:grid-cols-[0.85fr_1.15fr] lg:items-start">
-          <motion.div {...fadeUp}>
+        <div className="grid min-w-0 grid-cols-1 gap-10 lg:grid-cols-[0.85fr_1.15fr] lg:items-start">
+          <motion.div {...fadeUp} className="min-w-0">
             <SectionHeading
               eyebrow="Verified blood search"
               title={<>Search reported availability, <span className="text-primary">not promises.</span></>}
               description="Filter by blood group, component and city. Results come only from verified Red Cross branches, blood banks and hospitals sharing this database — with the last stock update time shown."
             />
-            <div className="mt-6">
+            <div className="mt-6 min-w-0">
               <SearchWidget onDemo={() => void loadDemo()} demoBusy={demoBusy} />
             </div>
             <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-[11px] text-muted-foreground">
@@ -867,7 +867,7 @@ export default function Landing() {
 
       {/* MATCHING */}
       <section id="matching" className="border-y border-border bg-muted/25">
-        <div className="mx-auto grid w-full max-w-7xl gap-10 px-4 py-16 sm:px-6 lg:grid-cols-2 lg:items-center lg:px-8 lg:py-20">
+        <div className="mx-auto grid w-full max-w-7xl grid-cols-1 gap-10 px-4 py-16 sm:px-6 lg:grid-cols-2 lg:items-center lg:px-8 lg:py-20">
           <motion.div {...fadeUp}>
             <SectionHeading
               eyebrow="AI assists. Rules decide."

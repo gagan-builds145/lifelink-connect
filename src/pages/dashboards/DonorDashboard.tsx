@@ -70,6 +70,7 @@ import {
   UserRound,
   Users,
 } from "lucide-react";
+import { friendlyError } from "@/lib/utils";
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { toast } from "sonner";
@@ -148,7 +149,7 @@ export default function DonorDashboard() {
       });
     } catch (error) {
       toast.error("Could not update consent", {
-        description: error instanceof Error ? error.message : "Try again.",
+        description: friendlyError(error),
       });
     } finally {
       setConsentBusy(false);
@@ -172,7 +173,7 @@ export default function DonorDashboard() {
       }
     } catch (error) {
       toast.error("Could not submit your response", {
-        description: error instanceof Error ? error.message : "Try again.",
+        description: friendlyError(error),
       });
     } finally {
       setInvitationBusy(null);
@@ -190,7 +191,7 @@ export default function DonorDashboard() {
       });
     } catch (err) {
       toast.error("Could not update availability", {
-        description: err instanceof Error ? err.message : "Please try again.",
+        description: friendlyError(err, "Please try again."),
       });
     } finally {
       setSwitching(false);
@@ -213,7 +214,7 @@ export default function DonorDashboard() {
       setOfferNote("");
     } catch (err) {
       toast.error("Could not send offer", {
-        description: err instanceof Error ? err.message : "Please try again.",
+        description: friendlyError(err, "Please try again."),
       });
     } finally {
       setOfferBusy(false);
@@ -234,7 +235,7 @@ export default function DonorDashboard() {
       }
     } catch (err) {
       toast.error("Could not update registration", {
-        description: err instanceof Error ? err.message : "Please try again.",
+        description: friendlyError(err, "Please try again."),
       });
     } finally {
       setCampBusy(null);
@@ -257,7 +258,7 @@ export default function DonorDashboard() {
       setProfileDraft(null);
       toast.success("Profile updated", { description: "Your shared donor record is up to date." });
     } catch (err) {
-      setProfileError(err instanceof Error ? err.message : "Could not save profile.");
+      setProfileError(friendlyError(err, "Could not save profile."));
     } finally {
       setProfileBusy(false);
     }

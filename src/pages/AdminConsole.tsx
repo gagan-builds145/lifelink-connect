@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
 import { COMPONENT_LABELS, formatDateTime, formatRelative } from "@/lib/blood";
-import { cn } from "@/lib/utils";
+import { cn, friendlyError } from "@/lib/utils";
 import { useAction, useMutation, useQuery } from "convex/react";
 import {
   Activity,
@@ -155,7 +155,7 @@ export default function AdminConsole() {
       toast.success(success);
     } catch (error) {
       toast.error("Action failed", {
-        description: error instanceof Error ? error.message : "Try again.",
+        description: friendlyError(error),
       });
     } finally {
       setBusy(null);

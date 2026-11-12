@@ -14,7 +14,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { COMPONENT_LABELS, formatDateTime, formatRelative } from "@/lib/blood";
 import { ROLE_LABELS, type AppRole } from "@/lib/roles";
 import { MISSION_STATE_LABELS, storageRangeFor, type MissionState } from "@/lib/supply";
-import { cn } from "@/lib/utils";
+import { cn, friendlyError } from "@/lib/utils";
 import { useMutation, useQuery } from "convex/react";
 import {
   AlertTriangle,
@@ -259,7 +259,7 @@ export default function DroneOps() {
       setTab("live");
     } catch (error) {
       toast.error("Could not create the mission", {
-        description: error instanceof Error ? error.message : "Try again.",
+        description: friendlyError(error),
       });
     } finally {
       setBusy(null);
@@ -273,7 +273,7 @@ export default function DroneOps() {
       toast.success(success);
     } catch (error) {
       toast.error("Action blocked", {
-        description: error instanceof Error ? error.message : "Try again.",
+        description: friendlyError(error),
       });
     } finally {
       setBusy(null);

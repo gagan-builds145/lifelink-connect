@@ -23,6 +23,7 @@ import {
   type Urgency,
 } from "@/lib/blood";
 import { useMutation } from "convex/react";
+import { friendlyError } from "@/lib/utils";
 import { AlertTriangle, CalendarClock, CheckCircle2, Loader2, Send } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -160,7 +161,7 @@ export function RequestForm({
       setConsent(false);
       onCreated?.(created);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "The request could not be submitted.");
+      setError(friendlyError(err, "The request could not be submitted."));
     } finally {
       setBusy(false);
     }

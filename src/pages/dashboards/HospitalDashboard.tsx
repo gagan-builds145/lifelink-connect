@@ -72,6 +72,7 @@ import {
   Truck,
   UserRound,
 } from "lucide-react";
+import { friendlyError } from "@/lib/utils";
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { toast } from "sonner";
@@ -203,7 +204,7 @@ export default function HospitalDashboard() {
           "The batch was written to the shared ledger. If a group is at its threshold, the network request is raised automatically.",
       });
     } catch (err) {
-      setBatchError(err instanceof Error ? err.message : "Could not record the batch.");
+      setBatchError(friendlyError(err, "Could not record the batch."));
     } finally {
       setBatchBusy(false);
     }
@@ -227,7 +228,7 @@ export default function HospitalDashboard() {
       });
     } catch (err) {
       toast.error("Could not send your offer", {
-        description: err instanceof Error ? err.message : "Try again.",
+        description: friendlyError(err),
       });
     } finally {
       setHelpBusy(null);
@@ -240,7 +241,7 @@ export default function HospitalDashboard() {
       await updateStatus({ id, status: "cancelled", note: "Cancelled by hospital staff." });
       toast("Hospital request cancelled", { description: `${requestId} is closed.` });
     } catch (err) {
-      toast.error("Could not cancel request", { description: err instanceof Error ? err.message : "Try again." });
+      toast.error("Could not cancel request", { description: friendlyError(err) });
     } finally {
       setCancelBusy(null);
     }
@@ -861,7 +862,7 @@ export default function HospitalDashboard() {
                   setProfileDraft(null);
                   toast.success("Hospital profile updated");
                 } catch (err) {
-                  setProfileError(err instanceof Error ? err.message : "Could not save profile.");
+                  setProfileError(friendlyError(err, "Could not save profile."));
                 } finally {
                   setProfileBusy(false);
                 }

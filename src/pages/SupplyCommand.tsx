@@ -18,7 +18,7 @@ import {
   type Component,
 } from "@/lib/blood";
 import { ROLE_LABELS, type AppRole } from "@/lib/roles";
-import { cn } from "@/lib/utils";
+import { cn, friendlyError } from "@/lib/utils";
 import { useAction, useMutation, useQuery } from "convex/react";
 import {
   Activity,
@@ -119,6 +119,8 @@ export default function SupplyCommand() {
   const runMockSync = useMutation(api.integrations.runMockSync);
   const runLiveSync = useAction(api.integrations.runLiveSync);
 
+  const canSuperviseTransfers = user?.role === "admin";
+
   const openRequests = useMemo(
     () =>
       (requests ?? []).filter((r) =>
@@ -214,7 +216,7 @@ export default function SupplyCommand() {
       );
     } catch (error) {
       toast.error("Automatic allocation failed", {
-        description: error instanceof Error ? error.message : "Try again.",
+        description: friendlyError(error),
       });
     } finally {
       setBusy(null);
@@ -249,7 +251,7 @@ export default function SupplyCommand() {
       }
     } catch (error) {
       toast.error(`Could not ${action} transfer`, {
-        description: error instanceof Error ? error.message : "Try again.",
+        description: friendlyError(error),
       });
     } finally {
       setBusy(null);
@@ -270,7 +272,7 @@ export default function SupplyCommand() {
       );
     } catch (error) {
       toast.error("Isolation Forest scan failed", {
-        description: error instanceof Error ? error.message : "Try again.",
+        description: friendlyError(error),
       });
     } finally {
       setBusy(null);
@@ -297,7 +299,7 @@ export default function SupplyCommand() {
       }
     } catch (error) {
       toast.error("Sync failed", {
-        description: error instanceof Error ? error.message : "Try again.",
+        description: friendlyError(error),
       });
     } finally {
       setBusy(null);
@@ -682,7 +684,7 @@ export default function SupplyCommand() {
                         </p>
                       </div>
                       <div className="flex flex-wrap gap-1.5">
-                        {t.isSupplier && ["reserved", "approved"].includes(t.status) && (
+                        {(t.isSupplier || canSuperviseTransfers) && ["reserved", "approved"].includes(t.status) && (
                           <Button
                             size="sm"
                             className="h-7 gap-1 text-[9.5px]"
@@ -697,7 +699,7 @@ export default function SupplyCommand() {
                             Release & dispatch
                           </Button>
                         )}
-                        {!t.isSupplier && ["dispatched", "in_transit"].includes(t.status) && (
+                        {(!t.isSupplier || canSuperviseTransfers) && ["dispatched", "in_transit"].includes(t.status) && (
                           <Button
                             size="sm"
                             className="h-7 gap-1 text-[9.5px]"
@@ -814,7 +816,7 @@ export default function SupplyCommand() {
                       );
                     } catch (error) {
                       toast.error("Could not refresh XGBoost forecast", {
-                        description: error instanceof Error ? error.message : "Try again.",
+                        description: friendlyError(error),
                       });
                     } finally {
                       setBusy(null);

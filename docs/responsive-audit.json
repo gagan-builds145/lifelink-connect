@@ -1,0 +1,687 @@
+[
+  {
+    "name": "landing-responsive",
+    "viewport": 390,
+    "url": "http://127.0.0.1:5173/",
+    "title": "LifeLink — Smart Blood Donation & Emergency Matching",
+    "h1": "LifeLinkAutonomous Blood Supply & Drone Logistics",
+    "scrollWidth": 390,
+    "clientWidth": 390,
+    "horizontalOverflow": false,
+    "wide": [
+      {
+        "tag": "span",
+        "className": "rounded-full bg-muted px-1.5 py-0.5 font-bold",
+        "text": "Received",
+        "right": 400,
+        "left": 346
+      },
+      {
+        "tag": "div",
+        "className": "absolute -right-24 -top-24 size-[420px] rounded-full bg-primary/20 blur-3xl",
+        "text": "",
+        "right": 486,
+        "left": 66
+      },
+      {
+        "tag": "div",
+        "className": "absolute -left-20 bottom-0 size-[340px] rounded-full bg-primary/20 blur-3xl",
+        "text": "",
+        "right": 260,
+        "left": -80
+      }
+    ],
+    "errors": [],
+    "failed": []
+  },
+  {
+    "name": "landing-responsive",
+    "viewport": 768,
+    "url": "http://127.0.0.1:5173/",
+    "title": "LifeLink — Smart Blood Donation & Emergency Matching",
+    "h1": "LifeLinkAutonomous Blood Supply & Drone Logistics",
+    "scrollWidth": 768,
+    "clientWidth": 768,
+    "horizontalOverflow": false,
+    "wide": [
+      {
+        "tag": "div",
+        "className": "absolute -right-24 -top-24 size-[420px] rounded-full bg-primary/20 blur-3xl",
+        "text": "",
+        "right": 864,
+        "left": 444
+      },
+      {
+        "tag": "div",
+        "className": "absolute -left-20 bottom-0 size-[340px] rounded-full bg-primary/20 blur-3xl",
+        "text": "",
+        "right": 260,
+        "left": -80
+      }
+    ],
+    "errors": [],
+    "failed": []
+  },
+  {
+    "name": "login-responsive",
+    "viewport": 390,
+    "url": "http://127.0.0.1:5173/login",
+    "title": "LifeLink — Smart Blood Donation & Emergency Matching",
+    "h1": "Sign in to LifeLink",
+    "scrollWidth": 390,
+    "clientWidth": 390,
+    "horizontalOverflow": false,
+    "wide": [
+      {
+        "tag": "div",
+        "className": "pointer-events-none absolute -left-24 top-1/3 size-[420px] rounded-full border border-primary/10",
+        "text": "",
+        "right": 324,
+        "left": -96
+      },
+      {
+        "tag": "div",
+        "className": "pointer-events-none absolute -left-10 top-[38%] size-[260px] rounded-full border animate-heartbeat border-primary/15",
+        "text": "",
+        "right": 234,
+        "left": -54
+      }
+    ],
+    "errors": [],
+    "failed": []
+  },
+  {
+    "name": "login-responsive",
+    "viewport": 768,
+    "url": "http://127.0.0.1:5173/login",
+    "title": "LifeLink — Smart Blood Donation & Emergency Matching",
+    "h1": "Sign in to LifeLink",
+    "scrollWidth": 768,
+    "clientWidth": 768,
+    "horizontalOverflow": false,
+    "wide": [
+      {
+        "tag": "div",
+        "className": "pointer-events-none absolute -left-24 top-1/3 size-[420px] rounded-full border border-primary/10",
+        "text": "",
+        "right": 324,
+        "left": -96
+      },
+      {
+        "tag": "div",
+        "className": "pointer-events-none absolute -left-10 top-[38%] size-[260px] rounded-full border animate-heartbeat border-primary/15",
+        "text": "",
+        "right": 234,
+        "left": -54
+      }
+    ],
+    "errors": [],
+    "failed": []
+  },
+  {
+    "name": "role-selection-responsive",
+    "viewport": 390,
+    "url": "http://127.0.0.1:5173/signup",
+    "title": "LifeLink — Smart Blood Donation & Emergency Matching",
+    "h1": "Choose Your Role",
+    "scrollWidth": 390,
+    "clientWidth": 390,
+    "horizontalOverflow": false,
+    "wide": [],
+    "errors": [],
+    "failed": []
+  },
+  {
+    "name": "role-selection-responsive",
+    "viewport": 768,
+    "url": "http://127.0.0.1:5173/signup",
+    "title": "LifeLink — Smart Blood Donation & Emergency Matching",
+    "h1": "Choose Your Role",
+    "scrollWidth": 768,
+    "clientWidth": 768,
+    "horizontalOverflow": false,
+    "wide": [],
+    "errors": [],
+    "failed": []
+  },
+  {
+    "name": "blood-search-responsive",
+    "viewport": 390,
+    "url": "http://127.0.0.1:5173/blood-search",
+    "title": "LifeLink — Smart Blood Donation & Emergency Matching",
+    "h1": "Find reported blood availability, without false promises.",
+    "scrollWidth": 390,
+    "clientWidth": 390,
+    "horizontalOverflow": false,
+    "wide": [],
+    "errors": [],
+    "failed": []
+  },
+  {
+    "name": "blood-search-responsive",
+    "viewport": 768,
+    "url": "http://127.0.0.1:5173/blood-search",
+    "title": "LifeLink — Smart Blood Donation & Emergency Matching",
+    "h1": "Find reported blood availability, without false promises.",
+    "scrollWidth": 768,
+    "clientWidth": 768,
+    "horizontalOverflow": false,
+    "wide": [],
+    "errors": [],
+    "failed": []
+  },
+  {
+    "name": "donor-dashboard-responsive",
+    "viewport": 390,
+    "url": "http://127.0.0.1:5173/donor/dashboard",
+    "title": "LifeLink — Smart Blood Donation & Emergency Matching",
+    "h1": "Donor dashboard",
+    "scrollWidth": 390,
+    "clientWidth": 390,
+    "horizontalOverflow": false,
+    "wide": [
+      {
+        "tag": "div",
+        "className": "absolute -right-16 -top-16 size-56 rounded-full bg-primary/[0.055]",
+        "text": "",
+        "right": 437,
+        "left": 213
+      },
+      {
+        "tag": "div",
+        "className": "bg-primary h-full w-full flex-1 transition-all",
+        "text": "",
+        "right": 182,
+        "left": -62
+      }
+    ],
+    "errors": [],
+    "failed": []
+  },
+  {
+    "name": "donor-dashboard-responsive",
+    "viewport": 768,
+    "url": "http://127.0.0.1:5173/donor/dashboard",
+    "title": "LifeLink — Smart Blood Donation & Emergency Matching",
+    "h1": "Donor dashboard",
+    "scrollWidth": 768,
+    "clientWidth": 768,
+    "horizontalOverflow": false,
+    "wide": [
+      {
+        "tag": "div",
+        "className": "absolute -right-16 -top-16 size-56 rounded-full bg-primary/[0.055]",
+        "text": "",
+        "right": 807,
+        "left": 583
+      },
+      {
+        "tag": "div",
+        "className": "bg-primary h-full w-full flex-1 transition-all",
+        "text": "",
+        "right": 299,
+        "left": -307
+      }
+    ],
+    "errors": [],
+    "failed": []
+  },
+  {
+    "name": "requestor-dashboard-responsive",
+    "viewport": 390,
+    "url": "http://127.0.0.1:5173/requestor/dashboard",
+    "title": "LifeLink — Smart Blood Donation & Emergency Matching",
+    "h1": "Requestor dashboard",
+    "scrollWidth": 390,
+    "clientWidth": 390,
+    "horizontalOverflow": false,
+    "wide": [
+      {
+        "tag": "div",
+        "className": "absolute -right-10 -top-10 size-48 rounded-full bg-primary/[0.06]",
+        "text": "",
+        "right": 413,
+        "left": 221
+      }
+    ],
+    "errors": [],
+    "failed": []
+  },
+  {
+    "name": "requestor-dashboard-responsive",
+    "viewport": 768,
+    "url": "http://127.0.0.1:5173/requestor/dashboard",
+    "title": "LifeLink — Smart Blood Donation & Emergency Matching",
+    "h1": "Requestor dashboard",
+    "scrollWidth": 768,
+    "clientWidth": 768,
+    "horizontalOverflow": false,
+    "wide": [
+      {
+        "tag": "div",
+        "className": "absolute -right-10 -top-10 size-48 rounded-full bg-primary/[0.06]",
+        "text": "",
+        "right": 783,
+        "left": 591
+      }
+    ],
+    "errors": [],
+    "failed": []
+  },
+  {
+    "name": "red_cross-dashboard-responsive",
+    "viewport": 390,
+    "url": "http://127.0.0.1:5173/red-cross/dashboard",
+    "title": "LifeLink — Smart Blood Donation & Emergency Matching",
+    "h1": "Red Cross dashboard",
+    "scrollWidth": 390,
+    "clientWidth": 390,
+    "horizontalOverflow": false,
+    "wide": [
+      {
+        "tag": "div",
+        "className": "bg-primary h-full w-full flex-1 transition-all",
+        "text": "",
+        "right": 156,
+        "left": -160
+      },
+      {
+        "tag": "div",
+        "className": "bg-primary h-full w-full flex-1 transition-all",
+        "text": "",
+        "right": 77,
+        "left": -239
+      },
+      {
+        "tag": "div",
+        "className": "bg-primary h-full w-full flex-1 transition-all",
+        "text": "",
+        "right": 77,
+        "left": -239
+      },
+      {
+        "tag": "div",
+        "className": "bg-primary h-full w-full flex-1 transition-all",
+        "text": "",
+        "right": 77,
+        "left": -239
+      },
+      {
+        "tag": "div",
+        "className": "bg-primary h-full w-full flex-1 transition-all",
+        "text": "",
+        "right": 37,
+        "left": -279
+      },
+      {
+        "tag": "div",
+        "className": "bg-primary h-full w-full flex-1 transition-all",
+        "text": "",
+        "right": 116,
+        "left": -200
+      },
+      {
+        "tag": "div",
+        "className": "bg-primary h-full w-full flex-1 transition-all",
+        "text": "",
+        "right": 37,
+        "left": -279
+      },
+      {
+        "tag": "div",
+        "className": "bg-primary h-full w-full flex-1 transition-all",
+        "text": "",
+        "right": 37,
+        "left": -279
+      }
+    ],
+    "errors": [],
+    "failed": []
+  },
+  {
+    "name": "red_cross-dashboard-responsive",
+    "viewport": 768,
+    "url": "http://127.0.0.1:5173/red-cross/dashboard",
+    "title": "LifeLink — Smart Blood Donation & Emergency Matching",
+    "h1": "Red Cross dashboard",
+    "scrollWidth": 768,
+    "clientWidth": 768,
+    "horizontalOverflow": false,
+    "wide": [
+      {
+        "tag": "div",
+        "className": "bg-primary h-full w-full flex-1 transition-all",
+        "text": "",
+        "right": 299,
+        "left": -379
+      },
+      {
+        "tag": "div",
+        "className": "bg-primary h-full w-full flex-1 transition-all",
+        "text": "",
+        "right": 130,
+        "left": -548
+      },
+      {
+        "tag": "div",
+        "className": "bg-primary h-full w-full flex-1 transition-all",
+        "text": "",
+        "right": 130,
+        "left": -548
+      },
+      {
+        "tag": "div",
+        "className": "bg-primary h-full w-full flex-1 transition-all",
+        "text": "",
+        "right": 130,
+        "left": -548
+      },
+      {
+        "tag": "div",
+        "className": "bg-primary h-full w-full flex-1 transition-all",
+        "text": "",
+        "right": 45,
+        "left": -633
+      },
+      {
+        "tag": "div",
+        "className": "bg-primary h-full w-full flex-1 transition-all",
+        "text": "",
+        "right": 215,
+        "left": -463
+      },
+      {
+        "tag": "div",
+        "className": "bg-primary h-full w-full flex-1 transition-all",
+        "text": "",
+        "right": 45,
+        "left": -633
+      },
+      {
+        "tag": "div",
+        "className": "bg-primary h-full w-full flex-1 transition-all",
+        "text": "",
+        "right": 45,
+        "left": -633
+      }
+    ],
+    "errors": [],
+    "failed": []
+  },
+  {
+    "name": "supply-responsive",
+    "viewport": 390,
+    "url": "http://127.0.0.1:5173/supply",
+    "title": "LifeLink — Smart Blood Donation & Emergency Matching",
+    "h1": "Autonomous blood supply command",
+    "scrollWidth": 390,
+    "clientWidth": 390,
+    "horizontalOverflow": false,
+    "wide": [
+      {
+        "tag": "img",
+        "className": "leaflet-tile leaflet-tile-loaded",
+        "text": "",
+        "right": 44,
+        "left": -212
+      },
+      {
+        "tag": "img",
+        "className": "leaflet-tile leaflet-tile-loaded",
+        "text": "",
+        "right": 556,
+        "left": 300
+      },
+      {
+        "tag": "img",
+        "className": "leaflet-tile leaflet-tile-loaded",
+        "text": "",
+        "right": 44,
+        "left": -212
+      },
+      {
+        "tag": "img",
+        "className": "leaflet-tile leaflet-tile-loaded",
+        "text": "",
+        "right": 556,
+        "left": 300
+      },
+      {
+        "tag": "img",
+        "className": "leaflet-tile leaflet-tile-loaded",
+        "text": "",
+        "right": 44,
+        "left": -212
+      },
+      {
+        "tag": "img",
+        "className": "leaflet-tile leaflet-tile-loaded",
+        "text": "",
+        "right": 556,
+        "left": 300
+      },
+      {
+        "tag": "div",
+        "className": "leaflet-marker-icon lifelink-map-marker leaflet-zoom-animated leaflet-interactive",
+        "text": "",
+        "right": -2719,
+        "left": -2729
+      },
+      {
+        "tag": "span",
+        "className": "",
+        "text": "",
+        "right": -2719,
+        "left": -2729
+      },
+      {
+        "tag": "div",
+        "className": "leaflet-marker-icon lifelink-map-marker leaflet-zoom-animated leaflet-interactive",
+        "text": "",
+        "right": -2822,
+        "left": -2832
+      },
+      {
+        "tag": "span",
+        "className": "",
+        "text": "",
+        "right": -2822,
+        "left": -2832
+      }
+    ],
+    "errors": [],
+    "failed": []
+  },
+  {
+    "name": "supply-responsive",
+    "viewport": 768,
+    "url": "http://127.0.0.1:5173/supply",
+    "title": "LifeLink — Smart Blood Donation & Emergency Matching",
+    "h1": "Autonomous blood supply command",
+    "scrollWidth": 768,
+    "clientWidth": 768,
+    "horizontalOverflow": false,
+    "wide": [
+      {
+        "tag": "img",
+        "className": "leaflet-tile leaflet-tile-loaded",
+        "text": "",
+        "right": 233,
+        "left": -23
+      },
+      {
+        "tag": "img",
+        "className": "leaflet-tile leaflet-tile-loaded",
+        "text": "",
+        "right": 233,
+        "left": -23
+      },
+      {
+        "tag": "img",
+        "className": "leaflet-tile leaflet-tile-loaded",
+        "text": "",
+        "right": 233,
+        "left": -23
+      },
+      {
+        "tag": "div",
+        "className": "leaflet-marker-icon lifelink-map-marker leaflet-zoom-animated leaflet-interactive",
+        "text": "",
+        "right": -2530,
+        "left": -2540
+      },
+      {
+        "tag": "span",
+        "className": "",
+        "text": "",
+        "right": -2530,
+        "left": -2540
+      },
+      {
+        "tag": "div",
+        "className": "leaflet-marker-icon lifelink-map-marker leaflet-zoom-animated leaflet-interactive",
+        "text": "",
+        "right": -2633,
+        "left": -2643
+      },
+      {
+        "tag": "span",
+        "className": "",
+        "text": "",
+        "right": -2633,
+        "left": -2643
+      },
+      {
+        "tag": "div",
+        "className": "leaflet-marker-icon lifelink-map-marker leaflet-zoom-animated leaflet-interactive",
+        "text": "",
+        "right": 11209,
+        "left": 11199
+      },
+      {
+        "tag": "span",
+        "className": "",
+        "text": "",
+        "right": 11209,
+        "left": 11199
+      },
+      {
+        "tag": "div",
+        "className": "leaflet-marker-icon lifelink-map-marker leaflet-zoom-animated leaflet-interactive",
+        "text": "",
+        "right": 9554,
+        "left": 9544
+      }
+    ],
+    "errors": [],
+    "failed": []
+  },
+  {
+    "name": "drones-responsive",
+    "viewport": 390,
+    "url": "http://127.0.0.1:5173/drones",
+    "title": "LifeLink — Smart Blood Donation & Emergency Matching",
+    "h1": "Drone operations control",
+    "scrollWidth": 390,
+    "clientWidth": 390,
+    "horizontalOverflow": false,
+    "wide": [
+      {
+        "tag": "img",
+        "className": "leaflet-tile leaflet-tile-loaded",
+        "text": "",
+        "right": 107,
+        "left": -149
+      },
+      {
+        "tag": "img",
+        "className": "leaflet-tile leaflet-tile-loaded",
+        "text": "",
+        "right": 107,
+        "left": -149
+      }
+    ],
+    "errors": [],
+    "failed": []
+  },
+  {
+    "name": "drones-responsive",
+    "viewport": 768,
+    "url": "http://127.0.0.1:5173/drones",
+    "title": "LifeLink — Smart Blood Donation & Emergency Matching",
+    "h1": "Drone operations control",
+    "scrollWidth": 768,
+    "clientWidth": 768,
+    "horizontalOverflow": false,
+    "wide": [
+      {
+        "tag": "img",
+        "className": "leaflet-tile leaflet-tile-loaded",
+        "text": "",
+        "right": 808,
+        "left": 552
+      },
+      {
+        "tag": "img",
+        "className": "leaflet-tile leaflet-tile-loaded",
+        "text": "",
+        "right": 808,
+        "left": 552
+      }
+    ],
+    "errors": [],
+    "failed": []
+  },
+  {
+    "name": "hospital-dashboard-responsive",
+    "viewport": 390,
+    "url": "http://127.0.0.1:5173/hospital/dashboard",
+    "title": "LifeLink — Smart Blood Donation & Emergency Matching",
+    "h1": "Hospital dashboard",
+    "scrollWidth": 390,
+    "clientWidth": 390,
+    "horizontalOverflow": false,
+    "wide": [],
+    "errors": [],
+    "failed": []
+  },
+  {
+    "name": "hospital-dashboard-responsive",
+    "viewport": 768,
+    "url": "http://127.0.0.1:5173/hospital/dashboard",
+    "title": "LifeLink — Smart Blood Donation & Emergency Matching",
+    "h1": "Hospital dashboard",
+    "scrollWidth": 768,
+    "clientWidth": 768,
+    "horizontalOverflow": false,
+    "wide": [],
+    "errors": [],
+    "failed": []
+  },
+  {
+    "name": "admin-dashboard-responsive",
+    "viewport": 390,
+    "url": "http://127.0.0.1:5173/admin/dashboard",
+    "title": "LifeLink — Smart Blood Donation & Emergency Matching",
+    "h1": "Network control room",
+    "scrollWidth": 390,
+    "clientWidth": 390,
+    "horizontalOverflow": false,
+    "wide": [],
+    "errors": [],
+    "failed": []
+  },
+  {
+    "name": "admin-dashboard-responsive",
+    "viewport": 768,
+    "url": "http://127.0.0.1:5173/admin/dashboard",
+    "title": "LifeLink — Smart Blood Donation & Emergency Matching",
+    "h1": "Network control room",
+    "scrollWidth": 768,
+    "clientWidth": 768,
+    "horizontalOverflow": false,
+    "wide": [],
+    "errors": [],
+    "failed": []
+  }
+]

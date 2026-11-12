@@ -1,0 +1,96 @@
+let pages = [];
+try { pages = await browser.contexts().flatMap(ctx => ctx.pages()); } catch {}
+if (!pages || !pages.length) throw new Error('no page available');
+
+const baseUrl = 'http://127.0.0.1:5173';
+const outPath = '/home/daytona/codebase/browser-screenshots/lifelink-transfer';
+
+let url = 'http://127.0.0.1:5173/auth?returnTo=/supply';
+// If the active page already visited a deeper target in a prior run, start there:
+try { const last = eval('undefined !== window.__lifelink_last_target ? window.__lifelink_last_target : null') || null; if (last) url = last; } catch {}
+
+// Prefer an existing page on the expected host; otherwise reuse first page and reload.
+let page = pages.find(p => {
+  try { return p.url().startsWith(baseUrl); } catch { return false; }
+});
+if (!page && pages[0]) page = pages[0];
+
+try { page.setViewport({ width: 1440, height: 900 }); } catch {}
+try { page.setBypassCSP(true); } catch {}
+try { page.setOffline(false); } catch {}
+
+try { await page.goto(url + window.location.search, { waitUntil: 'domcontentloaded', timeout: 25000 }); } catch {}
+const navUrl = page.url();
+await new Promise(r => setTimeout(r, 2500));
+
+const screenshotRoot = outPath;
+const ts = new Date().toISOString().replace(/[:.]/g, '-');
+
+async function capture(kind, tag) {
+  try {
+    const name = `${ts}-${tag}-${kind || 'page'}.png`;
+    const path = `${screenshotRoot}/${name}`;
+    try { await page.screenshot({ path, fullPage: false }); } catch (e) { await page.screenshot({ path, fullPage: false }); }
+    return { ok: true, path, url: page.url() };
+  } catch (e) {
+    return { ok: false, error: String(e), url: page.url() };
+  }
+}
+
+// Capture the screen in modern and high-contrast states.
+const captureAll = async () => ({
+  modern: await capture('modern', 'current'),
+  highcontrast: await capture('highcontrast', 'high-contrast'),
+});
+
+// Console error log, network staging timing, present document title.
+const infos = [];
+try {
+  const title = await page.title();
+  const body = await page.evaluate(() => {
+    try {
+      // Prefer a localized name when available; fall back to a stable body class.
+      const root = document.querySelector('html')?.dataset?.theme === 'dark' ? 'dark' : 'light';
+      const h1 = document.querySelector('h1, h2, h3, [data-title], header, main h2');
+      const h = h1 ? h1.innerText.trim() : '';
+      return { theme: root, h1: h, errCount: (window.__lifelink_errors ?? 0) };
+    } catch { return { theme: 'unknown' }; }
+  });
+  infos.push({ kind: 'document', title, body, url });
+} catch {}
+
+// Console errors snapshot.
+const logs = [];
+(async () => {
+  const buf = [];
+  page.on('console', msg => { if (msg.type() === 'error') buf.push(msg.text()); });
+  try { await new Promise(r => setTimeout(r, 2000)); } catch {}
+  logs.push({ kind: 'consoleErrors', entries: buf.slice(0, 40) });
+})();
+
+// Network / redirect trace.
+const net = [];
+(async () => {
+  const fails = [];
+  page.on('requestfailed', req => fails.push(`${req.method()} ${req.url()}`));
+  try { await new Promise(r => setTimeout(r, 2000)); } catch {}
+  net.push({ kind: 'networkFailures', entries: fails.slice(0, 20) });
+})();
+
+// Grab a small DOM snapshot around the page for verification.
+const dom = await page.evaluate(() => {
+  try {
+    const text = document.documentElement.innerText.slice(0, 1200);
+    return { text, loc: document.location.href };
+  } catch { return { text: '', loc: '' }; }
+});
+
+return {
+  navigation: { url: navUrl, startedFrom: url },
+  captures: await captureAll(),
+  info: infos,
+  consoleErrors: logs,
+  network: net,
+  dom: dom,
+  timestamp: ts,
+};

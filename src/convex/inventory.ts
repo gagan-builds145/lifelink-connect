@@ -1,9 +1,10 @@
 import { v } from "convex/values";
 import { internalMutation, mutation, query } from "./_generated/server";
-import type { Doc } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { BLOOD_GROUPS, COMPONENTS, citiesInState, stateOfCity } from "../lib/blood";
 import {
   audit,
+  enforceRateLimit,
   notifyOrganization,
   requireOrganization,
   requireRole,
@@ -12,7 +13,13 @@ import {
   requireUnits,
   requireUser,
   roleOf,
+  safeError,
+  type AppUser,
 } from "./lib/helpers";
+import {
+  authorizeInventoryOwnershipOrStaff,
+  guardInventoryMutationByOrg,
+} from "./lib/vault";
 import { bloodGroupValidator, componentValidator } from "./validators";
 import { evaluateStockLevel } from "./lib/stockWatch";
 
@@ -284,17 +291,17 @@ export const offerStockHelp = mutation({
     const user = await requireRole(ctx, ["hospital", "red_cross", "admin"]);
     const org = await requireOrganization(ctx, user);
     const alert = await ctx.db.get(args.alertId);
-    if (!alert) throw new Error("That network request could not be found.");
+    if (!alert) throw safeError("That network request could not be found.");
     if (alert.organizationId === org._id) {
-      throw new Error("You cannot offer help on your own organization's request.");
+      throw safeError("You cannot offer help on your own organization's request.");
     }
     const invited =
       alert.hospitalOrgIds.includes(org._id) || alert.redCrossOrgIds.includes(org._id);
     if (!invited) {
-      throw new Error("This request was not sent to your organization.");
+      throw safeError("This request was not sent to your organization.");
     }
     if (alert.status !== "open") {
-      throw new Error("This request has already been resolved.");
+      throw safeError("This request has already been resolved.");
     }
     const helped = alert.helpOrgIds ?? [];
     if (!helped.includes(org._id)) {
@@ -339,15 +346,15 @@ export const addStock = mutation({
     const org = await requireOrganization(ctx, user, ["red_cross", "blood_bank", "hospital"]);
     const units = requireUnits(args.unitsAvailable);
     if (!Number.isFinite(args.lowStockThreshold) || args.lowStockThreshold < 0) {
-      throw new Error("Low stock threshold must be zero or more.");
+      throw safeError("Low stock threshold must be zero or more.");
     }
     const collection = new Date(args.collectionDate);
     const expiry = new Date(args.expiryDate);
     if (Number.isNaN(collection.getTime()) || Number.isNaN(expiry.getTime())) {
-      throw new Error("Collection and expiry dates must be valid.");
+      throw safeError("Collection and expiry dates must be valid.");
     }
-    if (expiry <= collection) throw new Error("Expiry must be after collection.");
-    if (expiry.getTime() < Date.now()) throw new Error("Cannot add already-expired stock.");
+    if (expiry <= collection) throw safeError("Expiry must be after collection.");
+    if (expiry.getTime() < Date.now()) throw safeError("Cannot add already-expired stock.");
 
     const now = Date.now();
     const id = await ctx.db.insert("inventory", {
@@ -402,20 +409,25 @@ export const updateStock = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireRole(ctx, ["red_cross", "hospital", "admin"]);
-    const org = await requireOrganization(ctx, user, ["red_cross", "blood_bank", "hospital"]);
     const item = await ctx.db.get(args.inventoryId);
-    if (!item || item.organizationId !== org._id) {
-      throw new Error("Inventory batch not found for your organization.");
+    if (!item) {
+      throw safeError("Inventory batch not found.");
+    }
+    // Ownership/authorization check before any mutation.
+    await authorizeInventoryOwnershipOrStaff(ctx, user, item);
+    const org = await ctx.db.get(item.organizationId);
+    if (!org) {
+      throw safeError("Inventory organization not found.");
     }
     const patch: Record<string, unknown> = { lastUpdated: Date.now() };
     let delta = 0;
     if (args.unitsAvailable !== undefined) {
       if (!Number.isFinite(args.unitsAvailable) || args.unitsAvailable < 0) {
-        throw new Error("Units cannot be negative.");
+        throw safeError("Units cannot be negative.");
       }
       if (args.unitsAvailable < item.unitsReserved) {
-        throw new Error(
-          `Cannot set stock below the ${item.unitsReserved} reserved unit(s).`,
+        throw safeError(
+          `Cannot set stock below the reserved unit count for this batch.`,
         );
       }
       delta = args.unitsAvailable - item.unitsAvailable;
@@ -423,9 +435,9 @@ export const updateStock = mutation({
     }
     if (args.expiryDate !== undefined) {
       const d = new Date(args.expiryDate);
-      if (Number.isNaN(d.getTime())) throw new Error("Deadline must be a valid date.");
+      if (Number.isNaN(d.getTime())) throw safeError("Deadline must be a valid date.");
       if (d < new Date(item.collectionDate)) {
-        throw new Error("Deadline cannot be before the collection date of this batch.");
+        throw safeError("Deadline cannot be before the collection date of this batch.");
       }
       patch.expiryDate = d.toISOString().slice(0, 10);
     }
@@ -433,7 +445,7 @@ export const updateStock = mutation({
       patch.storageLocation = requireText(args.storageLocation, "Storage location", 3, 120);
     }
     if (args.lowStockThreshold !== undefined) {
-      if (args.lowStockThreshold < 0) throw new Error("Threshold cannot be negative.");
+      if (args.lowStockThreshold < 0) throw safeError("Threshold cannot be negative.");
       patch.lowStockThreshold = Math.round(args.lowStockThreshold);
     }
     if (args.verified !== undefined) patch.verified = args.verified;
@@ -475,17 +487,21 @@ export const recordMovement = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireRole(ctx, ["red_cross", "hospital", "admin"]);
-    const org = await requireOrganization(ctx, user, ["red_cross", "blood_bank", "hospital"]);
     const item = await ctx.db.get(args.inventoryId);
-    if (!item || item.organizationId !== org._id) {
-      throw new Error("Inventory batch not found for your organization.");
+    if (!item) {
+      throw safeError("Inventory batch not found.");
+    }
+    await authorizeInventoryOwnershipOrStaff(ctx, user, item);
+    const org = await ctx.db.get(item.organizationId);
+    if (!org) {
+      throw safeError("Inventory organization not found.");
     }
     const units = requireUnits(args.units);
     const now = Date.now();
     if (args.type !== "collection") {
       const free = item.unitsAvailable - item.unitsReserved;
       if (units > free) {
-        throw new Error(`Only ${free} unreserved unit(s) can be removed.`);
+        throw safeError(`Only ${free} unreserved unit(s) can be removed.`);
       }
       await ctx.db.patch(item._id, {
         unitsAvailable: item.unitsAvailable - units,

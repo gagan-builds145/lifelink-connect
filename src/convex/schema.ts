@@ -841,6 +841,58 @@ const schema = defineSchema(
       count: v.number(),
       windowStartedAt: v.number(),
     }).index("by_key", ["key"]),
+
+    /**
+     * Security event ledger. Records suspicious activity, authentication
+     * failures, authorization denials, rate-limit events and service-auth
+     * failures. Intentionally does not store patient names, donor contacts,
+     * tokens or OTP codes. Admins review this from the security monitoring
+     * dashboard; operational audit detail still lives in auditLogs.
+     */
+    securityEvents: defineTable({
+      kind: v.union(
+        v.literal("auth_failure"),
+        v.literal("brute_force_suspect"),
+        v.literal("otp_rate_limited"),
+        v.literal("unauthorized_access"),
+        v.literal("cross_user_access_denied"),
+        v.literal("malformed_request"),
+        v.literal("oversized_request"),
+        v.literal("inventory_transfer_denied"),
+        v.literal("ml_auth_failure"),
+        v.literal("drone_command_denied"),
+        v.literal("drone_command_replay_suspect"),
+        v.literal("waf_blocked"),
+        v.literal("rate_limited"),
+      ),
+      severity: v.union(v.literal("low"), v.literal("medium"), v.literal("high"), v.literal("critical")),
+      service: v.union(
+        v.literal("web"),
+        v.literal("auth"),
+        v.literal("convex_api"),
+        v.literal("ml_service"),
+        v.literal("drone_ops"),
+        v.literal("integration"),
+      ),
+      /** Canonical client identifier when available, e.g. hashed IP or session id. Never raw tokens. */
+      clientRef: v.optional(v.string()),
+      /** Machine-readable reason, safe for logs and dashboards. */
+      reason: v.string(),
+      /** One-line human summary without sensitive identifiers. */
+      summary: v.string(),
+      /** Optional entity id for triage, e.g. requestId, transferId, missionId. Nullable and redacted where sensitive. */
+      entityType: v.optional(v.string()),
+      entityId: v.optional(v.string()),
+      organizationId: v.optional(v.id("organizations")),
+      actedByAdminId: v.optional(v.id("users")),
+      resolvedAt: v.optional(v.number()),
+      createdAt: v.number(),
+    })
+      .index("by_kind", ["kind"])
+      .index("by_service", ["service"])
+      .index("by_organization", ["organizationId"])
+      .index("by_created", ["createdAt"])
+      .index("by_unresolved", ["actedByAdminId"]),
   },
   {
     schemaValidation: false,

@@ -14,6 +14,9 @@ import {
   requireStaff,
   requireUser,
   roleOf,
+  safeError,
+  recordSecurityEvent,
+  type AppUser,
 } from "./lib/helpers";
 import { BLOOD_GROUPS, type BloodGroup, type Component } from "../lib/blood";
 import { mlFetch, mlServiceConfigured } from "./lib/mlClient";
@@ -76,11 +79,21 @@ export const authorizeMlAction = internalQuery({
     const user = await requireUser(ctx);
     const role = roleOf(user);
     if (args.mode === "train" && role !== "admin") {
-      throw new Error("Only administrators can retrain the production demand model.");
+      await recordSecurityEvent(ctx, {
+        kind: "unauthorized_access",
+        severity: "high",
+        service: "ml_service",
+        reason: `Model retraining attempt by non-admin role ${role}.`,
+        summary: `Unauthorized ML model retraining attempt by ${role}.`,
+        entityType: "ml_action",
+        entityId: args.mode,
+      });
+      throw safeError("Only administrators can retrain the production demand model.");
     }
     if (args.mode === "predict") {
       await requireStaff(ctx);
     }
+
     let organizationName = "Network-wide";
     if (args.organizationId) {
       if (role !== "admin" && user.organizationId !== args.organizationId) {
@@ -90,8 +103,49 @@ export const authorizeMlAction = internalQuery({
       if (!org) throw new Error("Organization not found.");
       organizationName = org.name;
     } else if (role !== "admin" && role !== "red_cross") {
-      throw new Error("Network-wide model runs are restricted to admins and Red Cross.");
+      await recordSecurityEvent(ctx, {
+        kind: "unauthorized_access",
+        severity: "high",
+        service: "ml_service",
+        reason: `Network-wide model run attempt by role ${role}.`,
+        summary: `Unauthorized network-wide ML run attempt by ${role}.`,
+        entityType: "ml_action",
+        entityId: args.mode,
+      });
+      throw safeError("Network-wide model runs are restricted to admins and Red Cross.");
     }
+
+    return {
+      scope: args.organizationId ? ("hospital" as const) : ("network" as const),
+      organizationName,
+      actorUserId: user._id,
+      role,
+    };
+  },
+});
+
+/**
+ * Lightweight wrapper that records a generic ML-service auth failure as a
+ * security event when the configured ML token is missing or rejected.
+ */
+export async function recordMlAuthFailure(
+  ctx: MutationCtx,
+  summary: string,
+  reason: string,
+  entityType = "ml_service",
+  entityId = "ml_service",
+) {
+  await recordSecurityEvent(ctx, {
+    kind: "ml_auth_failure",
+    severity: "high",
+    service: "ml_service",
+    reason,
+    summary,
+    entityType,
+    entityId,
+  });
+}
+
     return {
       scope: args.organizationId ? ("hospital" as const) : ("network" as const),
       organizationName,

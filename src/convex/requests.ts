@@ -144,6 +144,34 @@ async function notifyCompatibleDonors(
   }
 }
 
+/**
+ * Record a cross-user request access denial as a security event. This is used
+ * by request-mutation paths when a donor or user tries to read or modify another
+ * patient's private request data.
+ *
+ * IMPORTANT: this helper is mutation-scoped. Do not call it from queries that
+ * do not have a real MutationCtx; if you need logging from a query path, call
+ * the mutation that owns the operation instead.
+ */
+export async function recordRequestAccessDenied(
+  ctx: MutationCtx,
+  user: AppUser,
+  requestId: string,
+  clientRef?: string,
+) {
+  await recordSecurityEvent(ctx, {
+    kind: "cross_user_access_denied",
+    severity: "high",
+    service: "convex_api",
+    reason: `Cross-user request access denied for requestId ${requestId}.`,
+    summary: `Attempted access to another patient's request by ${roleOf(user)}.`,
+    clientRef: normalizeClientRef(clientRef),
+    entityType: "bloodRequest",
+    entityId: requestId,
+    organizationId: user.organizationId ?? undefined,
+  });
+}
+
 export const create = mutation({
   args: {
     source: v.union(v.literal("requestor"), v.literal("hospital")),
@@ -388,6 +416,9 @@ export const getDetail = query({
       compatibility(donor.bloodGroup, request.bloodGroup, request.component).compatible &&
       OPEN_REQUEST_STATUSES.has(request.status);
     if (!full && !donorCompatible) {
+      // Do not leak whether the request exists or whether the user is close to
+      // a match. Return null and record a security-relevant denial.
+      await recordRequestAccessDenied(ctx as MutationCtx, user, request.requestId);
       return null;
     }
 
@@ -559,7 +590,8 @@ export const updateStatus = mutation({
           user.organizationId != null &&
           request.hospitalOrgId === user.organizationId);
       if (!isOwner || !["pending", "under_verification"].includes(request.status)) {
-        throw new Error("Only the request owner can cancel a pending request.");
+        await recordRequestAccessDenied(ctx, user, request.requestId);
+        throw safeError("Only the request owner can cancel a pending request.");
       }
       const linkedTransfers = await ctx.db
         .query("transfers")
@@ -653,7 +685,8 @@ export const updateStatus = mutation({
     }
 
     if (!["red_cross", "admin", "hospital"].includes(role)) {
-      throw new Error("Only authorized staff can change request status.");
+      await recordRequestAccessDenied(ctx, user, request.requestId);
+      throw safeError("Only authorized staff can change request status.");
     }
 
     if (status === "received") {
@@ -662,7 +695,8 @@ export const updateStatus = mutation({
         !user.organizationId ||
         request.hospitalOrgId !== user.organizationId
       ) {
-        throw new Error("Only the receiving hospital can record receipt.");
+        await recordRequestAccessDenied(ctx, user, request.requestId);
+        throw safeError("Only the receiving hospital can record receipt.");
       }
       if (request.status !== "dispatched") {
         throw new Error("Stock must be dispatched before receipt can be recorded.");

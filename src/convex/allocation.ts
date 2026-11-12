@@ -17,8 +17,15 @@ import {
   requireStaff,
   requireUser,
   roleOf,
+  safeError,
   type AppUser,
 } from "./lib/helpers";
+import {
+  authorizeSupplySideTransfer,
+  authorizeReceiptSideTransfer,
+  authorizeRequestSideTransfer,
+  authorizeTransferOwnershipOrStaff,
+} from "./lib/vault";
 import { evaluateStockLevel } from "./lib/stockWatch";
 import { queueForOrganization } from "./lib/messaging";
 import {
@@ -773,13 +780,12 @@ export const dispatchTransfer = mutation({
   handler: async (ctx, args) => {
     const user = await requireStaff(ctx);
     const transfer = await ctx.db.get(args.transferId);
-    if (!transfer) throw new Error("Transfer not found.");
-    const role = roleOf(user);
-    if (role !== "admin" && user.organizationId !== transfer.supplyingOrgId) {
-      throw new Error("Only the supplying facility can dispatch this transfer.");
-    }
+    if (!transfer) throw safeError("Transfer not found.");
+    await authorizeSupplySideTransfer(ctx, user, transfer);
     if (!["reserved", "approved"].includes(transfer.status)) {
-      throw new Error(`Transfer cannot be dispatched from status ${transfer.status}.`);
+      throw safeError(
+        `Transfer cannot be dispatched from status ${transfer.status}.`,
+      );
     }
 
     const now = Date.now();
@@ -899,14 +905,11 @@ export const receiveTransfer = mutation({
   handler: async (ctx, args) => {
     const user = await requireStaff(ctx);
     const transfer = await ctx.db.get(args.transferId);
-    if (!transfer) throw new Error("Transfer not found.");
-    const role = roleOf(user);
-    if (role !== "admin" && user.organizationId !== transfer.requestingOrgId) {
-      throw new Error("Only the receiving facility can confirm this transfer.");
-    }
+    if (!transfer) throw safeError("Transfer not found.");
+    await authorizeReceiptSideTransfer(ctx, user, transfer);
     const org = await ctx.db.get(transfer.requestingOrgId);
     if (!org || org.status !== "verified") {
-      throw new Error("The receiving facility is not a verified organization.");
+      throw safeError("The receiving facility is not a verified organization.");
     }
 
     // Idempotency: a network retry must never create a second inventory batch.
@@ -1133,17 +1136,10 @@ export const cancelTransfer = mutation({
   handler: async (ctx, args) => {
     const user = await requireStaff(ctx);
     const transfer = await ctx.db.get(args.transferId);
-    if (!transfer) throw new Error("Transfer not found.");
-    const role = roleOf(user);
-    if (
-      role !== "admin" &&
-      user.organizationId !== transfer.requestingOrgId &&
-      user.organizationId !== transfer.supplyingOrgId
-    ) {
-      throw new Error("Your facility is not part of this transfer.");
-    }
+    if (!transfer) throw safeError("Transfer not found.");
+    await authorizeTransferOwnershipOrStaff(ctx, user, transfer);
     if (transfer.status !== "reserved" && transfer.status !== "approved") {
-      throw new Error("Dispatched stock cannot be cancelled; record a failed transfer instead.");
+      throw safeError("Dispatched stock cannot be cancelled; record a failed transfer instead.");
     }
     const now = Date.now();
     let released = 0;

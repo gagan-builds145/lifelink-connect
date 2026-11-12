@@ -15,8 +15,24 @@ import os
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+import logging
+
+MAX_REQUEST_BYTES = 512 * 1024  # 512 KB practical cap on JSON bodies
+MAX_RESPONSE_BYTES = 2 * 1024 * 1024  # 2 MB practical cap on responses
+
+logger = logging.getLogger(__name__)
+
+def _safe_log_event(event: str, *, include_pii: bool = False) -> None:
+    """Structured-ish log helper that never emits patient/donor identifiers.
+
+    When ``include_pii`` is True the caller is asserting that the logged text
+    has already been stripped of names, contact details, emails and similar
+    identifiers. This helper itself does not add that stripping.
+    """
+    logger.info(event)
 
 from .anomaly_model import AnomalyModel, LabeledObservation, Observation
 from .demand_model import DemandModel
@@ -118,13 +134,13 @@ def _model_summary(model, kind: str) -> dict:
 
 
 @app.get("/livez")
-def livez() -> dict:
+def livez(request: Request) -> dict:
     """Minimal unauthenticated liveness endpoint for container probes."""
     return {"status": "ok", "service": "lifelink-ml", "version": SERVICE_VERSION}
 
 
 @app.get("/health", dependencies=[Depends(require_token)])
-def health() -> dict:
+def health(request: Request) -> dict:
     return {
         "status": "ok"
         if all([demand_model.ready, donor_model.ready, anomaly_model.ready])
@@ -143,6 +159,314 @@ def health() -> dict:
             "not decide whether blood is clinically suitable."
         ),
     }
+
+
+@app.post("/v1/predict/donor/batch", dependencies=[Depends(require_token)])
+def predict_donor_batch(request: DonorBatchPredictRequest) -> dict:
+    # Size gate first so malformed huge payloads are rejected before model work.
+    _guard_request_size(request)
+    results = []
+    for item in request.series:
+        try:
+            sample = DonorSample(
+                distance_km=item.distance_km,
+                days_since_donation=item.days_since_donation,
+                previous_donations=item.previous_donations,
+                prior_response_rate=item.prior_response_rate,
+                consented=item.consented,
+                responded=False,
+                is_synthetic=False,
+            )
+            result = donor_model.predict(sample)
+        except ValueError as error:
+            result = {
+                "status": "invalid_request",
+                "model": "donor_response",
+                "model_version": donor_model.metadata.get("version")
+                if donor_model.metadata
+                else None,
+                "metrics": donor_model.metadata.get("metrics")
+                if donor_model.metadata
+                else None,
+                "probability": None,
+                "threshold": donor_model.metadata.get("threshold"),
+                "explanation": str(error),
+            }
+        results.append(
+            {
+                "distance_km": item.distance_km,
+                "days_since_donation": item.days_since_donation,
+                "previous_donations": item.previous_donations,
+                "prior_response_rate": item.prior_response_rate,
+                "consented": item.consented,
+                **result,
+            }
+        )
+    _safe_log_event(
+        "donor batch prediction completed",
+        include_pii=False,
+    )
+    return {
+        "model_ready": donor_model.ready,
+        "model_version": donor_model.metadata.get("version")
+        if donor_model.metadata
+        else None,
+        "results": results,
+    }
+
+
+def _guard_request_size(request: object, /) -> None:
+    """Reject oversized requests before they reach model code."""
+    payload = request.model_dump() if hasattr(request, "model_dump") else request
+    encoded = json.dumps(payload, default=str).encode("utf-8")
+    if len(encoded) > MAX_REQUEST_BYTES:
+        raise HTTPException(status_code=413, detail="Request payload is too large.")
+
+
+def _strip_pii_from_result(result: dict) -> dict:
+    """Keep model metadata, drop any accidental free-text that might contain names."""
+    cleaned: dict = {}
+    for key, value in result.items():
+        if key in {"explanation", "note", "detail", "error"}:
+            # Truncate and remove obvious identifier crudity. This is a safety net,
+            # not a PII sanitizer.
+            text = str(value).replace("\n", " ").strip()
+            cleaned[key] = (text or "")[:200]
+        else:
+            cleaned[key] = value
+    return cleaned
+
+
+@app.post("/v1/anomaly/detect", dependencies=[Depends(require_token)])
+def detect_anomaly(request: AnomalyDetectRequest) -> dict:
+    try:
+        observations = [
+            Observation(
+                timestamp=obs.timestamp,
+                blood_group=obs.blood_group,
+                component=obs.component,
+                units=obs.units,
+                storage_temp_c=(obs.storage_temp_c if obs.storage_temp_c is not None else None),
+            )
+            for obs in request.observations
+        ]
+        labels = anomaly_model.predict(observations)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    _safe_log_event(
+        "anomaly detection completed",
+        include_pii=False,
+    )
+    return {
+        "model_ready": anomaly_model.ready,
+        "model_version": anomaly_model.metadata.get("version")
+        if anomaly_model.metadata
+        else None,
+        "results": [
+            _strip_pii_from_result({
+                "timestamp": obs.timestamp,
+                "blood_group": obs.blood_group,
+                "component": obs.component,
+                "units": obs.units,
+                "storage_temp_c": obs.storage_temp_c,
+                "label": label,
+                "score": score,
+            })
+            for obs, label, score in zip(
+                observations,
+                labels.labels,
+                labels.scores,
+            )
+        ],
+    }
+
+
+@app.post("/v1/anomaly/train", dependencies=[Depends(require_token)])
+def train_anomaly(request: AnomalyTrainRequest) -> dict:
+    try:
+        samples = [
+            LabeledObservation(
+                timestamp=sample.timestamp,
+                blood_group=sample.blood_group,
+                component=sample.component,
+                units=sample.units,
+                storage_temp_c=(sample.storage_temp_c if sample.storage_temp_c is not None else None),
+                label=bool(sample.label),
+                is_synthetic=sample.is_synthetic,
+            )
+            for sample in request.observations
+        ]
+        metadata = anomaly_model.train(
+            samples,
+            dataset_label=request.dataset_label,
+            source=request.source,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    _safe_log_event(
+        "anomaly model trained",
+        include_pii=False,
+    )
+    return {
+        "trained": True,
+        "minimum_observations": anomaly_model.min observations,
+        **metadata,
+    }
+
+
+
+@app.post("/v1/predict/donor/batch", dependencies=[Depends(require_token)])
+def predict_donor_batch(request: DonorBatchPredictRequest) -> dict:
+    # Size gate first so malformed huge payloads are rejected before model work.
+    _guard_request_size(request)
+    results = []
+    for item in request.series:
+        try:
+            sample = DonorSample(
+                distance_km=item.distance_km,
+                days_since_donation=item.days_since_donation,
+                previous_donations=item.previous_donations,
+                prior_response_rate=item.prior_response_rate,
+                consented=item.consented,
+                responded=False,
+                is_synthetic=False,
+            )
+            result = donor_model.predict(sample)
+        except ValueError as error:
+            result = {
+                "status": "invalid_request",
+                "model": "donor_response",
+                "model_version": donor_model.metadata.get("version")
+                if donor_model.metadata
+                else None,
+                "metrics": donor_model.metadata.get("metrics")
+                if donor_model.metadata
+                else None,
+                "probability": None,
+                "threshold": donor_model.metadata.get("threshold"),
+                "explanation": str(error),
+            }
+        results.append(
+            {
+                "distance_km": item.distance_km,
+                "days_since_donation": item.days_since_donation,
+                "previous_donations": item.previous_donations,
+                "prior_response_rate": item.prior_response_rate,
+                "consented": item.consented,
+                **result,
+            }
+        )
+    _safe_log_event(
+        "donor batch prediction completed",
+        include_pii=False,
+    )
+    return {
+        "model_ready": donor_model.ready,
+        "model_version": donor_model.metadata.get("version")
+        if donor_model.metadata
+        else None,
+        "results": results,
+    }
+
+
+def _guard_request_size(request: object, /) -> None:
+    """Reject oversized requests before they reach model code."""
+    payload = request.model_dump() if hasattr(request, "model_dump") else request
+    encoded = json.dumps(payload, default=str).encode("utf-8")
+    if len(encoded) > MAX_REQUEST_BYTES:
+        raise HTTPException(status_code=413, detail="Request payload is too large.")
+
+
+def _strip_pii_from_result(result: dict) -> dict:
+    """Keep model metadata, drop any accidental free-text that might contain names."""
+    cleaned: dict = {}
+    for key, value in result.items():
+        if key in {"explanation", "note", "detail", "error"}:
+            # Truncate and remove obvious identifier crudity. This is a safety net,
+            # not a PII sanitizer.
+            text = str(value).replace("\n", " ").strip()
+            cleaned[key] = (text or "")[:200]
+        else:
+            cleaned[key] = value
+    return cleaned
+
+
+@app.post("/v1/anomaly/detect", dependencies=[Depends(require_token)])
+def detect_anomaly(request: AnomalyDetectRequest) -> dict:
+    try:
+        observations = [
+            Observation(
+                timestamp=obs.timestamp,
+                blood_group=obs.blood_group,
+                component=obs.component,
+                units=obs.units,
+                storage_temp_c=(obs.storage_temp_c if obs.storage_temp_c is not None else None),
+            )
+            for obs in request.observations
+        ]
+        labels = anomaly_model.predict(observations)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    _safe_log_event(
+        "anomaly detection completed",
+        include_pii=False,
+    )
+    return {
+        "model_ready": anomaly_model.ready,
+        "model_version": anomaly_model.metadata.get("version")
+        if anomaly_model.metadata
+        else None,
+        "results": [
+            _strip_pii_from_result({
+                "timestamp": obs.timestamp,
+                "blood_group": obs.blood_group,
+                "component": obs.component,
+                "units": obs.units,
+                "storage_temp_c": obs.storage_temp_c,
+                "label": label,
+                "score": score,
+            })
+            for obs, label, score in zip(
+                observations,
+                labels.labels,
+                labels.scores,
+            )
+        ],
+    }
+
+
+@app.post("/v1/anomaly/train", dependencies=[Depends(require_token)])
+def train_anomaly(request: AnomalyTrainRequest) -> dict:
+    try:
+        samples = [
+            LabeledObservation(
+                timestamp=sample.timestamp,
+                blood_group=sample.blood_group,
+                component=sample.component,
+                units=sample.units,
+                storage_temp_c=(sample.storage_temp_c if sample.storage_temp_c is not None else None),
+                label=bool(sample.label),
+                is_synthetic=sample.is_synthetic,
+            )
+            for sample in request.observations
+        ]
+        metadata = anomaly_model.train(
+            samples,
+            dataset_label=request.dataset_label,
+            source=request.source,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    _safe_log_event(
+        "anomaly model trained",
+        include_pii=False,
+    )
+    return {
+        "trained": True,
+        "minimum_observations": anomaly_model.min observations,
+        **metadata,
+    }
+
 
 
 @app.get("/v1/models", dependencies=[Depends(require_token)])

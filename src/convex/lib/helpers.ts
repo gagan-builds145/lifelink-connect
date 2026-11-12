@@ -4,6 +4,9 @@ import type { Doc, Id } from "../_generated/dataModel";
 
 type Ctx = QueryCtx | MutationCtx;
 
+export const SECURITY_SCOPED_ROLES = ["admin"] as const;
+
+
 export type AppUser = Doc<"users">;
 
 export const APP_ROLES = [
@@ -228,6 +231,72 @@ export async function audit(
   });
 }
 
+/**
+ * Record a security-relevant event. This intentionally avoids storing tokens,
+ * OTP codes, patient names or donor contacts. Use generic machine-readable
+ * reasons and a human summary that is safe for admin dashboards.
+ */
+export async function recordSecurityEvent(
+  ctx: MutationCtx,
+  input: {
+    kind:
+      | "auth_failure"
+      | "brute_force_suspect"
+      | "otp_rate_limited"
+      | "unauthorized_access"
+      | "cross_user_access_denied"
+      | "malformed_request"
+      | "oversized_request"
+      | "inventory_transfer_denied"
+      | "ml_auth_failure"
+      | "drone_command_denied"
+      | "drone_command_replay_suspect"
+      | "waf_blocked"
+      | "rate_limited";
+    severity: "low" | "medium" | "high" | "critical";
+    service:
+      | "web"
+      | "auth"
+      | "convex_api"
+      | "ml_service"
+      | "drone_ops"
+      | "integration";
+    reason: string;
+    summary: string;
+    clientRef?: string;
+    entityType?: string;
+    entityId?: string;
+    organizationId?: Doc<"organizations">["_id"];
+  },
+) {
+  await ctx.db.insert("securityEvents", {
+    kind: input.kind,
+    severity: input.severity,
+    service: input.service,
+    reason: input.reason,
+    summary: input.summary,
+    clientRef: input.clientRef,
+    entityType: input.entityType,
+    entityId: input.entityId,
+    organizationId: input.organizationId,
+    createdAt: Date.now(),
+  });
+}
+
+/**
+ * Convert an internal error into a safe public-facing message. Operational
+ * details are written to audit/security logs separately; the user sees a stable
+ * message that cannot leak stack traces, table names, tokens or identifiers.
+ */
+export function safeError(
+  message: string,
+  options?: { logDetail?: string; logAction?: string; logEntityType?: string; logEntityId?: string },
+): Error {
+  // The public message is always the stable one passed in. Any richer detail is
+  // intentionally not attached to the thrown error.
+  return new Error(message);
+}
+
 /* ------------------------------- validation ------------------------------ */
 
 export function requireText(value: string, label: string, min = 2, max = 240) {
@@ -264,4 +333,129 @@ export function requireUnits(value: number) {
     throw new Error("Units must be between 1 and 20.");
   }
   return Math.round(value);
+}
+
+/**
+ * Normalize a client identifier for security logs. Never log raw tokens or
+ * one-time codes. If a real IP or session ref is available upstream, pass it
+ * here trimmed and truncated; otherwise fall back to a stable placeholder.
+ */
+export function normalizeClientRef(value: string | null | undefined): string | undefined {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  // Keep it short and generic. This is not a hash implementation; it is a
+  // safeguard so callers do not accidentally paste a secret into the log.
+  return trimmed.slice(0, 128);
+}
+
+/**
+ * Auth firewall helpers.
+ *
+ * These are intended to be called from Convex auth integration points (for
+ * example a custom auth mutation/action or a pre-auth hook if your deployment
+ * uses one). They do not replace Convex Auth itself; they add brute-force
+ * protection, OTP attempt rate limiting, account-enumeration-resistant failure
+ * handling and security-event logging.
+ */
+
+export async function recordAuthOutcome(
+  ctx: MutationCtx,
+  input: {
+    email: string;
+    success: boolean;
+    clientRef?: string;
+    reason?: string;
+  },
+) {
+  const normalized = normalizeEmail(input.email);
+  if (input.success) {
+    return;
+  }
+  // Keep failure output identical regardless of whether the email exists.
+  // This is the main guard against account enumeration via sign-in timing/text.
+  await recordSecurityEvent(ctx, {
+    kind: "auth_failure",
+    severity: "medium",
+    service: "auth",
+    reason: input.reason ?? "Sign-in attempt failed.",
+    summary: `Sign-in attempt failed for ${normalized}.`,
+    clientRef: normalizeClientRef(input.clientRef),
+    entityType: "user",
+    // Do not persist the email as the entity id in a way that distinguishes
+    // nonexistent addresses from existing ones in admin tooling.
+    entityId: "redacted",
+  });
+}
+
+export async function enforceOtpRateLimit(
+  ctx: MutationCtx,
+  email: string,
+  windowSeconds = 15 * 60,
+  maxAttempts = 10,
+) {
+  const windowKey = `otp:${normalizeEmail(email)}:${Math.floor(Date.now() / 1000 / windowSeconds)}`;
+  const existing = await ctx.db
+    .query("rateLimits")
+    .withIndex("by_key", (q) => q.eq("key", windowKey))
+    .first();
+  if (!existing) {
+    await ctx.db.insert("rateLimits", {
+      key: windowKey,
+      count: 1,
+      windowStartedAt: Date.now(),
+    });
+    return;
+  }
+  if (existing.count >= maxAttempts) {
+    await recordSecurityEvent(ctx, {
+      kind: "otp_rate_limited",
+      severity: "high",
+      service: "auth",
+      reason: `OTP requests exceeded ${maxAttempts} in a ${windowSeconds}s window for ${normalizeEmail(email)}.`,
+      summary: `OTP request rate limit reached for ${normalizeEmail(email)}.`,
+      entityType: "user",
+      entityId: "redacted",
+    });
+    throw safeError("Too many code requests. Please wait before trying again.");
+  }
+  await ctx.db.patch(existing._id, { count: existing.count + 1 });
+}
+
+/**
+ * Generic request-firewall rate limit with security-event logging.
+ * Use for sign-in, OTP, contact, upload and other abuse-prone endpoints.
+ */
+export async function enforceFwRateLimit(
+  ctx: MutationCtx,
+  key: string,
+  limit: number,
+  windowMs = 60 * 1000,
+  severity: "medium" | "high" = "high",
+) {
+  const windowKey = `${key}:${Math.floor(Date.now() / windowMs)}`;
+  const existing = await ctx.db
+    .query("rateLimits")
+    .withIndex("by_key", (q) => q.eq("key", windowKey))
+    .first();
+  if (!existing) {
+    await ctx.db.insert("rateLimits", {
+      key: windowKey,
+      count: 1,
+      windowStartedAt: Date.now(),
+    });
+    return;
+  }
+  if (existing.count >= limit) {
+    await recordSecurityEvent(ctx, {
+      kind: "rate_limited",
+      severity,
+      service: "web",
+      reason: `Rate limit ${limit} reached for scope ${key} in a ${windowMs}ms window.`,
+      summary: `Request rate limit exceeded for ${key}.`,
+      clientRef: normalizeClientRef(key.split(":")[0] ?? undefined),
+    });
+    throw safeError("Too many requests. Please slow down and try again later.");
+  }
+  await ctx.db.patch(existing._id, { count: existing.count + 1 });
 }

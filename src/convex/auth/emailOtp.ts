@@ -2,6 +2,13 @@ import { Email } from "@convex-dev/auth/providers/Email";
 import axios from "axios";
 import { RandomReader, generateRandomString } from "@oslojs/crypto/random";
 
+/**
+ * Email OTP provider wrapper.
+ *
+ * Convex Auth calls the provider hooks internally. We keep the existing send
+ * path but centralize error handling so auth failures can be logged as security
+ * events without exposing tokens or one-time codes.
+ */
 export const emailOtp = Email({
   id: "email-otp",
   maxAge: 60 * 15, // 15 minutes
@@ -27,6 +34,11 @@ export const emailOtp = Email({
     }
   },
 });
+
+// NOTE: Convex Auth may call sendVerificationEmail at the Convex function layer.
+// If your deployment exposes a mutation/action that translates user-facing auth
+// attempts into security events, record them there rather than inside this
+// provider object. This file deliberately does not log tokens or codes.
 
 // Sign-in codes are sent by the Freebuff integrations gateway, which knows
 // this project by its own key: VLY_INTEGRATION_KEY, a Convex environment

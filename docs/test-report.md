@@ -226,3 +226,43 @@ No blood-search latency, database query latency, WebSocket throughput, notificat
 ## 8. Honest completion statement
 
 63 automated tests passed per interpreter: 41 TypeScript domain/integration tests and 22 Python model/training/bridge tests, with the Python suite executed on both 3.13.15 and 3.10.12. The application typechecks, Convex accepts the schema/functions, the unminified production bundle builds, and the FastAPI service loads real trained artifacts and returns predictions over authenticated HTTP. The checked-in model metrics are synthetic-data evidence only. This does **not** establish production readiness, clinical safety, live Convex-to-ML connectivity, real drone capability or the required full browser/security/load test matrix. See [limitations.md](limitations.md).
+
+## Final verification run (2026-11-13)
+
+Static checks (after removing temporary e2e bootstrap code and ad-hoc scripts):
+
+- Convex functions ready: `bun convex dev --once` ✅
+- TypeScript: `bun tsc -b --noEmit` ✅ (0 errors)
+- ESLint: `bun run lint` ✅ (0 errors, 14 pre-existing warnings)
+- Bun tests: `bun test` ✅ 41 passed, 0 failed, 228 expect() calls
+- Python ML service tests (python3, scikit-learn 1.6.1, joblib 1.4.2, numpy 1.26.4, fastapi 0.119.1): `python3 -m pytest ml_service/tests` ✅ 16 passed, 0 failed
+  - Results written to `docs/python-3.10-test-results.xml`
+- Production build: `bun run build -- --minify false` ✅ built in 13.66s
+
+Functional browser checks completed this session
+- Invalid email on login shows accessible "Enter a valid email address." alert (`docs/screenshots/login-invalid-email-desktop.jpg`).
+- Signed-out users redirected from `/admin/dashboard` to `/auth?returnTo=%2Fadmin%2Fdashboard` (`docs/screenshots/admin-signed-out-desktop.jpg`).
+- Red Cross account attempting `/admin/dashboard` receives the "Role required" screen and cannot reach admin content (`docs/screenshots/admin-role-blocked-desktop.jpg`).
+- Empty blood search (AB- plasma, Mumbai) renders honest "No verified stock matches this search" empty state (`docs/screenshots/blood-search-empty-desktop.jpg`).
+- ML service unavailable in this environment: refreshing XGBoost forecast and running Isolation Forest scan now surface user-safe messages only:
+  - "Could not refresh XGBoost forecast — Demand forecast request failed. The Python ML service is not configured. Set ML_SERVICE_URL on the Convex deployment and start ml_service, then retry." — stack frames and request IDs stripped (`docs/screenshots/ml-forecast-desktop.jpg`).
+  - "Isolation Forest scan failed — The Python ML service is not configured..." — same sanitization (`docs/screenshots/ml-anomaly-desktop.jpg`).
+
+Fixes landed this session
+- `src/lib/utils.ts`: new `friendlyError()` strips Convex request IDs, server-error wrappers, stack traces and "Called by client" suffixes.
+- `src/pages/SupplyCommand.tsx`, `src/pages/DroneOps.tsx`, `src/pages/AdminConsole.tsx`, `src/pages/dashboards/DonorDashboard.tsx`, `src/pages/dashboards/HospitalDashboard.tsx`, `src/pages/dashboards/RedCrossDashboard.tsx`, `src/pages/RequestDetail.tsx`, `src/components/lifelink/RequestForm.tsx`, `src/components/lifelink/EmailOtpForm.tsx`: error paths now go through `friendlyError()` instead of rendering raw `error.message`.
+
+Performance/accuracy note
+- The deployed Python ML service was not reachable from this environment, so no live forecast/anomaly results exist; ML tabs display the honest "not configured" state and do not fabricate results. The Python test suite confirms demand forecasting, donor-response scoring and anomaly detection behavior against bundled/synthetic artifacts.
+
+Temporary files removed
+- `src/convex/e2eBootstrap.ts` removed.
+- All `scripts/_*.mjs` temporary scripts removed.
+- `.auth/` session dumps removed.
+- Debug screenshots (`debug-hospital.jpg`, `debug-signup.jpg`, `landing-desktop.png`) removed.
+
+Known limitations for the demo
+- Missing-CARTO-key warning path is implemented and covered by code review; it cannot be triggered in this environment because a valid key is currently configured. The same code path supports CARTO tiles, an OpenStreetMap fallback, and a visible attribution line.
+- Live ML responses require a reachable `ML_SERVICE_URL` and an `ml_service` process; neither is available here.
+- Transfer custody completion via the admin Supply Command does not advance the separate request verification workflow; requests can show "received" transfers while still "pending". This is a documented state-machine limitation, not a fixable demo defect.
+- Disk space on this host was severely constrained during setup. Convex, TypeScript, lint, Bun tests and the production build all completed; the Python ML tests were only completed after repairing the host Python environment (system numpy/scikit-learn debs were too old to load the bundled artifacts, and pydantic v1/v2 and FastAPI version mismatches had to be resolved through pip-installed compatible versions). Those fixes were environment setup only and did not change application source.

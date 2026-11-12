@@ -18,6 +18,7 @@ import {
   recordSecurityEvent,
   type AppUser,
 } from "./lib/helpers";
+import type { MutationCtx } from "./_generated/server";
 import { BLOOD_GROUPS, type BloodGroup, type Component } from "../lib/blood";
 import { mlFetch, mlServiceConfigured } from "./lib/mlClient";
 
@@ -68,6 +69,10 @@ function finiteOrNull(value: unknown): number | null {
 
 /* ------------------------------------------------------------------ */
 /* Authorized data access
+/* ------------------------------------------------------------------ */
+
+/* ------------------------------------------------------------------ */
+/* Prediction helpers
 /* ------------------------------------------------------------------ */
 
 export const authorizeMlAction = internalQuery({
@@ -126,10 +131,9 @@ export const authorizeMlAction = internalQuery({
   },
 });
 
-/**
- * Lightweight wrapper that records a generic ML-service auth failure as a
- * security event when the configured ML token is missing or rejected.
- */
+/* ================================================================== */
+/* ML auth-firewall helper (disabled for now)
+/* ================================================================== */
 export async function recordMlAuthFailure(
   ctx: MutationCtx,
   summary: string,
@@ -147,6 +151,33 @@ export async function recordMlAuthFailure(
     entityId,
   });
 }
+
+/* ------------------------------------------------------------------ */
+/* Prediction persistence and reads
+/* ------------------------------------------------------------------ */
+
+
+/* ================================================================== */
+/* ML auth-firewall helper (disabled for now)
+/* ================================================================== */
+export async function recordMlAuthFailure(
+  ctx: MutationCtx,
+  summary: string,
+  reason: string,
+  entityType = "ml_service",
+  entityId = "ml_service",
+) {
+  await recordSecurityEvent(ctx, {
+    kind: "ml_auth_failure",
+    severity: "high",
+    service: "ml_service",
+    reason,
+    summary,
+    entityType,
+    entityId,
+  });
+}
+
 
 function continuousPoints(
   records: Array<{

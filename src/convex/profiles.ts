@@ -115,7 +115,7 @@ export const registerDonor = mutation({
 
     await ctx.db.patch(user._id, {
       name: fullName,
-      role: "donor",
+      role: "community",
       city,
       phone,
       profileCompleted: true,
@@ -132,7 +132,7 @@ export const registerDonor = mutation({
     });
 
     await audit(ctx, {
-      actor: { ...user, role: "donor" },
+      actor: { ...user, role: "community" },
       action: "donor.registered",
       entityType: "donorProfile",
       entityId: donorId,
@@ -181,7 +181,7 @@ export const registerRequestor = mutation({
 
     await ctx.db.patch(user._id, {
       name: fullName,
-      role: "requestor",
+      role: "community",
       city,
       phone,
       profileCompleted: true,
@@ -229,7 +229,7 @@ export const registerOrganization = mutation({
     if (user.organizationId) {
       throw new Error("This account is already linked to an organization.");
     }
-    if (["donor", "requestor"].includes(roleOf(user))) {
+    if (["community", "donor", "requestor"].includes(roleOf(user))) {
       throw new Error("This account already has a personal profile.");
     }
 
@@ -306,7 +306,7 @@ export const updateDonorProfile = mutation({
     shareContact: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["donor"]);
+    const user = await requireRole(ctx, ["community", "donor"]);
     const donor = await getDonorProfile(ctx, user._id);
     if (!donor) throw new Error("Donor profile not found.");
 
@@ -330,7 +330,7 @@ export const updateDonorProfile = mutation({
 export const setAvailability = mutation({
   args: { available: v.boolean() },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["donor"]);
+    const user = await requireRole(ctx, ["community", "donor"]);
     const donor = await getDonorProfile(ctx, user._id);
     if (!donor) throw new Error("Donor profile not found.");
     await ctx.db.patch(donor._id, {
@@ -348,7 +348,7 @@ export const updateRequestorProfile = mutation({
     requestorType: v.optional(requestorTypeValidator),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["requestor"]);
+    const user = await requireRole(ctx, ["community", "requestor"]);
     const requestor = await getRequestorProfile(ctx, user._id);
     if (!requestor) throw new Error("Requestor profile not found.");
     const patch: Record<string, unknown> = {};

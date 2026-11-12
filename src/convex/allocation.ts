@@ -1172,7 +1172,7 @@ export const grantDroneOps = mutation({
     if (!user) {
       throw new Error("No LifeLink account uses that email. Ask them to register first.");
     }
-    if (user.role === "donor" || user.role === "requestor") {
+    if (["community", "donor", "requestor"].includes(user.role ?? "")) {
       throw new Error("Convert only staff or new accounts to drone operations.");
     }
     await ctx.db.patch(user._id, { role: "drone_ops" });

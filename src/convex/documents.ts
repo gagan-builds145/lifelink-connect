@@ -81,7 +81,7 @@ export const getUrl = query({
 export const remove = mutation({
   args: { documentId: v.id("documentMetadata") },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["requestor", "hospital", "donor", "red_cross", "admin"]);
+    const user = await requireRole(ctx, ["community", "requestor", "hospital", "donor", "red_cross", "admin"]);
     const meta = await ctx.db.get(args.documentId);
     if (!meta) throw new Error("Document not found.");
     if (meta.uploadedByUserId !== user._id) {

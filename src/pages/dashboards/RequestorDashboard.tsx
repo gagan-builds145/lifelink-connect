@@ -49,6 +49,7 @@ import {
   Clock3,
   Droplets,
   FileCheck2,
+  HeartHandshake,
   HeartPulse,
   Info,
   Loader2,
@@ -148,9 +149,9 @@ export default function RequestorDashboard() {
 
   return (
     <DashboardShell
-      roleLabel="Blood requestor"
-      roleKey="Requestor workspace"
-      title="Requestor dashboard"
+      roleLabel="Donor & Blood Requestor"
+      roleKey="Request workspace"
+      title="Blood request dashboard"
       subtitle="Raise a structured request, upload a prescription, and follow every verification and fulfilment step with real timestamps."
       items={navItems}
       active={tab}
@@ -160,6 +161,7 @@ export default function RequestorDashboard() {
       demoData={demoPresent}
       accentIcon={Droplets}
       quickLinks={[
+        { label: "Donor workspace", href: "/donor/dashboard", icon: HeartHandshake },
         { label: "Verified blood search", href: "/blood-search", icon: Search },
         { label: "Donation camps", href: "/donation-camps", icon: CalendarPlus },
         { label: "How verification works", href: "/#how-it-works", icon: Info },
@@ -488,7 +490,7 @@ export default function RequestorDashboard() {
               <h2 className="text-[14px] font-bold">Account & privacy</h2>
               <dl className="mt-3 space-y-2.5 text-[11.5px]">
                 {[
-                  ["Role", "Blood requestor (server verified)"],
+                  ["Role", "Donor & Blood Requestor (server verified)"],
                   ["Email", user?.email ?? "Guest session"],
                   ["Request ID format", "LL-REQ-####"],
                   ["Public exposure", "None — patient data is never public"],
@@ -502,12 +504,15 @@ export default function RequestorDashboard() {
             </div>
             <div className="rounded-2xl border border-primary/15 bg-primary/[0.04] p-4">
               <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-primary">
-                <UserRound className="size-3.5" /> Need a donor account too?
+                <UserRound className="size-3.5" /> Want to donate too?
               </p>
               <p className="mt-1.5 text-[11px] leading-5 text-muted-foreground">
-                Each account holds one primary role. Use a separate verified email to
-                register as a donor so permissions stay clear.
+                Donor and requestor capabilities share this verified account. Open the donor
+                workspace from the dashboard hub to add your donor profile.
               </p>
+              <Button asChild variant="ghost" size="sm" className="mt-2 h-7 gap-1 px-0 text-[10.5px] text-primary">
+                <Link to="/community/dashboard">Open the dashboard hub</Link>
+              </Button>
             </div>
           </section>
         </div>

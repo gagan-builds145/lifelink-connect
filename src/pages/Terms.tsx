@@ -38,7 +38,7 @@ export default function Terms() {
           {[
             {
               title: "1. Accounts and roles",
-              body: "You must provide accurate information and only create an account for yourself or an organization you are authorized to represent. Donor and requestor roles are self-service. Red Cross and hospital roles are linked to a registered organization on the server. LifeLink may suspend accounts that misrepresent identity, authorization or clinical need.",
+              body: "You must provide accurate information and only create an account for yourself or an organization you are authorized to represent. The combined donor and blood-requestor role is self-service, so one verified account can both give and request blood. Red Cross and hospital roles are linked to a registered organization on the server. LifeLink may suspend accounts that misrepresent identity, authorization or clinical need.",
             },
             {
               title: "2. Genuine requests only",

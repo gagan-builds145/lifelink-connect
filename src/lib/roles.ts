@@ -1,5 +1,6 @@
 export type AppRole =
   | "admin"
+  | "community"
   | "donor"
   | "requestor"
   | "red_cross"
@@ -10,8 +11,11 @@ export type AppRole =
 
 export const ROLE_LABELS: Record<AppRole, string> = {
   admin: "Administrator",
-  donor: "Blood donor",
-  requestor: "Blood requestor",
+  community: "Donor & Blood Requestor",
+  // Legacy role values are kept for existing accounts, but both map to the
+  // combined self-service role in the interface.
+  donor: "Donor & Blood Requestor",
+  requestor: "Donor & Blood Requestor",
   red_cross: "Red Cross Society",
   hospital: "Hospital",
   drone_ops: "Drone operations",
@@ -23,10 +27,10 @@ export const STAFF_ROLES: AppRole[] = ["red_cross", "hospital", "admin"];
 
 export function dashboardPathForRole(role?: string | null): string {
   switch (role) {
+    case "community":
     case "donor":
-      return "/donor/dashboard";
     case "requestor":
-      return "/requestor/dashboard";
+      return "/community/dashboard";
     case "red_cross":
       return "/red-cross/dashboard";
     case "admin":
@@ -52,6 +56,7 @@ export function isStaffRole(role?: string | null) {
  */
 export function hasDashboardRole(role?: string | null): boolean {
   return (
+    role === "community" ||
     role === "donor" ||
     role === "requestor" ||
     role === "red_cross" ||
@@ -63,27 +68,16 @@ export function hasDashboardRole(role?: string | null): boolean {
 
 export const ROLE_CARDS = [
   {
-    role: "donor",
-    title: "Donor",
-    tagline: "Give the gift of life",
+    role: "community",
+    title: "Donor & Blood Requestor",
     description:
-      "Register once, control your availability, see verified nearby requests and track every donation.",
-    href: "/signup/donor",
+      "Give blood, request blood for a patient, and manage both from one verified account.",
+    href: "/signup/community",
     accent: "crimson" as const,
-  },
-  {
-    role: "requestor",
-    title: "Blood Requestor",
-    tagline: "Find help, fast",
-    description:
-      "Patients, families and authorized representatives can raise and track a verified blood request.",
-    href: "/signup/requestor",
-    accent: "navy" as const,
   },
   {
     role: "red_cross",
     title: "Red Cross Society",
-    tagline: "Coordinate the network",
     description:
       "Verify requests, manage shared inventory and camps, and keep every stock movement auditable.",
     href: "/signup/red-cross",
@@ -92,7 +86,6 @@ export const ROLE_CARDS = [
   {
     role: "hospital",
     title: "Hospital",
-    tagline: "Run the clinical request",
     description:
       "Submit hospital blood requests, track dispatch and confirm receipt against the shared ledger.",
     href: "/signup/hospital",

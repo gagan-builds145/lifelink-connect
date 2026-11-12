@@ -193,7 +193,7 @@ export const create = mutation({
         throw new Error("Only verified hospital staff can submit a hospital request.");
       }
       organization = await requireOrganization(ctx, user, ["hospital"]);
-    } else if (!["requestor", "donor", "user", "member"].includes(role)) {
+    } else if (!["community", "requestor", "donor", "user", "member"].includes(role)) {
       throw new Error("This account cannot submit a requestor request.");
     }
 

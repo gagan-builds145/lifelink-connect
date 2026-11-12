@@ -283,7 +283,7 @@ export default function DonorDashboard() {
 
   return (
     <DashboardShell
-      roleLabel="Blood donor"
+      roleLabel="Donor & Blood Requestor"
       roleKey="Donor workspace"
       title="Donor dashboard"
       subtitle="Keep your availability current, review compatible verified requests and control exactly what contact information coordinators can see."
@@ -294,6 +294,7 @@ export default function DonorDashboard() {
       demoData={demoPresent}
       accentIcon={HeartHandshake}
       quickLinks={[
+        { label: "Request blood", href: "/requestor/dashboard", icon: Droplets },
         { label: "Blood availability search", href: "/blood-search", icon: Droplets },
         { label: "Public donation camps", href: "/donation-camps", icon: CalendarHeart },
         { label: "Donation guidance", href: "/#awareness", icon: Info },

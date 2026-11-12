@@ -8,6 +8,7 @@ export type AppUser = Doc<"users">;
 
 export const APP_ROLES = [
   "admin",
+  "community",
   "donor",
   "requestor",
   "red_cross",

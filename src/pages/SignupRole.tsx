@@ -1,29 +1,20 @@
 import { SiteFooter } from "@/components/lifelink/SiteFooter";
 import { SiteHeader } from "@/components/lifelink/SiteHeader";
 import { Button } from "@/components/ui/button";
-import { dashboardPathForRole, ROLE_CARDS } from "@/lib/roles";
+import { ROLE_CARDS } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
-import {
-  ArrowRight,
-  Building2,
-  Droplets,
-  HeartHandshake,
-  Hospital,
-  Stethoscope,
-} from "lucide-react";
+import { ArrowRight, Building2, HeartHandshake, Hospital, Stethoscope } from "lucide-react";
 import { Link } from "react-router";
 
 const icons = {
-  donor: HeartHandshake,
-  requestor: Droplets,
+  community: HeartHandshake,
   red_cross: Building2,
   hospital: Hospital,
 } as const;
 
 const accents = {
   crimson: "bg-primary/8 text-primary border-primary/20",
-  navy: "bg-foreground/[0.05] text-foreground border-foreground/15",
   teal: "bg-teal-50 text-teal-700 border-teal-200",
   amber: "bg-amber-50 text-amber-700 border-amber-200",
 } as const;
@@ -47,7 +38,7 @@ export default function SignupRole() {
             </h1>
           </motion.div>
 
-          <div className="mt-10 grid gap-3 sm:grid-cols-2">
+          <div className="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {ROLE_CARDS.map((card, index) => {
               const Icon = icons[card.role as keyof typeof icons] ?? Stethoscope;
               return (
@@ -58,26 +49,15 @@ export default function SignupRole() {
                   transition={{ duration: 0.45, delay: 0.08 * index }}
                 >
                   <div className="group flex h-full flex-col rounded-2xl border border-border bg-card p-5 transition-all hover:-translate-y-0.5 hover:border-primary/25 sm:p-6">
-                    <div className="flex items-start justify-between gap-3">
-                      <span className={cn("flex size-11 items-center justify-center rounded-2xl border", accents[card.accent])}>
-                        <Icon className="size-5" />
-                      </span>
-                      <span className="text-[9px] font-bold uppercase tracking-[0.16em] text-muted-foreground/60">
-                        {card.tagline}
-                      </span>
-                    </div>
+                    <span className={cn("flex size-11 items-center justify-center rounded-2xl border", accents[card.accent])}>
+                      <Icon className="size-5" />
+                    </span>
                     <h2 className="mt-4 text-[18px] font-bold">{card.title}</h2>
                     <p className="mt-1.5 flex-1 text-[12.5px] leading-6 text-muted-foreground">
                       {card.description}
                     </p>
-                    <div className="mt-5 flex items-center justify-between gap-3 border-t border-border pt-4">
-                      <Link
-                        to={dashboardPathForRole(card.role)}
-                        className="text-[11px] font-medium text-muted-foreground hover:text-primary"
-                      >
-                        View dashboard
-                      </Link>
-                      <Button asChild size="sm" className="gap-1.5">
+                    <div className="mt-5">
+                      <Button asChild size="sm" className="w-full gap-1.5">
                         <Link to={card.href}>
                           Continue
                           <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />

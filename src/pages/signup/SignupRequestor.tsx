@@ -36,11 +36,11 @@ export default function SignupRequestor() {
 
   return (
     <SignupFrame
-      eyebrow="Requestor registration"
-      title="Create a requestor account"
-      description="For patients, family members and authorized representatives. Your account can submit and track requests without exposing patient details publicly."
+      eyebrow="Community registration · Requestor"
+      title="Add requestor access"
+      description="For patients, family members and authorized representatives. Add requestor access to your verified community account without exposing patient details publicly."
       asideTitle="A clear request is faster to verify."
-      asideBody="Add the hospital, blood group, component, units and urgency. Upload a prescription if you have one. Authorized Red Cross staff review the declaration before any stock is committed."
+      asideBody="Add the hospital, blood group, component, units and urgency. The same account can also donate blood. Authorized Red Cross staff review every declaration before stock is committed."
     >
       <div className="mb-4 rounded-xl border border-teal-200 bg-teal-50/70 p-3 text-[11px] leading-5 text-teal-900">
         <span className="flex items-center gap-1.5 font-bold">
@@ -83,10 +83,10 @@ export default function SignupRequestor() {
               city: form.city,
               consent: true,
             });
-            toast.success(`Requestor profile created · ${result.requestorId}`, {
-              description: "You can now submit a request and track its verification timeline.",
+            toast.success(`Requestor access created · ${result.requestorId}`, {
+              description: "You can now submit and track requests from your community account.",
             });
-            navigate("/requestor/dashboard", { replace: true });
+            navigate("/community/dashboard", { replace: true });
           } catch (err) {
             setError(err instanceof Error ? err.message : "Registration failed.");
           } finally {
@@ -138,10 +138,11 @@ export default function SignupRequestor() {
 
         <Button type="submit" className="h-11 w-full gap-2" disabled={busy}>
           {busy ? <Loader2 className="size-4 animate-spin" /> : <Droplets className="size-4" />}
-          {busy ? "Creating your account…" : "Create requestor account"}
+          {busy ? "Adding requestor access…" : "Add requestor access"}
         </Button>
         <p className="text-center text-[10px] leading-5 text-muted-foreground">
-          Next: submit a request with hospital details, blood group, component and urgency.
+          Next: open your community dashboard and submit a request with hospital details,
+          blood group, component and urgency.
         </p>
       </form>
     </SignupFrame>

@@ -632,7 +632,7 @@ export default function AdminConsole() {
                   </Button>
                 </div>
                 <p className="mt-2 text-[9px] leading-4 text-muted-foreground">
-                  Donors and requestors cannot be converted. The account must already exist.
+                  Community donor/requestor accounts cannot be converted. The account must already exist.
                 </p>
               </Panel>
             </div>

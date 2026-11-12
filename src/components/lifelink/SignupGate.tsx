@@ -25,7 +25,7 @@ export function SignupGate({ children }: { children: ReactNode }) {
             Step 1 of 2 · Verify email
           </p>
           <p className="mt-1 text-[12.5px] leading-5 text-muted-foreground">
-            No password needed. Once verified, your selected role form opens so the
+            No password needed. Once verified, your account form opens so the
             backend can attach the profile to your verified account.
           </p>
         </div>

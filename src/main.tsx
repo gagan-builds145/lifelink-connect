@@ -15,11 +15,13 @@ const Landing = lazy(() => import("./pages/Landing.tsx"));
 const AuthPage = lazy(() => import("./pages/Auth.tsx"));
 const ForgotPassword = lazy(() => import("./pages/ForgotPassword.tsx"));
 const SignupRole = lazy(() => import("./pages/SignupRole.tsx"));
+const SignupCommunity = lazy(() => import("./pages/signup/SignupCommunity.tsx"));
 const SignupDonor = lazy(() => import("./pages/signup/SignupDonor.tsx"));
 const SignupRequestor = lazy(() => import("./pages/signup/SignupRequestor.tsx"));
 const SignupRedCross = lazy(() => import("./pages/signup/SignupRedCross.tsx"));
 const SignupHospital = lazy(() => import("./pages/signup/SignupHospital.tsx"));
 const DashboardRedirect = lazy(() => import("./pages/DashboardRedirect.tsx"));
+const CommunityDashboard = lazy(() => import("./pages/dashboards/CommunityDashboard.tsx"));
 const DonorDashboard = lazy(() => import("./pages/dashboards/DonorDashboard.tsx"));
 const RequestorDashboard = lazy(() => import("./pages/dashboards/RequestorDashboard.tsx"));
 const RedCrossDashboard = lazy(() => import("./pages/dashboards/RedCrossDashboard.tsx"));
@@ -253,6 +255,7 @@ createRoot(document.getElementById("root")!).render(
               <Route path="/login" element={<AuthPage redirectAfterAuth="/dashboard" />} />
               <Route path="/forgot-password" element={<ForgotPassword />} />
               <Route path="/signup" element={<SignupRole />} />
+              <Route path="/signup/community" element={<SignupCommunity />} />
               <Route path="/signup/donor" element={<SignupDonor />} />
               <Route path="/signup/requestor" element={<SignupRequestor />} />
               <Route path="/signup/red-cross" element={<SignupRedCross />} />
@@ -265,9 +268,23 @@ createRoot(document.getElementById("root")!).render(
                   <RequireAuth
                     redirectImmediately
                     title="Sign in to open your workspace"
-                    description="Your donor, requestor, Red Cross or hospital dashboard is tied to your verified role."
+                    description="Your community, Red Cross or hospital dashboard is tied to your verified role."
                   >
                     <DashboardRedirect />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/community/dashboard"
+                element={
+                  <RequireAuth
+                    redirectImmediately
+                    title="Sign in to your community dashboard"
+                    description="Donor and blood requestor profiles share one verified community account."
+                  >
+                    <RequireRole roles={["community", "donor", "requestor"]}>
+                      <CommunityDashboard />
+                    </RequireRole>
                   </RequireAuth>
                 }
               />
@@ -276,10 +293,10 @@ createRoot(document.getElementById("root")!).render(
                 element={
                   <RequireAuth
                     redirectImmediately
-                    title="Sign in to your donor dashboard"
+                    title="Sign in to your donor workspace"
                     description="Availability, compatible verified requests, camps and donation history live here."
                   >
-                    <RequireRole roles={["donor"]}>
+                    <RequireRole roles={["community", "donor"]}>
                       <DonorDashboard />
                     </RequireRole>
                   </RequireAuth>
@@ -290,10 +307,10 @@ createRoot(document.getElementById("root")!).render(
                 element={
                   <RequireAuth
                     redirectImmediately
-                    title="Sign in to your requestor dashboard"
+                    title="Sign in to your request workspace"
                     description="Submit a blood request and track its verification, reservation and dispatch status."
                   >
-                    <RequireRole roles={["requestor"]}>
+                    <RequireRole roles={["community", "requestor"]}>
                       <RequestorDashboard />
                     </RequireRole>
                   </RequireAuth>

@@ -81,6 +81,7 @@ export const notificationKindValidator = v.union(
 
 export const userRoleValidator = v.union(
   v.literal("admin"),
+  v.literal("community"),
   v.literal("donor"),
   v.literal("requestor"),
   v.literal("red_cross"),

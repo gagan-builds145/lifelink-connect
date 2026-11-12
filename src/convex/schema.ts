@@ -35,6 +35,7 @@ import {
 // but are never assigned by LifeLink's own registration mutations.
 export const ROLES = {
   ADMIN: "admin",
+  COMMUNITY: "community",
   DONOR: "donor",
   REQUESTOR: "requestor",
   RED_CROSS: "red_cross",

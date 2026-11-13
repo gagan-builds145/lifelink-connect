@@ -71,7 +71,7 @@ export const ROLE_CARDS = [
     role: "community",
     title: "Donor & Blood Requestor",
     description:
-      "Give blood, request blood for a patient, and manage both from one verified account.",
+      "Give blood, request blood for a patient, and add either profile from one verified account.",
     href: "/signup/community",
     accent: "crimson" as const,
   },

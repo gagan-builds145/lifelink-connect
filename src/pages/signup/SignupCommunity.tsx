@@ -25,8 +25,8 @@ export default function SignupCommunity() {
     <SignupFrame
       eyebrow="Community registration"
       title="One account for giving and receiving"
-      description="Donor and blood requestor capabilities now share a single verified account. Start with either profile and add the other whenever you need it."
-      asideTitle="One role. Both sides of the network."
+      description="Donor and blood requestor capabilities now live on one verified account. Add either profile now and the other later, whenever you need it."
+      asideTitle="One role. Both profiles."
       asideBody="Whether you are donating or requesting blood, your identity, privacy settings and verification stay in one place."
     >
       <div className="space-y-3">
@@ -35,7 +35,7 @@ export default function SignupCommunity() {
           return (
             <div
               key={choice.href}
-              className="rounded-2xl border border-border bg-card p-4 transition-colors hover:border-primary/25"
+              className="rounded-2xl border border-border bg-card p-4 transition-all hover:border-primary/25"
             >
               <div className="flex items-start gap-3">
                 <span className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/8 text-primary">
@@ -58,12 +58,21 @@ export default function SignupCommunity() {
           );
         })}
 
-        <div className="flex items-start gap-2 rounded-xl border border-teal-200 bg-teal-50/70 p-3 text-[10.5px] leading-5 text-teal-900">
-          <ShieldCheck className="mt-0.5 size-3.5 shrink-0" />
-          <p>
-            Both profiles use the same server-verified role. Neither profile can be used to
-            access hospital, Red Cross or administrator controls.
-          </p>
+        <div className="grid gap-3 mt-2">
+          <div className="flex items-start gap-2 rounded-xl border border-teal-200 bg-teal-50/70 p-3 text-[10.5px] leading-5 text-teal-900">
+            <ShieldCheck className="mt-0.5 size-3.5 shrink-0" />
+            <p>
+              One server-verified role covers both profiles. Add a donor profile first, then
+              add requestor access from the community dashboard — or do it the other way around.
+            </p>
+          </div>
+          <div className="flex items-start gap-2 rounded-xl border border-border bg-muted/25 p-3 text-[10.5px] leading-5 text-muted-foreground">
+            <HeartHandshake className="mt-0.5 size-3.5 shrink-0 text-primary" />
+            <p>
+              Choosing either profile does not close the other. You can give blood, request
+              blood, or use both from the same account.
+            </p>
+          </div>
         </div>
       </div>
     </SignupFrame>

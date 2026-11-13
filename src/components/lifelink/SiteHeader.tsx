@@ -67,14 +67,19 @@ export function SiteHeader() {
                   {user?.name ?? user?.email ?? "Signed in"}
                 </span>
                 <span className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-                  {role ? ROLE_LABELS[role] : "Account"}
+                  {role ? ROLE_LABELS[role] : "Community"}
                 </span>
               </div>
               <Button asChild size="sm" className="gap-1.5">
-                <Link to={dashboardPathForRole(role)}>
-                  Dashboard
-                  <ArrowUpRight className="size-3.5" />
-                </Link>
+                                    <Link to={dashboardPathForRole(role)}>
+                      Dashboard
+                      <ArrowUpRight className="size-3.5" />
+                    </Link>
+                    {role === "community" && (
+                      <span className="ml-1 text-[9.5px] uppercase tracking-[0.16em] text-muted-foreground/70">
+                        (donor & requestor)
+                      </span>
+                    )}
               </Button>
             </>
           ) : (

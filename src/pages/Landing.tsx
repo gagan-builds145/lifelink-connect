@@ -795,7 +795,7 @@ export default function Landing() {
           </motion.div>
           <Button asChild variant="outline" className="w-fit gap-1.5">
             <Link to="/signup">
-              Choose your role <ArrowRight className="size-4" />
+              Create your account <ArrowRight className="size-4" />
             </Link>
           </Button>
         </div>
@@ -805,13 +805,13 @@ export default function Landing() {
             {
               icon: Users,
               title: "Donor management",
-              body: "Unique donor IDs, availability controls, donation history, interval guidance and privacy-first contact sharing.",
+              body: "One verified account can hold both donor and requestor profiles. Add either profile now and the other later.",
               href: "/signup/donor",
             },
             {
               icon: HeartPulse,
               title: "Blood request coordination",
-              body: "Structured requests with document review, status timeline, donor offers and notifications at every step.",
+              body: "Request blood for a patient, track verification, offers and status, with requestor and donor access on the same account.",
               href: "/signup/requestor",
             },
             {

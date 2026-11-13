@@ -36,11 +36,11 @@ export default function SignupRequestor() {
 
   return (
     <SignupFrame
-      eyebrow="Community registration · Requestor"
+      eyebrow="Community registration · Requester"
       title="Add requestor access"
       description="For patients, family members and authorized representatives. Add requestor access to your verified community account without exposing patient details publicly."
       asideTitle="A clear request is faster to verify."
-      asideBody="Add the hospital, blood group, component, units and urgency. The same account can also donate blood. Authorized Red Cross staff review every declaration before stock is committed."
+      asideBody="Submit the hospital, blood group, component, units and urgency. Your account can also donate blood. Authorized Red Cross staff review every declaration before stock is committed."
     >
       <div className="mb-4 rounded-xl border border-teal-200 bg-teal-50/70 p-3 text-[11px] leading-5 text-teal-900">
         <span className="flex items-center gap-1.5 font-bold">
@@ -49,7 +49,7 @@ export default function SignupRequestor() {
         </span>
         <p className="mt-1 text-teal-800/80">
           {user?.email ? `${user.email} is verified. ` : "Your secure guest session is active. "}
-          Request tracking and notifications are tied to this account.
+          Request tracking and notifications stay with this account.
         </p>
       </div>
 

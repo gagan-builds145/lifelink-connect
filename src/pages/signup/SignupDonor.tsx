@@ -60,12 +60,14 @@ export default function SignupDonor() {
   const guidance = donationGuidance(form.lastDonationDate || null);
 
   return (
-    <SignupFrame
+    <    SignupFrame
       eyebrow="Community registration · Donor"
       title="Create your donor profile"
       description="Add a donor profile to your verified community account. A unique donor ID is generated on the server, and you control availability and contact sharing."
+      asideNote="Already have requestor access? Add this profile to give blood too."
       asideTitle="Your blood type could be someone's only match."
       asideBody="Register once, then switch availability on when you can donate. The same account can also raise a blood request when someone needs help."
+      asideNote2="Requestor access is already on this account. Add donor access and both profiles will live on one verified account."
     >
       <div className="mb-4 rounded-xl border border-teal-200 bg-teal-50/70 p-3 text-[11px] leading-5 text-teal-900">
         <span className="flex items-center gap-1.5 font-bold">

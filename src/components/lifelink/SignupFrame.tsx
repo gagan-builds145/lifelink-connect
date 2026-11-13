@@ -11,6 +11,8 @@ export function SignupFrame({
   description,
   asideTitle,
   asideBody,
+  asideNote,
+  asideNote2,
   children,
 }: {
   eyebrow: string;
@@ -18,6 +20,8 @@ export function SignupFrame({
   description: string;
   asideTitle: string;
   asideBody: string;
+  asideNote?: string;
+  asideNote2?: string;
   children: ReactNode;
 }) {
   return (
@@ -37,6 +41,12 @@ export function SignupFrame({
           {title}
         </h1>
         <p className="mt-2 text-[12.5px] leading-6 text-muted-foreground">{description}</p>
+        {asideNote ? (
+          <p className="mt-2 text-[11.5px] font-semibold text-primary">{asideNote}</p>
+        ) : null}
+        {asideNote2 ? (
+          <p className="mt-1.5 text-[10.5px] leading-5 text-muted-foreground">{asideNote2}</p>
+        ) : null}
         <div className="mt-5">
           <SignupGate>{children}</SignupGate>
         </div>

@@ -128,6 +128,11 @@ export default function CommunityDashboard() {
                         <HeartHandshake className="size-4" /> Donor workspace
                       </Link>
                     </Button>
+                    <Button asChild variant="ghost" className="gap-1.5">
+                      <Link to="/requestor/dashboard">
+                        <Droplets className="size-4" /> Request workspace
+                      </Link>
+                    </Button>
                   </div>
                 </div>
               </section>
@@ -252,7 +257,7 @@ export default function CommunityDashboard() {
                   ) : (
                     <EmptyState
                       icon={Droplets}
-                      title="No requestor profile yet"
+                      title="Add requestor access"
                       description="Add requestor access to submit a verified blood request for a patient."
                       className="mt-4 border-0 bg-transparent px-2 py-6"
                       action={
@@ -268,13 +273,13 @@ export default function CommunityDashboard() {
               <section className="rounded-2xl border border-border bg-card p-5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <h2 className="text-[14px] font-bold">Recent blood requests</h2>
+                    <h2 className="text-[14px] font-bold">Your blood requests</h2>
                     <p className="mt-0.5 text-[11px] text-muted-foreground">
                       Status updates from the shared request ledger.
                     </p>
                   </div>
                   <Button variant="ghost" size="sm" className="gap-1 text-[11px]" onClick={() => setTab("requests")}>
-                    View all
+                    View all requests
                   </Button>
                 </div>
                 {requests === undefined ? (

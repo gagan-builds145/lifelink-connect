@@ -382,18 +382,58 @@ describe("Convex blood supply workflow", () => {
   test("role guards reject hospital-only and staff-only actions for the wrong account", async () => {
     const t = convexTest(schema, modules);
     const network = await setupNetwork(t);
-    const donorUser = await t.run((ctx) =>
-      ctx.db.insert("users", {
+    const donorUser = await t.run(async (ctx) => {
+      const row = await ctx.db.insert("users", {
         name: "Role Test Donor",
         email: "role.donor@test.example",
-        role: "donor",
+        role: "community",
         city: "Pune",
         phone: "9876543215",
         profileCompleted: true,
         createdAt: Date.now(),
-      }),
+      });
+      const donorProfile = await ctx.db.insert("donorProfiles", {
+        userId: row,
+        donorId: "LL-D-00001",
+        fullName: "Role Test Donor",
+        bloodGroup: "O+",
+        dateOfBirth: "1990-06-01",
+        phone: "9876543215",
+        email: "role.donor@test.example",
+        address: "Role Donor Lane",
+        city: "Pune",
+        available: true,
+        shareContact: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+      await ctx.db.insert("requestorProfiles", {
+        userId: row,
+        requestorId: "LL-P-00001",
+        fullName: "Role Test Donor",
+        phone: "9876543215",
+        email: "role.donor@test.example",
+        requestorType: "family",
+        city: "Pune",
+        createdAt: Date.now(),
+      });
+      return { row, donorProfile };
+    });
+    const asDonor = t.withIdentity({ subject: String(donorUser.row) });
+    const donorProfiles = await t.run((ctx) =>
+      ctx.db
+        .query("donorProfiles")
+        .withIndex("by_user", (q) => q.eq("userId", donorUser.row))
+        .collect(),
     );
-    const asDonor = t.withIdentity({ subject: String(donorUser) });
+    const requestorProfiles = await t.run((ctx) =>
+      ctx.db
+        .query("requestorProfiles")
+        .withIndex("by_user", (q) => q.eq("userId", donorUser.row))
+        .collect(),
+    );
+    expect(donorProfiles).toHaveLength(1);
+    expect(requestorProfiles).toHaveLength(1);
     const asHospital = t.withIdentity({ subject: String(network.hospitalUser) });
     const created = await createRequest(t, network);
 
@@ -419,6 +459,28 @@ describe("Convex blood supply workflow", () => {
     await expect(
       asDonor.query(api.allocation.searchSupply, { requestId: created.id }),
     ).rejects.toThrow(/not authorized|signed in/i);
+    await expect(
+      asDonor.mutation(api.profiles.registerDonor, {
+        fullName: "Extra Donor",
+        bloodGroup: "A+",
+        dateOfBirth: "1988-12-31",
+        phone: "9876543216",
+        address: "Extra Donor Lane",
+        city: "Pune",
+        available: true,
+        shareContact: true,
+        consent: true,
+      }),
+    ).rejects.toThrow(/A donor profile already exists for this account/i);
+    await expect(
+      asDonor.mutation(api.profiles.registerRequestor, {
+        fullName: "Extra Requestor",
+        phone: "9876543217",
+        requestorType: "family",
+        city: "Pune",
+        consent: true,
+      }),
+    ).rejects.toThrow(/A requestor profile already exists for this account/i);
     await expect(
       asHospital.mutation(api.requests.updateStatus, {
         id: created.id,

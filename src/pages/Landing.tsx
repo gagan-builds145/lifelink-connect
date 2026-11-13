@@ -467,13 +467,6 @@ export default function Landing() {
             <p className="mt-5 font-display text-[18px] font-bold tracking-tight text-primary sm:text-[21px]">
               Donate Blood, Save Lives. Every Second Matters.
             </p>
-            <p className="mt-4 max-w-[560px] text-pretty text-[14.5px] leading-7 text-muted-foreground">
-              One verified network connecting hospitals, blood banks, Red Cross
-              branches and donors — with deterministic allocation, real demand
-              forecasting, custody-tracked transfers and clearly simulated drone
-              logistics on a single shared ledger.
-            </p>
-
             <div className="mt-7 flex flex-wrap gap-2.5">
               <Button asChild size="lg" className="h-11 gap-2 px-5">
                 <Link to="/blood-search">

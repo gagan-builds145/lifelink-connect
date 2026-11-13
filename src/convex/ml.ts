@@ -13,12 +13,12 @@ import {
   requireAdmin,
   requireStaff,
   requireUser,
+  STAFF_ROLES,
   roleOf,
   safeError,
   recordSecurityEvent,
   type AppUser,
 } from "./lib/helpers";
-import type { MutationCtx } from "./_generated/server";
 import { BLOOD_GROUPS, type BloodGroup, type Component } from "../lib/blood";
 import { mlFetch, mlServiceConfigured } from "./lib/mlClient";
 
@@ -75,7 +75,7 @@ function finiteOrNull(value: unknown): number | null {
 /* Prediction helpers
 /* ------------------------------------------------------------------ */
 
-export const authorizeMlAction = internalQuery({
+export const authorizeMlAction = internalMutation({
   args: {
     organizationId: v.optional(v.id("organizations")),
     mode: v.union(v.literal("predict"), v.literal("train")),
@@ -94,11 +94,22 @@ export const authorizeMlAction = internalQuery({
         entityType: "ml_action",
         entityId: args.mode,
       });
-      throw safeError("Only administrators can retrain the production demand model.");
+      // Return instead of throwing so the security event above commits in its
+      // own transaction; the caller raises the user-facing denial.
+      return { allowed: false as const, error: "Only administrators can retrain the production demand model." };
     }
 
-    if (args.mode === "predict") {
-      await requireStaff(ctx);
+    if (args.mode === "predict" && !STAFF_ROLES.includes(role)) {
+      await recordSecurityEvent(ctx, {
+        kind: "unauthorized_access",
+        severity: "medium",
+        service: "ml_service",
+        reason: `ML prediction attempt by non-staff role ${role}.`,
+        summary: `Unauthorized ML prediction attempt by ${role}.`,
+        entityType: "ml_action",
+        entityId: args.mode,
+      });
+      return { allowed: false as const, error: "Only facility staff can run predictions." };
     }
 
     let organizationName = "Network-wide";
@@ -119,10 +130,14 @@ export const authorizeMlAction = internalQuery({
         entityType: "ml_action",
         entityId: args.mode,
       });
-      throw safeError("Network-wide model runs are restricted to admins and Red Cross.");
+      return {
+        allowed: false as const,
+        error: "Network-wide model runs are restricted to admins and Red Cross.",
+      };
     }
 
     return {
+      allowed: true as const,
       scope: args.organizationId ? ("hospital" as const) : ("network" as const),
       organizationName,
       actorUserId: user._id,
@@ -131,53 +146,44 @@ export const authorizeMlAction = internalQuery({
   },
 });
 
-/* ================================================================== */
-/* ML auth-firewall helper (disabled for now)
-/* ================================================================== */
-export async function recordMlAuthFailure(
-  ctx: MutationCtx,
-  summary: string,
-  reason: string,
-  entityType = "ml_service",
-  entityId = "ml_service",
-) {
-  await recordSecurityEvent(ctx, {
-    kind: "ml_auth_failure",
-    severity: "high",
-    service: "ml_service",
-    reason,
-    summary,
-    entityType,
-    entityId,
-  });
-}
-
 /* ------------------------------------------------------------------ */
-/* Prediction persistence and reads
+/* Demand history (read-only)                                          */
 /* ------------------------------------------------------------------ */
 
-
-/* ================================================================== */
-/* ML auth-firewall helper (disabled for now)
-/* ================================================================== */
-export async function recordMlAuthFailure(
-  ctx: MutationCtx,
-  summary: string,
-  reason: string,
-  entityType = "ml_service",
-  entityId = "ml_service",
-) {
-  await recordSecurityEvent(ctx, {
-    kind: "ml_auth_failure",
-    severity: "high",
-    service: "ml_service",
-    reason,
-    summary,
-    entityType,
-    entityId,
-  });
-}
-
+/**
+ * Aggregate authorized demand transactions into a compact daily history for
+ * the forecasting models. Only aggregate counts leave this query: no patient,
+ * donor or request identifiers are exposed to the ML service.
+ */
+export const collectDemandHistory = internalQuery({
+  args: {
+    organizationId: v.optional(v.id("organizations")),
+    days: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<DemandHistory> => {
+    const days = Math.max(1, Math.min(730, Math.floor(args.days ?? 120)));
+    const start = Date.now() - days * DAY_MS;
+    const transactions = await ctx.db.query("inventoryTransactions").collect();
+    const records: DemandHistory["records"] = [];
+    let includesDemo = false;
+    let totalUnits = 0;
+    for (const tx of transactions) {
+      if (!DEMAND_TYPES.has(tx.type)) continue;
+      if (tx.createdAt < start) continue;
+      if (args.organizationId && tx.organizationId !== args.organizationId) continue;
+      records.push({
+        date: dayKey(tx.createdAt),
+        bloodGroup: tx.bloodGroup as BloodGroup,
+        component: tx.component as Component,
+        units: tx.units,
+        isSynthetic: tx.isDemo === true,
+      });
+      totalUnits += tx.units;
+      if (tx.isDemo) includesDemo = true;
+    }
+    return { days, start, includesDemo, totalUnits, records };
+  },
+});
 
 function continuousPoints(
   records: Array<{
@@ -387,10 +393,11 @@ export const refreshDemandForecasts = action({
     component: Component;
     groupsWithForecast: number;
   }> => {
-    const auth = await ctx.runQuery(internal.ml.authorizeMlAction, {
+    const auth = await ctx.runMutation(internal.ml.authorizeMlAction, {
       organizationId: args.organizationId,
       mode: "predict",
     });
+    if (!auth.allowed) throw safeError(auth.error);
     const component = (args.component ?? "red_cells") as Component;
     const days = 120;
     const history = (await ctx.runQuery(internal.ml.collectDemandHistory, {
@@ -538,9 +545,10 @@ export const trainDemandModel = action({
     synthetic: boolean;
     metrics: Record<string, unknown>;
   }> => {
-    const auth = await ctx.runQuery(internal.ml.authorizeMlAction, {
+    const auth = await ctx.runMutation(internal.ml.authorizeMlAction, {
       mode: "train",
     });
+    if (!auth.allowed) throw safeError(auth.error);
     const history = (await ctx.runQuery(internal.ml.collectDemandHistory, {
       days: 365,
     })) as DemandHistory;
@@ -683,10 +691,11 @@ export const runAnomalyScan = action({
     modelVersion: string;
     syntheticData: boolean;
   }> => {
-    const auth = await ctx.runQuery(internal.ml.authorizeMlAction, {
+    const auth = await ctx.runMutation(internal.ml.authorizeMlAction, {
       organizationId: args.organizationId,
       mode: "predict",
     });
+    if (!auth.allowed) throw safeError(auth.error);
     const component: Component = "red_cells";
     const history = (await ctx.runQuery(internal.ml.collectDemandHistory, {
       organizationId: args.organizationId,
@@ -780,6 +789,186 @@ export const runAnomalyScan = action({
   },
 });
 
+/* ------------------------------------------------------------------ */
+/* Donor response model                                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Aggregate consented invitation outcomes into anonymised training samples.
+ * Only derived numeric features are returned; donor identity, contact details
+ * and request identifiers never leave this query.
+ */
+export const collectDonorTrainingSamples = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const [invitations, consents, donations] = await Promise.all([
+      ctx.db.query("donorInvitations").collect(),
+      ctx.db.query("donorConsents").collect(),
+      ctx.db.query("donations").collect(),
+    ]);
+    const consentByProfile = new Map(consents.map((row) => [row.donorProfileId, row]));
+    const donationsByProfile = new Map<string, number>();
+    for (const donation of donations) {
+      const key = String(donation.donorProfileId);
+      donationsByProfile.set(key, (donationsByProfile.get(key) ?? 0) + 1);
+    }
+    const samples: Array<{
+      distanceKm: number;
+      daysSinceDonation: number;
+      previousDonations: number;
+      priorResponseRate: number;
+      consented: boolean;
+      responded: boolean;
+      isSynthetic: boolean;
+    }> = [];
+    for (const invitation of invitations) {
+      if (invitation.status !== "accepted" && invitation.status !== "declined") continue;
+      const consent = consentByProfile.get(invitation.donorProfileId);
+      const consented =
+        consent?.shareLocation === true && consent.revokedAt == null && consent.expiresAt > now;
+      if (!consented) continue;
+      const profile = await ctx.db.get(invitation.donorProfileId);
+      if (!profile) continue;
+      const lastDonation = profile.lastDonationDate
+        ? Date.parse(profile.lastDonationDate)
+        : null;
+      const daysSinceDonation = lastDonation
+        ? Math.max(0, Math.floor((now - lastDonation) / DAY_MS))
+        : 365;
+      samples.push({
+        distanceKm: Math.max(0, Math.min(500, invitation.distanceKm ?? 25)),
+        daysSinceDonation: Math.min(3650, daysSinceDonation),
+        previousDonations: donationsByProfile.get(String(invitation.donorProfileId)) ?? 0,
+        priorResponseRate: 0.5,
+        consented,
+        responded: invitation.status === "accepted",
+        isSynthetic: profile.isDemo === true,
+      });
+    }
+    return samples;
+  },
+});
+
+export const storeDonorModelMetadata = internalMutation({
+  args: {
+    version: v.string(),
+    trainedAt: v.number(),
+    sampleSize: v.number(),
+    metricsJson: v.string(),
+    payload: v.string(),
+    actorUserId: v.optional(v.id("users")),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("mlModels")
+      .withIndex("by_kind", (q) => q.eq("kind", "donor_response").eq("active", true))
+      .collect();
+    for (const row of existing) {
+      await ctx.db.patch(row._id, { active: false });
+    }
+    await ctx.db.insert("mlModels", {
+      kind: "donor_response",
+      version: args.version,
+      trainedAt: args.trainedAt,
+      sampleSize: args.sampleSize,
+      payload: args.payload,
+      metricsJson: args.metricsJson,
+      active: true,
+    });
+    if (args.actorUserId) {
+      const actor = await ctx.db.get(args.actorUserId);
+      if (actor) {
+        await audit(ctx, {
+          actor,
+          action: "ml.donorModelRegistered",
+          entityType: "mlModel",
+          entityId: args.version,
+          detail: `Donor-response model ${args.version} registered from consented invitation outcomes.`,
+        });
+      }
+    }
+    return { stored: true };
+  },
+});
+
+export const trainDonorModel = action({
+  args: {},
+  handler: async (
+    ctx,
+  ): Promise<{
+    trained: boolean;
+    version: string;
+    sampleSize: number;
+    synthetic: boolean;
+    metrics: Record<string, unknown>;
+  }> => {
+    const auth = await ctx.runMutation(internal.ml.authorizeMlAction, {
+      mode: "train",
+    });
+    if (!auth.allowed) throw safeError(auth.error);
+    const samples = await ctx.runQuery(internal.ml.collectDonorTrainingSamples, {});
+    if (samples.length < 40) {
+      throw new Error(
+        `At least 40 consented invitation outcomes are required to train; found ${samples.length}.`,
+      );
+    }
+    let response: Response;
+    try {
+      response = await mlFetch("/v1/train/donor", {
+        method: "POST",
+        body: JSON.stringify({
+          samples: samples.map((sample) => ({
+            distance_km: sample.distanceKm,
+            days_since_donation: sample.daysSinceDonation,
+            previous_donations: sample.previousDonations,
+            prior_response_rate: sample.priorResponseRate,
+            consented: sample.consented,
+            responded: sample.responded,
+            is_synthetic: sample.isSynthetic,
+          })),
+          dataset_label: "LifeLink consented donor invitation outcomes (Convex)",
+        }),
+      }, { timeoutMs: 120_000, attempts: 1 });
+    } catch (error) {
+      throw new Error(
+        `Donor training request failed: ${
+          error instanceof Error ? error.message : "network error"
+        }`,
+      );
+    }
+    const payload = (await response.json()) as Record<string, unknown>;
+    if (!response.ok) {
+      throw new Error(
+        `Donor training failed (HTTP ${response.status}): ${JSON.stringify(payload).slice(0, 500)}`,
+      );
+    }
+    const version = String(payload.version ?? "donor-response-unknown");
+    const metrics = (payload.metrics as Record<string, unknown>) ?? {};
+    const sampleSize = Number(payload.training_rows ?? payload.sample_rows ?? samples.length);
+    const trainedAt = Date.parse(String(payload.trained_at ?? "")) || Date.now();
+    await ctx.runMutation(internal.ml.storeDonorModelMetadata, {
+      version,
+      trainedAt,
+      sampleSize,
+      metricsJson: JSON.stringify(metrics),
+      payload: JSON.stringify({
+        source: "convex_retraining",
+        datasetLabel: payload.dataset_label,
+        synthetic: payload.synthetic,
+      }),
+      actorUserId: auth.actorUserId,
+    });
+    return {
+      trained: true,
+      version,
+      sampleSize,
+      synthetic: samples.some((sample) => sample.isSynthetic),
+      metrics,
+    };
+  },
+});
+
 export const storeDemandModelMetadata = internalMutation({
   args: {
     version: v.string(),
@@ -825,7 +1014,8 @@ export const storeDemandModelMetadata = internalMutation({
 export const mlServiceStatus = action({
   args: {},
   handler: async (ctx) => {
-    await ctx.runQuery(internal.ml.authorizeMlAction, { mode: "predict" });
+    const auth = await ctx.runMutation(internal.ml.authorizeMlAction, { mode: "predict" });
+    if (!auth.allowed) throw safeError(auth.error);
     try {
       const response = await mlFetch("/health", { method: "GET" }, { timeoutMs: 8_000, attempts: 2 });
       if (!response.ok) {

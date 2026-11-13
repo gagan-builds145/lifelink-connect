@@ -81,8 +81,39 @@ export const submit = mutation({
     }
 
     // Coarse abuse control on the endpoint overall, not just per email.
-    await enforceFwRateLimit(ctx, `contact:endpoint:${Math.floor(Date.now() / 60_000)}`, 20, 60_000, "medium");
-    await enforceRateLimit(ctx, `contact:${email}`, 3);
+    const endpointAllowed = await enforceFwRateLimit(
+      ctx,
+      `contact:endpoint:${Math.floor(Date.now() / 60_000)}`,
+      20,
+      60_000,
+      "medium",
+    );
+    if (!endpointAllowed) {
+      return {
+        saved: false,
+        emailDeliveryConfigured: false,
+        message: "Too many messages right now. Please wait a moment and try again.",
+      };
+    }
+    try {
+      await enforceRateLimit(ctx, `contact:${email}`, 3);
+    } catch {
+      // The generic limiter throws; record the refusal durably before
+      // returning a normal denial so the request is not retried blindly.
+      await recordSecurityEvent(ctx, {
+        kind: "rate_limited",
+        severity: "medium",
+        service: "web",
+        reason: "Per-email contact submission limit reached.",
+        summary: "Contact submission rate limit exceeded for an address.",
+        clientRef: normalizeClientRef(email),
+      });
+      return {
+        saved: false,
+        emailDeliveryConfigured: false,
+        message: "You have sent several messages recently. Please try again later.",
+      };
+    }
 
     await ctx.db.insert("contactMessages", {
       name,

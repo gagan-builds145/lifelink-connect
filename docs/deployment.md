@@ -121,6 +121,8 @@ Container probes should call public `/livez`. Convex calls authenticated `/healt
 11. Force an ML outage (wrong URL/token) and confirm automatic allocation still reserves stock, donor invitations use distance-only fallback, and no probability is stored.
 12. Backup/restore drill and alerting test from [backup-recovery.md](backup-recovery.md).
 13. Security checklist from [security.md](security.md), including secret scanning and RBAC checks.
+14. Deploy and verify the edge WAF using [waf-deployment.md](waf-deployment.md); record the probe outputs. Until then the WAF is not active.
+15. Walk [production-security-checklist.md](production-security-checklist.md) item by item in the target environment.
 
 ## 6. Monitoring and operations
 
@@ -144,6 +146,7 @@ See [security.md](security.md), [backup-recovery.md](backup-recovery.md), [ml-op
 ## 8. What is deliberately not deployed
 
 - A production aircraft command path. The repository contains a SITL-only export/bridge scaffold; it was not executed against PX4/ArduPilot here.
+- An active edge WAF. `deploy/nginx/lifelink.conf` and `deploy/modsecurity/lifelink-custom.conf` are deployment configuration; verify them in the target environment before claiming protection.
 - A real HMS/blood-bank production connector (the framework and mock adapter exist).
 - PostgreSQL/PostGIS, Redis, Firebase, Docker Compose.
 - Push notifications.

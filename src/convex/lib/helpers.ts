@@ -393,7 +393,7 @@ export async function enforceOtpRateLimit(
   email: string,
   windowSeconds = 15 * 60,
   maxAttempts = 10,
-) {
+): Promise<boolean> {
   const windowKey = `otp:${normalizeEmail(email)}:${Math.floor(Date.now() / 1000 / windowSeconds)}`;
   const existing = await ctx.db
     .query("rateLimits")
@@ -405,9 +405,12 @@ export async function enforceOtpRateLimit(
       count: 1,
       windowStartedAt: Date.now(),
     });
-    return;
+    return true;
   }
   if (existing.count >= maxAttempts) {
+    // Convex rolls back every write in a mutation that throws, including this
+    // event. Denials therefore return `false` so the caller can stop work and
+    // still leave a durable, admin-visible security event behind.
     await recordSecurityEvent(ctx, {
       kind: "otp_rate_limited",
       severity: "high",
@@ -417,9 +420,10 @@ export async function enforceOtpRateLimit(
       entityType: "user",
       entityId: "redacted",
     });
-    throw safeError("Too many code requests. Please wait before trying again.");
+    return false;
   }
   await ctx.db.patch(existing._id, { count: existing.count + 1 });
+  return true;
 }
 
 /**
@@ -432,7 +436,7 @@ export async function enforceFwRateLimit(
   limit: number,
   windowMs = 60 * 1000,
   severity: "medium" | "high" = "high",
-) {
+): Promise<boolean> {
   const windowKey = `${key}:${Math.floor(Date.now() / windowMs)}`;
   const existing = await ctx.db
     .query("rateLimits")
@@ -444,9 +448,11 @@ export async function enforceFwRateLimit(
       count: 1,
       windowStartedAt: Date.now(),
     });
-    return;
+    return true;
   }
   if (existing.count >= limit) {
+    // Return a denial instead of throwing so the security event survives the
+    // transaction rollback that an exception would cause.
     await recordSecurityEvent(ctx, {
       kind: "rate_limited",
       severity,
@@ -455,7 +461,8 @@ export async function enforceFwRateLimit(
       summary: `Request rate limit exceeded for ${key}.`,
       clientRef: normalizeClientRef(key.split(":")[0] ?? undefined),
     });
-    throw safeError("Too many requests. Please slow down and try again later.");
+    return false;
   }
   await ctx.db.patch(existing._id, { count: existing.count + 1 });
+  return true;
 }

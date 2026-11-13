@@ -711,6 +711,14 @@ export const dispatchMission = mutation({
       dedupeKey: `mission-dispatched:${mission._id}`,
       link: "/supply",
     });
+    await audit(ctx, {
+      actor: user,
+      action: "drone.dispatch",
+      entityType: "droneMission",
+      entityId: mission.missionId,
+      detail: "Simulated mission dispatched to pickup. No real aircraft was commanded.",
+      organizationId: mission.pickupOrgId,
+    });
     return { state: updated.state, simulated: true };
   },
 });
@@ -763,6 +771,14 @@ export const confirmLoading = mutation({
       kind: "request",
       dedupeKey: `mission-loaded:${mission._id}`,
       link: "/supply",
+    });
+    await audit(ctx, {
+      actor: user,
+      action: "drone.payloadLoaded",
+      entityType: "droneMission",
+      entityId: mission.missionId,
+      detail: `Simulated payload loaded: ${loaded.released} unit(s).`,
+      organizationId: mission.pickupOrgId,
     });
     return { state: updated.state, units: loaded.released };
   },
@@ -889,6 +905,14 @@ export const confirmDelivery = mutation({
       dedupeKey: `mission-delivered-ops:${mission._id}`,
       link: "/drones",
     });
+    await audit(ctx, {
+      actor: user,
+      action: "drone.deliveryConfirmed",
+      entityType: "droneMission",
+      entityId: mission.missionId,
+      detail: `Simulated delivery verified against the handoff code; ${mission.units} unit(s) credited to the receiving facility.`,
+      organizationId: mission.dropoffOrgId,
+    });
     return { state: updated.state, receiptBatchId, simulated: true };
   },
 });
@@ -946,6 +970,14 @@ export const abortMission = mutation({
       kind: "system",
       dedupeKey: `mission-aborted:${mission._id}`,
       link: "/drones",
+    });
+    await audit(ctx, {
+      actor: user,
+      action: "drone.missionAborted",
+      entityType: "droneMission",
+      entityId: mission.missionId,
+      detail: `Simulated mission aborted. Reason: ${args.reason}. Payload aboard: ${payloadAboard ? "yes" : "no"}.`,
+      organizationId: mission.pickupOrgId,
     });
     return { ok: true, payloadAboard };
   },
@@ -1386,5 +1418,65 @@ export const overview = query({
         .reduce((sum, m) => sum + m.units, 0),
       simulated: true,
     };
+  },
+});
+
+/* ------------------------------------------------------------------ *
+ * Emergency stop (simulation only)
+ * ------------------------------------------------------------------ */
+
+/**
+ * Immediate simulated stop for one mission. This never commands real hardware:
+ * it moves the mission to EMERGENCY_LANDING, grounds the drone for inspection
+ * and writes an immutable command audit trail. Repeating the command is
+ * harmless: a mission already in a terminal/emergency state is refused rather
+ * than re-transitioned, so replayed commands cannot create duplicate effects.
+ */
+export const emergencyStop = mutation({
+  args: {
+    missionId: v.id("droneMissions"),
+    reason: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireDroneOps(ctx);
+    const mission = await ctx.db.get(args.missionId);
+    if (!mission) throw new Error("Mission not found.");
+    if (TERMINAL_STATES.has(mission.state as MissionState)) {
+      throw new Error("This mission is already closed; no emergency stop is needed.");
+    }
+    if (mission.state === "EMERGENCY_LANDING") {
+      return { ok: true, duplicate: true, state: mission.state, simulated: true };
+    }
+    const now = Date.now();
+    const reason = (args.reason ?? "Operator emergency stop").slice(0, 200);
+    const updated = await transition(ctx, mission, "EMERGENCY_LANDING", {
+      note: `EMERGENCY STOP (simulation): ${reason}`,
+      actorUserId: user._id,
+      at: now,
+    });
+    const drone = await ctx.db.get(mission.droneId);
+    if (drone) {
+      await ctx.db.patch(drone._id, {
+        status: "maintenance",
+        maintenanceStatus: "grounded",
+        updatedAt: now,
+      });
+    }
+    await queueForRoles(ctx, ["drone_ops", "admin"], {
+      title: `EMERGENCY STOP: ${mission.missionId}`,
+      body: `Simulated mission stopped by an operator. Reason: ${reason}. The drone is grounded pending inspection.`,
+      kind: "system",
+      dedupeKey: `mission-emergency-stop:${mission._id}`,
+      link: "/drones",
+    });
+    await audit(ctx, {
+      actor: user,
+      action: "drone.emergencyStop",
+      entityType: "droneMission",
+      entityId: mission.missionId,
+      detail: `Simulated emergency stop. Reason: ${reason}. Drone grounded; no real aircraft was commanded.`,
+      organizationId: mission.pickupOrgId,
+    });
+    return { ok: true, duplicate: false, state: updated.state, simulated: true };
   },
 });

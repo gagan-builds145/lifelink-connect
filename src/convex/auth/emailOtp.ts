@@ -23,6 +23,7 @@ export const emailOtp = Email({
     return generateRandomString(random, alphabet, 6);
   },
   async sendVerificationRequest({ identifier: email, token }) {
+    await guardOtpRequest(email);
     try {
       await axios.post(
         freebuffEmailOtpUrl(),
@@ -39,6 +40,66 @@ export const emailOtp = Email({
 // If your deployment exposes a mutation/action that translates user-facing auth
 // attempts into security events, record them there rather than inside this
 // provider object. This file deliberately does not log tokens or codes.
+
+/**
+ * Authentication firewall: throttle OTP requests before a code is generated
+ * into an email. The durable limits live in Convex (`authGate.reserveOtp`),
+ * reached through the deployment's own /otp-gate endpoint with a server-only
+ * secret. If that endpoint is not configured (for example a local deployment
+ * without CONVEX_SITE_URL), a best-effort in-isolate limiter still applies.
+ */
+const localOtpWindows = new Map<string, number[]>();
+const LOCAL_WINDOW_MS = 15 * 60_000;
+const LOCAL_MAX_REQUESTS = 5;
+
+function localOtpAllow(email: string): boolean {
+  const key = email.trim().toLowerCase();
+  const now = Date.now();
+  const window = (localOtpWindows.get(key) ?? []).filter((at) => now - at < LOCAL_WINDOW_MS);
+  if (window.length >= LOCAL_MAX_REQUESTS) {
+    localOtpWindows.set(key, window);
+    return false;
+  }
+  window.push(now);
+  localOtpWindows.set(key, window);
+  return true;
+}
+
+async function guardOtpRequest(email: string): Promise<void> {
+  const secret = process.env.OTP_GATE_SECRET ?? process.env.VLY_INTEGRATION_KEY;
+  const base = process.env.CONVEX_SITE_URL;
+  if (!secret || !base) {
+    if (!localOtpAllow(email)) {
+      throw new Error("Too many sign-in code requests. Please wait a few minutes and try again.");
+    }
+    return;
+  }
+  let response: Awaited<ReturnType<typeof fetch>>;
+  try {
+    response = await fetch(`${base.replace(/\/+$/, "")}/otp-gate`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${secret}`,
+      },
+      body: JSON.stringify({ email }),
+      signal: AbortSignal.timeout(8_000),
+    });
+  } catch {
+    // Fail closed for OTP sends: a gate we cannot reach must not become a
+    // bypass. The user sees a generic retry message (no account enumeration).
+    if (!localOtpAllow(email)) {
+      throw new Error("Too many sign-in code requests. Please wait a few minutes and try again.");
+    }
+    return;
+  }
+  if (response.status === 429) {
+    throw new Error("Too many sign-in code requests. Please wait a few minutes and try again.");
+  }
+  if (!response.ok) {
+    throw new Error("Sign-in is temporarily unavailable. Please try again shortly.");
+  }
+}
 
 // Sign-in codes are sent by the Freebuff integrations gateway, which knows
 // this project by its own key: VLY_INTEGRATION_KEY, a Convex environment

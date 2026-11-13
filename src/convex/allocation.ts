@@ -782,6 +782,7 @@ export const dispatchTransfer = mutation({
     const transfer = await ctx.db.get(args.transferId);
     if (!transfer) throw safeError("Transfer not found.");
     await authorizeSupplySideTransfer(ctx, user, transfer);
+    const role = roleOf(user);
     if (!["reserved", "approved"].includes(transfer.status)) {
       throw safeError(
         `Transfer cannot be dispatched from status ${transfer.status}.`,
@@ -907,6 +908,7 @@ export const receiveTransfer = mutation({
     const transfer = await ctx.db.get(args.transferId);
     if (!transfer) throw safeError("Transfer not found.");
     await authorizeReceiptSideTransfer(ctx, user, transfer);
+    const role = roleOf(user);
     const org = await ctx.db.get(transfer.requestingOrgId);
     if (!org || org.status !== "verified") {
       throw safeError("The receiving facility is not a verified organization.");
@@ -1138,6 +1140,7 @@ export const cancelTransfer = mutation({
     const transfer = await ctx.db.get(args.transferId);
     if (!transfer) throw safeError("Transfer not found.");
     await authorizeTransferOwnershipOrStaff(ctx, user, transfer);
+    const role = roleOf(user);
     if (transfer.status !== "reserved" && transfer.status !== "approved") {
       throw safeError("Dispatched stock cannot be cancelled; record a failed transfer instead.");
     }

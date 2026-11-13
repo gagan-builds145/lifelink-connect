@@ -365,6 +365,10 @@ function ContactForm() {
             subject: form.subject || "Website enquiry",
             message: form.message,
           });
+          if (!result.saved) {
+            setError(result.message);
+            return;
+          }
           setSent(result.message);
           setForm({ name: "", email: "", subject: "", message: "" });
           toast.success("Message saved", { description: "The LifeLink team can review it in the shared database." });

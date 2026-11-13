@@ -81,7 +81,9 @@ async function reportErrorToVly(errorData: {
       method: "POST",
       body: JSON.stringify({
         ...errorData,
-        url: window.location.href,
+        // Only the path is reported: query strings and fragments can carry
+        // return paths or other context we do not want in third-party logs.
+        url: `${window.location.origin}${window.location.pathname}`,
         projectSemanticIdentifier: appId,
       }),
     });

@@ -52,29 +52,31 @@ export const recentSecurityEvents = query({
   handler: async (ctx, args) => {
     await ensureSecurityAdmin(ctx);
     const limit = Math.max(1, Math.min(200, args.limit ?? 50));
-    if (args.kind != null && args.service != null) {
+    const service = args.service;
+    const kind = args.kind;
+    if (kind != null && service != null) {
       const rows = (await ctx.db
         .query("securityEvents")
-        .withIndex("by_service", (q) => q.eq("service", args.service))
+        .withIndex("by_service", (q) => q.eq("service", service))
         .collect())
-        .filter((r) => r.kind === args.kind)
+        .filter((r) => r.kind === kind)
         .sort((a, b) => b.createdAt - a.createdAt)
         .slice(0, limit);
       return rows.map((r) => mapEvent(r));
     }
-    if (args.service != null) {
+    if (service != null) {
       const rows = (await ctx.db
         .query("securityEvents")
-        .withIndex("by_service", (q) => q.eq("service", args.service))
+        .withIndex("by_service", (q) => q.eq("service", service))
         .collect())
         .sort((a, b) => b.createdAt - a.createdAt)
         .slice(0, limit);
       return rows.map((r) => mapEvent(r));
     }
-    if (args.kind != null) {
+    if (kind != null) {
       const rows = (await ctx.db
         .query("securityEvents")
-        .withIndex("by_kind", (q) => q.eq("kind", args.kind))
+        .withIndex("by_kind", (q) => q.eq("kind", kind))
         .collect())
         .sort((a, b) => b.createdAt - a.createdAt)
         .slice(0, limit);

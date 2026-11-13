@@ -20,6 +20,7 @@ import {
   Radio,
   ScrollText,
   ServerCog,
+  ShieldAlert,
   ShieldCheck,
   Siren,
   Truck,
@@ -124,6 +125,8 @@ export default function AdminConsole() {
   const integrations = useQuery(api.integrations.listIntegrations);
   const modelStatus = useQuery(api.forecasting.modelStatus);
   const anomalies = useQuery(api.forecasting.anomalyReport, {});
+  const securityCounts = useQuery(api.security.securityEventCounts, {});
+  const securityTimeline = useQuery(api.security.recentSecurityEvents, { limit: 60 });
 
   const [tab, setTab] = useState("overview");
   const [busy, setBusy] = useState<string | null>(null);
@@ -209,6 +212,7 @@ export default function AdminConsole() {
     { key: "integrations", label: "Integrations & sync", icon: Database, badge: overview?.integrations.failing },
     { key: "safety", label: "Safety & notifications", icon: Siren, badge: overview?.anomalies.critical },
     { key: "ml", label: "AI / ML registry", icon: BrainCircuit },
+    { key: "security", label: "Security monitoring", icon: ShieldAlert, badge: securityCounts?.unresolved },
     { key: "audit", label: "Audit trail", icon: ScrollText },
   ];
 
@@ -1145,6 +1149,83 @@ export default function AdminConsole() {
             </div>
           )}
 
+          {tab === "security" && (
+            <div className="space-y-4">
+              <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
+                <StatCard
+                  label="Unresolved events"
+                  value={securityCounts?.unresolved ?? 0}
+                  hint={`${securityCounts?.total ?? 0} recorded · ${securityCounts?.resolved ?? 0} resolved`}
+                />
+                <StatCard
+                  label="Authentication failures"
+                  value={(securityCounts?.byKind.auth_failure ?? 0) + (securityCounts?.byKind.brute_force_suspect ?? 0)}
+                  hint={`${securityCounts?.byKind.otp_rate_limited ?? 0} OTP rate-limit events`}
+                />
+                <StatCard
+                  label="Access denied"
+                  value={(securityCounts?.byKind.unauthorized_access ?? 0) + (securityCounts?.byKind.cross_user_access_denied ?? 0)}
+                  hint={`${securityCounts?.byKind.inventory_transfer_denied ?? 0} inventory/transfer denials`}
+                />
+                <StatCard
+                  label="Blocked or throttled"
+                  value={(securityCounts?.byKind.rate_limited ?? 0) + (securityCounts?.byKind.waf_blocked ?? 0) + (securityCounts?.byKind.oversized_request ?? 0) + (securityCounts?.byKind.malformed_request ?? 0)}
+                  hint={`${securityCounts?.byKind.ml_auth_failure ?? 0} ML auth failures · ${securityCounts?.byKind.drone_command_denied ?? 0} drone denials`}
+                />
+              </div>
+              <Panel eyebrow="Event timeline" title="Recent security events">
+                {securityTimeline === undefined ? (
+                  <p className="py-6 text-center text-[10.5px] text-muted-foreground">Loading security events…</p>
+                ) : securityTimeline.length === 0 ? (
+                  <p className="py-6 text-center text-[10.5px] text-muted-foreground">
+                    No security events recorded yet. Successful, ordinary activity does not create entries.
+                  </p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {securityTimeline.map((event) => (
+                      <div key={event._id} className="rounded-xl border border-border bg-background p-2.5">
+                        <p className="flex flex-wrap items-center gap-1.5 text-[10px] font-semibold">
+                          <span
+                            className={cn(
+                              "rounded-full px-1.5 py-0.5 text-[8px] font-bold uppercase",
+                              event.severity === "critical"
+                                ? "bg-destructive/15 text-destructive"
+                                : event.severity === "high"
+                                  ? "bg-primary/10 text-primary"
+                                  : "bg-muted text-muted-foreground",
+                            )}
+                          >
+                            {event.severity}
+                          </span>
+                          {event.kind.replace(/_/g, " ")}
+                          <span className="rounded-full bg-muted px-1.5 py-0.5 text-[8px] font-bold uppercase text-muted-foreground">
+                            {event.service.replace(/_/g, " ")}
+                          </span>
+                          {event.resolvedAt && (
+                            <span className="rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[8px] font-bold uppercase text-emerald-600">
+                              resolved
+                            </span>
+                          )}
+                        </p>
+                        <p className="mt-0.5 text-[9px] leading-4 text-muted-foreground">{event.summary}</p>
+                        <p className="text-[8.5px] text-muted-foreground">
+                          {formatDateTime(event.createdAt)} · {event.reason}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Panel>
+              <Panel eyebrow="Privacy" title="What this view deliberately excludes">
+                <p className="text-[10px] leading-4 text-muted-foreground">
+                  Security events store machine-readable kinds, severity, service and a short reason. They never
+                  contain patient names, donor contact details, tokens or one-time codes. Client references are
+                  truncated and never include secrets.
+                </p>
+              </Panel>
+            </div>
+          )}
+
           {tab === "audit" && (
             <div className="space-y-4">
               <Panel eyebrow="Immutable append-only log" title="Recent administrative actions">
@@ -1186,8 +1267,9 @@ export default function AdminConsole() {
                     ["Atomic reservations", "Serializable Convex mutations re-check free stock before every write."],
                     ["Clinical safety", "Compatibility and release checks are deterministic and separate from ML."],
                     ["Secrets", "API credentials stay in deployment env vars, never in the database or browser."],
-                    ["Audit", "Administrative and safety actions append to the audit log."],
-                    ["Rate limiting", "Not implemented at the platform edge — documented limitation."],
+                    ["Audit", "Administrative, drone and safety actions append to the audit log."],
+                    ["Rate limiting", "Server-side limits on OTP, contact, uploads, requests and ML calls; edge WAF limits are a deployment step."],
+                    ["Monitoring", "Security events (auth failures, denials, throttles) are visible in the Security monitoring tab."],
                     ["Backups", "Deployment-level Convex backups; recovery plan documented."],
                   ].map(([title, detail]) => (
                     <p key={title} className="rounded-lg border border-border bg-background p-2">

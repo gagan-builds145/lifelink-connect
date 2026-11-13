@@ -18,6 +18,18 @@
     content="A verified network connecting donors, requestors, Red Cross branches and hospitals through one shared blood request and inventory record."
   />
   <meta name="color-scheme" content="light" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <!--
+    Baseline Content Security Policy. The deployment edge should also send a
+    stricter header-based policy (see deploy/nginx/lifelink.conf and
+    docs/security.md). `unsafe-inline` for styles is required by animation and
+    chart libraries that set inline transforms; script sources stay on `self`
+    plus the Convex deployment.
+  -->
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-src 'none'; form-action 'self'; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline' https://*.convex.cloud https://*.convex.site; connect-src 'self' https://*.convex.cloud wss://*.convex.cloud https://*.convex.site https://fonts.googleapis.com https://fonts.gstatic.com https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org; worker-src 'self' blob:; manifest-src 'self'"
+  />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link

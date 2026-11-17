@@ -71,15 +71,15 @@ export function SiteHeader() {
                 </span>
               </div>
               <Button asChild size="sm" className="gap-1.5">
-                                    <Link to={dashboardPathForRole(role)}>
-                      Dashboard
-                      <ArrowUpRight className="size-3.5" />
-                    </Link>
-                    {role === "community" && (
-                      <span className="ml-1 text-[9.5px] uppercase tracking-[0.16em] text-muted-foreground/70">
-                        (donor & requestor)
-                      </span>
-                    )}
+                <Link to={dashboardPathForRole(role)}>
+                  Dashboard
+                  {role === "community" && (
+                    <span className="text-[9.5px] uppercase tracking-[0.16em] opacity-70">
+                      donor &amp; requestor
+                    </span>
+                  )}
+                  <ArrowUpRight className="size-3.5" />
+                </Link>
               </Button>
             </>
           ) : (

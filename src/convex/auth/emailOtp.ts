@@ -9,19 +9,19 @@ import { RandomReader, generateRandomString } from "@oslojs/crypto/random";
  * path but centralize error handling so auth failures can be logged as security
  * events without exposing tokens or one-time codes.
  */
-export const emailOtp = Email({
+export async function generateVerificationToken(): Promise<string> {
+  const random: RandomReader = {
+    read(bytes: Uint8Array) {
+      crypto.getRandomValues(bytes);
+    },
+  };
+  return generateRandomString(random, "0123456789", 6);
+}
+
+const provider = Email({
   id: "email-otp",
   maxAge: 60 * 15, // 15 minutes
-  // This function can be asynchronous
-  async generateVerificationToken() {
-    const random: RandomReader = {
-      read(bytes: Uint8Array) {
-        crypto.getRandomValues(bytes);
-      },
-    };
-    const alphabet = "0123456789";
-    return generateRandomString(random, alphabet, 6);
-  },
+  generateVerificationToken,
   async sendVerificationRequest({ identifier: email, token }) {
     await guardOtpRequest(email);
     try {
@@ -35,6 +35,16 @@ export const emailOtp = Email({
     }
   },
 });
+
+/**
+ * The `Email()` factory does not copy `maxAge` or `generateVerificationToken`
+ * out of its config, so set both on the provider explicitly. Without this the
+ * code would live for the library default of one hour and be a 32-character
+ * token rather than the six digits the form accepts.
+ */
+provider.maxAge = 60 * 15;
+provider.generateVerificationToken = generateVerificationToken;
+export const emailOtp = provider;
 
 // NOTE: Convex Auth may call sendVerificationEmail at the Convex function layer.
 // If your deployment exposes a mutation/action that translates user-facing auth

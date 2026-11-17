@@ -491,7 +491,7 @@ export default function RequestorDashboard() {
               <dl className="mt-3 space-y-2.5 text-[11.5px]">
                 {[
                   ["Role", "Donor & Blood Requestor (server verified)"],
-                  ["Email", user?.email ?? "Guest session"],
+                  ["Email", user?.email ?? "Verified account"],
                   ["Request ID format", "LL-REQ-####"],
                   ["Public exposure", "None — patient data is never public"],
                 ].map(([label, value]) => (

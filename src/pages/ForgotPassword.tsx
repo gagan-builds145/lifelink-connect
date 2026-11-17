@@ -32,8 +32,8 @@ export default function ForgotPassword() {
             <MailCheck className="mt-0.5 size-4 shrink-0 text-primary" />
             <p className="text-[11.5px] leading-5 text-muted-foreground">
               <strong className="text-foreground">Didn't receive a code?</strong> Check the
-              spam folder and confirm the email exists. If the deployment has no email
-              provider configured, use demo guest access or contact the administrator.
+              spam folder, then use the resend option. Recovery only works for an email
+              that is already registered — create an account if you are new.
             </p>
           </div>
           <div className="flex gap-2.5">

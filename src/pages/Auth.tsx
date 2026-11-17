@@ -42,12 +42,6 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
         <EmailOtpForm redirectTo={redirect} />
         <div className="mt-6 grid gap-2 border-t border-border pt-4 text-center text-[12px] text-muted-foreground">
           <p>
-            New to LifeLink?{" "}
-            <Link to="/signup" className="font-semibold text-primary hover:underline">
-              Create an account
-            </Link>
-          </p>
-          <p>
             Trouble accessing your account?{" "}
             <Link to="/forgot-password" className="font-medium text-foreground hover:text-primary">
               Recover access

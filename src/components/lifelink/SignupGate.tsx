@@ -29,7 +29,7 @@ export function SignupGate({ children }: { children: ReactNode }) {
             backend can attach the profile to your verified account.
           </p>
         </div>
-        <EmailOtpForm compact onVerified={() => undefined} />
+        <EmailOtpForm compact mode="signup" onVerified={() => undefined} />
       </div>
     );
   }

@@ -23,7 +23,6 @@ import {
 import {
   authorizeSupplySideTransfer,
   authorizeReceiptSideTransfer,
-  authorizeRequestSideTransfer,
   authorizeTransferOwnershipOrStaff,
 } from "./lib/vault";
 import { evaluateStockLevel } from "./lib/stockWatch";

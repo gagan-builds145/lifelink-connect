@@ -77,7 +77,7 @@ export default function SignupDonor() {
         <p className="mt-1 text-teal-800/80">
           {user?.email
             ? `Your verified email is ${user.email}. `
-            : "Your secure guest session is active. "}
+            : "Your verified account is active. "}
           No password is stored. Add an email from your account settings later if needed.
         </p>
       </div>

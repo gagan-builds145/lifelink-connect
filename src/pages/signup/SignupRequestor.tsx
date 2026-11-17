@@ -48,7 +48,7 @@ export default function SignupRequestor() {
           Email verified · passwordless
         </span>
         <p className="mt-1 text-teal-800/80">
-          {user?.email ? `${user.email} is verified. ` : "Your secure guest session is active. "}
+          {user?.email ? `${user.email} is verified. ` : "Your verified account is active. "}
           Request tracking and notifications stay with this account.
         </p>
       </div>

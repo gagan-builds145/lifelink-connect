@@ -106,7 +106,7 @@ Convex Auth needs its generated `JWT_PRIVATE_KEY`, `JWKS` and `SITE_URL` values;
 
 ## 5. First accounts
 
-1. Open `/signup` and register a **hospital**, **blood bank / Red Cross** or **donor** account using email OTP (or the demo guest path where available).
+1. Open `/signup` and register a **hospital**, **blood bank / Red Cross** or **community** account using email OTP. Guest sessions have been removed: every session belongs to a registered account.
 2. The server assigns the role; never set `role` in the browser.
 3. For an administrator, open the Convex dashboard → **Data** → `users`, find the verified account and set `role` to `admin`. There is no public admin-signup endpoint by design. Refresh `/admin/dashboard`.
 4. Sign in as admin, open **Institutions & policy**, and grant drone operations access to an existing staff account by email.

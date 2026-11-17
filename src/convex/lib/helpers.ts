@@ -31,6 +31,12 @@ export async function requireUser(ctx: Ctx): Promise<AppUser> {
   if (!userId) throw new Error("You must be signed in to do that.");
   const user = await ctx.db.get(userId);
   if (!user) throw new Error("Your account could not be found. Please sign in again.");
+  // Guest access is removed. Anonymous identities created by the old demo path
+  // may still exist in the database, but they are inert: no protected function
+  // accepts them, including profile registration.
+  if (user.isAnonymous) {
+    throw new Error("Guest access has been removed. Sign in with a registered account.");
+  }
   if (user.suspended) throw new Error("This account is suspended. Contact the LifeLink administrator.");
   return user;
 }
@@ -288,12 +294,9 @@ export async function recordSecurityEvent(
  * details are written to audit/security logs separately; the user sees a stable
  * message that cannot leak stack traces, table names, tokens or identifiers.
  */
-export function safeError(
-  message: string,
-  options?: { logDetail?: string; logAction?: string; logEntityType?: string; logEntityId?: string },
-): Error {
+export function safeError(message: string): Error {
   // The public message is always the stable one passed in. Any richer detail is
-  // intentionally not attached to the thrown error.
+  // written to audit/security logs separately, never attached to the error.
   return new Error(message);
 }
 
@@ -388,13 +391,30 @@ export async function recordAuthOutcome(
   });
 }
 
+/**
+ * One-way identifier for rate-limit keys and security events.
+ *
+ * Rate-limit rows and security events are admin-readable, so an email address
+ * must never be written into them verbatim. A truncated SHA-256 is enough to
+ * bucket abuse per address without storing the address.
+ */
+export async function hashIdentifier(value: string): Promise<string> {
+  const data = new TextEncoder().encode(value.trim().toLowerCase());
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("")
+    .slice(0, 32);
+}
+
 export async function enforceOtpRateLimit(
   ctx: MutationCtx,
   email: string,
   windowSeconds = 15 * 60,
   maxAttempts = 10,
 ): Promise<boolean> {
-  const windowKey = `otp:${normalizeEmail(email)}:${Math.floor(Date.now() / 1000 / windowSeconds)}`;
+  const digest = await hashIdentifier(normalizeEmail(email));
+  const windowKey = `otp:${digest}:${Math.floor(Date.now() / 1000 / windowSeconds)}`;
   const existing = await ctx.db
     .query("rateLimits")
     .withIndex("by_key", (q) => q.eq("key", windowKey))
@@ -415,8 +435,9 @@ export async function enforceOtpRateLimit(
       kind: "otp_rate_limited",
       severity: "high",
       service: "auth",
-      reason: `OTP requests exceeded ${maxAttempts} in a ${windowSeconds}s window for ${normalizeEmail(email)}.`,
-      summary: `OTP request rate limit reached for ${normalizeEmail(email)}.`,
+      reason: `OTP requests exceeded ${maxAttempts} in a ${windowSeconds}s window for one address.`,
+      summary: `OTP request rate limit reached for one address.`,
+      clientRef: "otp",
       entityType: "user",
       entityId: "redacted",
     });

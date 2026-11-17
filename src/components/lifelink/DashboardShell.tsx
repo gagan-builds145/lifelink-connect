@@ -294,7 +294,7 @@ export function DashboardShell({
               {user?.name ?? "LifeLink account"}
             </p>
             <p className="truncate text-[10px] text-muted-foreground">
-              {user?.email ?? "Guest session"}
+              {user?.email ?? "Verified account"}
             </p>
           </div>
           <button

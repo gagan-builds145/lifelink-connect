@@ -1,34 +1,46 @@
+import { api } from "@/convex/_generated/api";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/use-auth";
-import { cn, friendlyError } from "@/lib/utils";
-import { ArrowLeft, ArrowRight, Loader2, Mail, ShieldCheck, UserRound } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useMutation } from "convex/react";
+import { ArrowLeft, ArrowRight, Loader2, Mail, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { toast } from "sonner";
 
+/**
+ * Passwordless email-code form.
+ *
+ * `mode="signin"` authenticates an existing account and refuses to start a new
+ * one; `mode="signup"` is used inside the sign-up gate to create the account a
+ * profile will be attached to. There is no guest or anonymous option.
+ */
 export function EmailOtpForm({
   redirectTo = "/dashboard",
   onVerified,
   className,
   compact = false,
+  mode = "signin",
 }: {
   redirectTo?: string;
   onVerified?: () => void;
   className?: string;
   compact?: boolean;
+  mode?: "signin" | "signup";
 }) {
   const { signIn, isAuthenticated, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const checkLoginEmail = useMutation(api.authGate.checkLoginEmail);
   const [step, setStep] = useState<"email" | "code">("email");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
-  const [guestBusy, setGuestBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
   const [resendIn, setResendIn] = useState(0);
 
   useEffect(() => {
@@ -41,27 +53,49 @@ export function EmailOtpForm({
     if (!authLoading && isAuthenticated && onVerified) onVerified();
   }, [authLoading, isAuthenticated, onVerified]);
 
-  const sendCode = async (address: string) => {
-    setError(null);
+  const validateEmail = (address: string): string | null => {
+    if (!address) return "Enter your email address.";
+    if (address.length > 320) return "That email address is too long.";
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) {
-      setError("Enter a valid email address.");
-      return;
+      return "Enter a valid email address, for example name@hospital.org.";
     }
+    return null;
+  };
+
+  const requestCode = async (address: string, isResend = false) => {
+    setError(null);
+    const invalid = validateEmail(address);
+    setEmailError(invalid);
+    if (invalid) return;
+
     setBusy(true);
     try {
+      if (mode === "signin" && !isResend) {
+        const check = await checkLoginEmail({ email: address });
+        if (check.status === "rate_limited") {
+          setError("Too many attempts. Please wait a few minutes and try again.");
+          return;
+        }
+        if (check.status === "unknown") {
+          // Clear enough to act on, without revealing names or profile data.
+          setError(
+            "We could not sign in with that email. Check the address, or create a new account if you have not registered yet.",
+          );
+          return;
+        }
+      }
+
       const formData = new FormData();
       formData.set("email", address);
       await signIn("email-otp", formData);
       setEmail(address);
       setStep("code");
       setResendIn(45);
-      toast("Verification code requested", {
-        description: `If email delivery is configured, a 6-digit code was sent to ${address}.`,
+      toast(isResend ? "New code requested" : "Verification code requested", {
+        description: "If the email service is configured, a 6-digit code is on its way. It expires in 15 minutes.",
       });
     } catch (err) {
-      setError(
-        friendlyError(err, "Could not request a code. Check the email service configuration."),
-      );
+      setError(authErrorMessage(err, "send"));
     } finally {
       setBusy(false);
     }
@@ -70,7 +104,7 @@ export function EmailOtpForm({
   const verifyCode = async (value: string) => {
     setError(null);
     if (value.length !== 6) {
-      setError("Enter the 6-digit code.");
+      setError("Enter the 6-digit code from the email.");
       return;
     }
     setBusy(true);
@@ -82,28 +116,12 @@ export function EmailOtpForm({
       toast.success("Signed in securely");
       if (onVerified) onVerified();
       else navigate(redirectTo, { replace: true });
-    } catch {
-      setError("That code did not work. It may have expired — request a new one.");
+    } catch (err) {
+      // The provider deliberately uses one failure for wrong and expired codes.
+      setError(authErrorMessage(err, "verify"));
       setCode("");
     } finally {
       setBusy(false);
-    }
-  };
-
-  const guest = async () => {
-    setGuestBusy(true);
-    setError(null);
-    try {
-      await signIn("anonymous");
-      toast.success("Demo guest session started", {
-        description: "Choose a role to explore the dashboards. Demo records are labelled.",
-      });
-      if (onVerified) onVerified();
-      else navigate(redirectTo, { replace: true });
-    } catch (err) {
-      setError(friendlyError(err, "Guest access is unavailable right now."));
-    } finally {
-      setGuestBusy(false);
     }
   };
 
@@ -134,7 +152,7 @@ export function EmailOtpForm({
           className="space-y-4"
           onSubmit={(event) => {
             event.preventDefault();
-            void sendCode(email.trim());
+            void requestCode(email.trim());
           }}
           noValidate
         >
@@ -149,22 +167,47 @@ export function EmailOtpForm({
                 autoComplete="email"
                 placeholder="you@example.com"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (emailError) setEmailError(null);
+                }}
                 className="h-11 pl-9"
                 disabled={busy}
                 required
-                aria-describedby="otp-email-help"
+                aria-invalid={emailError ? true : undefined}
+                aria-describedby={emailError ? "otp-email-error" : "otp-email-help"}
               />
             </div>
-            <p id="otp-email-help" className="text-[11.5px] leading-5 text-muted-foreground">
-              We only use your email for security codes and request updates. You can
-              control profile sharing after registration.
-            </p>
+            {emailError ? (
+              <p id="otp-email-error" role="alert" className="text-[11.5px] font-medium leading-5 text-destructive">
+                {emailError}
+              </p>
+            ) : (
+              <p id="otp-email-help" className="text-[11.5px] leading-5 text-muted-foreground">
+                Only registered accounts can sign in. Your email is used for security
+                codes and request updates.
+              </p>
+            )}
           </div>
           <Button type="submit" className="h-11 w-full gap-2" disabled={busy}>
             {busy ? <Loader2 className="size-4 animate-spin" /> : <ArrowRight className="size-4" />}
-            {busy ? "Requesting code…" : "Send verification code"}
+            {busy ? "Checking your account…" : "Send sign-in code"}
           </Button>
+          {mode === "signin" ? (
+            <p className="text-center text-[12px] text-muted-foreground">
+              New to LifeLink?{" "}
+              <Link to="/signup" className="font-semibold text-primary hover:underline">
+                Create an account
+              </Link>
+            </p>
+          ) : (
+            <p className="text-center text-[12px] text-muted-foreground">
+              Already registered?{" "}
+              <Link to="/login" className="font-semibold text-primary hover:underline">
+                Sign in instead
+              </Link>
+            </p>
+          )}
         </form>
       ) : (
         <div className="space-y-4">
@@ -214,40 +257,40 @@ export function EmailOtpForm({
               type="button"
               className="font-semibold text-primary hover:underline disabled:opacity-50"
               disabled={busy || resendIn > 0}
-              onClick={() => void sendCode(email)}
+              onClick={() => void requestCode(email, true)}
             >
               {resendIn > 0 ? `Resend in ${resendIn}s` : "Resend code"}
             </button>
           </div>
+          <p className="text-center text-[11.5px] leading-5 text-muted-foreground">
+            The code is valid for 15 minutes and works once.{" "}
+            <Link to="/forgot-password" className="font-semibold text-primary hover:underline">
+              Recover access
+            </Link>
+          </p>
         </div>
       )}
-
-      {
-        <>
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t border-border" />
-            </div>
-            <div className="relative flex justify-center text-[10px] uppercase tracking-[0.18em]">
-              <span className="bg-card px-3 text-muted-foreground">or explore first</span>
-            </div>
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            className="h-11 w-full gap-2"
-            onClick={() => void guest()}
-            disabled={guestBusy || busy}
-          >
-            {guestBusy ? <Loader2 className="size-4 animate-spin" /> : <UserRound className="size-4" />}
-            Continue as demo guest
-          </Button>
-          <p className={cn("text-center text-[11.5px] leading-5 text-muted-foreground", compact && "text-[10.5px]")}>
-            Guest access creates a real account. Choose a role next to finish setting
-            up your workspace.
-          </p>
-        </>
-      }
     </div>
   );
+}
+
+/**
+ * Maps provider and transport failures to stable, user-facing messages. Raw
+ * provider text, request ids, function names and stack traces never reach the
+ * browser.
+ */
+function authErrorMessage(error: unknown, phase: "send" | "verify"): string {
+  const raw = error instanceof Error ? error.message.toLowerCase() : "";
+  if (raw.includes("too many") || raw.includes("rate")) {
+    return "Too many attempts. Please wait a few minutes and try again.";
+  }
+  if (raw.includes("could not verify code") || raw.includes("invalid") || raw.includes("expired")) {
+    return "That code is incorrect or has expired. Request a new code and try again.";
+  }
+  if (raw.includes("network") || raw.includes("fetch")) {
+    return "We could not reach the sign-in service. Check your connection and try again.";
+  }
+  return phase === "send"
+    ? "We could not send a sign-in code right now. Please try again shortly."
+    : "We could not verify that code. Request a new code and try again.";
 }

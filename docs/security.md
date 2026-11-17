@@ -77,6 +77,8 @@ Files: `deploy/nginx/lifelink.conf`, `deploy/modsecurity/lifelink-custom.conf`,
 
 ### 2.2 Authentication firewall
 
+Registered accounts only (guest access removed)
+
 Files: `src/convex/auth/emailOtp.ts`, `src/convex/authGate.ts`,
 `src/convex/http.ts`, `src/convex/lib/helpers.ts`.
 
@@ -87,10 +89,25 @@ Files: `src/convex/auth/emailOtp.ts`, `src/convex/authGate.ts`,
   the whole endpoint, stored in `rateLimits` and recorded as security events.
 - Best-effort in-isolate limiter remains as a second layer if the gate endpoint
   is unreachable.
-- Messages never reveal whether an account exists; failed/limited sends use one
-  generic retry message.
+- Failed/limited OTP sends use one generic retry message. The only place that
+  reports registration state is the rate-limited login pre-check described
+  below, which is required so an unregistered address gets a clear error.
 - OTP codes and tokens are never logged, persisted in security events, or
   returned in errors.
+- Convex Auth is configured with the email OTP provider alone. The Anonymous
+  provider was removed, so no guest session can be created; `/auth` is the only
+  entry point and it authenticates an existing account. A legacy anonymous user
+  row is inert: `requireUser` rejects `isAnonymous`, and `RequireAuth` treats
+  such a session as signed out.
+- The login form validates an empty/invalid address, checks that the email is
+  registered before requesting a code, and uses one stable failure message for
+  wrong and expired codes. The pre-check is rate limited per address (10 per 15
+  minutes) and endpoint-wide, and rate-limit keys/events store a SHA-256 digest
+  rather than the address. Because the product must tell a visitor that their
+  email is not registered, that information is unavoidable in the login
+  response; the limiter is the enumeration control.
+- Codes are six digits and expire after 15 minutes; resends are throttled by the
+  same 5-per-15-minute window. Verification codes and sessions are never logged.
 - Sessions are issued by Convex Auth (HTTP-only cookies); logout calls
   `signOut` and the client drops its cached session. Session lifetime is the
   Convex Auth default and must be tuned at the deployment (see remaining risks).
@@ -320,6 +337,15 @@ Do not record a scan as passed unless it actually ran against the lockfile.
    the pipeline.
 10. **Bridge is simulation-only and unverified against real SITL** in this
     environment; the upload path is untested here.
+11. **Legacy anonymous rows** may exist from the removed demo path. No
+    migration is required for safety: they have no role, cannot pass
+    `requireUser`, and cannot register a profile. Delete them from the Convex
+    dashboard after exporting a count if desired; sessions expire on their own.
+12. **Account creation at the provider layer**: Convex Auth's email provider
+    creates an auth account when a code is first requested. The login UI refuses
+    unregistered addresses before that call, and a directly scripted
+    `signIn("email-otp")` only creates an empty account with no role and no
+    access. There is no separate password factor to weaken.
 11. **Throwing denial paths are not persisted as security events.** Convex
     rolls back writes on throw, so cross-user hospital/inventory/drone denials
     are logged to the function log but do not appear in the dashboard. Converting

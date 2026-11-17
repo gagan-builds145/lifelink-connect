@@ -916,7 +916,7 @@ export default function HospitalDashboard() {
                   ["Hospital", org?.name ?? "—"],
                   ["Official email", org?.email ?? "—"],
                   ["Role", "Hospital (server verified)"],
-                  ["Sign-in", user?.email ?? "Guest session"],
+                  ["Sign-in", user?.email ?? "Verified account"],
                   ["Data access", "Own + assigned requests only"],
                 ].map(([label, value]) => (
                   <div key={label} className="flex items-center justify-between gap-3 border-b border-border pb-2 last:border-0 last:pb-0">

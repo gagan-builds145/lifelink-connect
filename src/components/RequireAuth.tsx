@@ -35,9 +35,13 @@ export function RequireAuth({
   /** Skip the explanation and go straight to `/auth`. */
   redirectImmediately?: boolean;
 }) {
-  const { isLoading, isAuthenticated } = useAuth();
+  const { isLoading, isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Guest access is removed. A legacy anonymous session is not an account and
+  // must be treated exactly like a signed-out visitor, in addition to the
+  // server-side guard in `requireUser`.
 
   if (isLoading) {
     return (
@@ -47,7 +51,7 @@ export function RequireAuth({
     );
   }
 
-  if (!isAuthenticated) {
+  if (!isAuthenticated || user?.isAnonymous === true) {
     const returnTo = `${location.pathname}${location.search}`;
     const signInHref = `/auth?returnTo=${encodeURIComponent(returnTo)}`;
 

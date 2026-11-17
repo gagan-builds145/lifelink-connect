@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import type { Doc, Id } from "./_generated/dataModel";
+import type { Doc } from "./_generated/dataModel";
 import type { QueryCtx, MutationCtx } from "./_generated/server";
 import {
   optionalUser,
@@ -103,7 +103,7 @@ export const securityEventCounts = query({
       ),
     ),
   },
-  handler: async (ctx, _args) => {
+  handler: async (ctx) => {
     await ensureSecurityAdmin(ctx);
     const rows = await ctx.db.query("securityEvents").collect();
     const byKind: Record<string, number> = {};

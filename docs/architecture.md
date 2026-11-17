@@ -20,7 +20,7 @@ This build extends the existing LifeLink blood-donation application into an inst
 | Map | Leaflet 1.9 + OpenStreetMap raster tiles |
 | Backend | Convex queries/mutations/actions/internal mutations |
 | Database | Convex document database with indexes and serializable mutations |
-| Auth | Convex Auth (email OTP + demo guest) |
+| Auth | Convex Auth (email OTP, registered accounts only) |
 | ML | Python FastAPI service: XGBoost demand forecasting, Random Forest donor response and Isolation Forest anomaly detection; Convex actions call it over authenticated HTTP |
 | Email / SMS | Optional Resend and Twilio adapters in Convex actions |
 | Scheduled work | Convex crons for telemetry, notification outbox, sync, forecasts and anomaly sweeps |

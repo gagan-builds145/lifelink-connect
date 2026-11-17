@@ -3,6 +3,7 @@ import { action, internalQuery, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import { audit, getDonorProfile, requireStaff, requireUser } from "./lib/helpers";
+import { logCommunityActivity } from "./lib/community";
 import { queueForDonors, queueForOrganization } from "./lib/messaging";
 import { DONOR_FALLBACK_NOTE } from "../lib/supply";
 import type { DonorEscalationResult } from "./donorPrediction";
@@ -49,6 +50,13 @@ export const setLocationConsent = mutation({
       detail: args.shareLocation
         ? `Location-sharing consent granted for ${hours} hour(s).`
         : "Location-sharing consent revoked.",
+    });
+    await logCommunityActivity(ctx, user._id, {
+      kind: "consent",
+      title: args.shareLocation ? "Location sharing enabled" : "Location sharing revoked",
+      detail: args.shareLocation
+        ? `Approximate distance may be used for donor invitations for the next ${hours} hour(s).`
+        : "Your location is no longer used for donor invitations.",
     });
     return { shareLocation: args.shareLocation, hours };
   },

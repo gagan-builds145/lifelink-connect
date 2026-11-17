@@ -43,13 +43,18 @@ Browser (React SPA)
   ├─ /supply          SupplyCommand.tsx     allocation, transfers, forecast, integrations
   ├─ /drones          DroneOps.tsx          fleet, bases, airspace, mission control
   ├─ /admin/dashboard AdminConsole.tsx      network health, policy, sync, ML, audit
-  ├─ /donor/dashboard DonorDashboard.tsx    invitations + temporary location consent
+  ├─ /community/dashboard CommunityDashboard.tsx
+  │     ├─ overview / donate / request / activities / notifications / profile / settings
+  │     └─ one identity: donor + requestor capabilities, one activity feed, one inbox
+  ├─ /donor/dashboard      legacy redirect → ?section=donate
+  ├─ /requestor/dashboard  legacy redirect → ?section=request
   └─ Leaflet NetworkMap.tsx                 facilities, routes, restricted zones
           │  reactive Convex subscriptions / mutations
           ▼
 Convex deployment
   ├─ allocation.ts        geospatial search, atomic reservation, transfers
   ├─ drones.ts            fleet, route planning, preflight, mission state machine, telemetry
+  ├─ community.ts         unified overview counters + merged activity query
   ├─ donorFallback.ts     consent, invitations, accept/decline, escalation action
   ├─ donorPrediction.ts   deterministic candidate prep, consented donor batch scoring, invitation commit
   ├─ integrations.ts      adapter registry, mock sync, live credentialed sync
@@ -68,6 +73,36 @@ Python FastAPI ML service
   └─ artifacts/            trained models, metadata, holdout metrics
 
 The pure domain engine `src/lib/supply.ts` is imported by both the Convex backend and the UI (and by the tests), so allocation, routing and preflight rules have one implementation. Ridge code remains in that module only for historical unit tests and is no longer exposed through Convex or the UI.
+
+### 3.1 Unified community dashboard
+
+A `community` account (including legacy `donor`/`requestor` roles) uses one route,
+`/community/dashboard`, with seven sections: Overview, Donate Blood, Request
+Blood, My Activities, Notifications, My Profile and Settings. `donorProfiles` and
+`requestorProfiles` remain separate tables linked to the same `users` row; neither
+is duplicated and neither replaces the other.
+
+`src/convex/community.ts` derives every number and event from the signed-in
+user's own rows:
+
+- **Overview** counts requests by status, donations, invitations, offers and
+  unread notifications, and builds a six-month donation series.
+- **Activity** merges request creation and status history, inventory reservations,
+  transfers (dispatch/received), verified transfer receipts, donations, invitations
+  and responses, donor offers, and consent/availability/profile edits.
+- `communityActivity` is a small additive table used only for events with no other
+  durable record (availability toggles, profile edits, consent changes). It is
+  created automatically by Convex; existing rows are untouched and no backfill is
+  required.
+
+`requests.getDetail` additionally returns verified receipt rows to the request
+owner (and staff), so the dashboard can show what was received without weakening
+patient privacy. `requests.updateOwnRequest` allows the owner to edit operational
+fields (units, needed-by, urgency, contact phone, area) only while the request is
+still `pending`; after verification the request must be cancelled instead.
+
+Legacy `/donor/dashboard` and `/requestor/dashboard` routes redirect into the
+matching section, and notification links generated before the merge still resolve.
 
 ## 4. Primary flow
 

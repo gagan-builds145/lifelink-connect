@@ -173,7 +173,7 @@ Use three browser profiles:
 6. **Drone ops**: **Dispatch** → wait for `PAYLOAD_LOADING` (cron advances every 30 s) → set container temperature (2–6 °C for red cells) → **Confirm loading**.
 7. Wait for `AT_DESTINATION`, then **Hospital A** opens `/supply` → **Confirm receipt** (or drone ops enters the displayed handoff code). The receipt batch is written to Hospital A.
 8. Wait for `RETURNING_TO_BASE` → `COMPLETED`; check the mission event log.
-9. **Donor**: open `/donor/dashboard` → **Invitations**, grant temporary location consent for 24 h, respond to an invitation. Confirm no stock changes until a donation is recorded and released.
+9. **Donor**: open `/community/dashboard` → **Donate Blood** → **Invitations**, grant temporary location consent for 24 h, respond to an invitation. Confirm no stock changes until a donation is recorded and released.
 10. **Admin**: `/admin/dashboard` → verify system health, sync runs, model registry, anomalies and audit trail.
 11. **ML**: start the FastAPI service, expose it over HTTPS, set `ML_SERVICE_URL`/`ML_SERVICE_TOKEN`, open `/admin/dashboard` → **ML** → **Check service**, then **Retrain from Convex history** and **Refresh XGBoost forecast** on `/supply`. Confirm model version and synthetic-data labelling. For donor retraining, use **Retrain donor model** in the same ML tab; it requires at least 40 consented answered invitations with both outcomes.
 12. **Anomaly**: on `/supply` → **Demand intelligence**, run **Isolation Forest scan** and confirm any persisted alert is labelled with its model version.

@@ -20,6 +20,7 @@ import {
   orgTypeValidator,
   requestorTypeValidator,
 } from "./validators";
+import { logCommunityActivity } from "./lib/community";
 import { ageFromDob, citiesInState, stateOfCity } from "../lib/blood";
 
 const orgTypeArg = v.union(v.literal("red_cross"), v.literal("hospital"));
@@ -323,6 +324,11 @@ export const updateDonorProfile = mutation({
     if (args.shareContact !== undefined) patch.shareContact = args.shareContact;
 
     await ctx.db.patch(donor._id, patch);
+    await logCommunityActivity(ctx, user._id, {
+      kind: "donor_profile",
+      title: "Donor profile updated",
+      detail: "Contact, location or sharing preferences changed.",
+    });
     return { ok: true };
   },
 });
@@ -336,6 +342,13 @@ export const setAvailability = mutation({
     await ctx.db.patch(donor._id, {
       available: args.available,
       updatedAt: Date.now(),
+    });
+    await logCommunityActivity(ctx, user._id, {
+      kind: "availability",
+      title: args.available ? "Availability turned on" : "Availability paused",
+      detail: args.available
+        ? "Compatible verified requests in your city can notify you."
+        : "New donor match notifications are paused.",
     });
     return { available: args.available };
   },
@@ -357,6 +370,11 @@ export const updateRequestorProfile = mutation({
     if (args.requestorType !== undefined) patch.requestorType = args.requestorType;
     await ctx.db.patch(requestor._id, patch);
     if (patch.city) await ctx.db.patch(user._id, { city: patch.city as string });
+    await logCommunityActivity(ctx, user._id, {
+      kind: "requestor_profile",
+      title: "Requestor profile updated",
+      detail: "Contact, city or relationship changed.",
+    });
     return { ok: true };
   },
 });

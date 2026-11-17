@@ -14,8 +14,10 @@ It is not a static prototype. It is also **not** certified medical software or a
 | --- | --- |
 | Public landing, verified blood search, camps, privacy, terms | ✅ |
 | Passwordless email OTP auth, donor/requestor/hospital/Red Cross signup | ✅ |
-| Donor dashboard, availability, offers, history, camps, profile | ✅ |
-| Requestor + hospital request workflow, documents, timeline, receipt | ✅ |
+| **Unified community dashboard** — donor + requestor in one sidebar | ✅ |
+| Donor capability: availability, invitations, offers, camps, history, consent | ✅ |
+| Requestor capability: create/edit/cancel, timeline, allocation, receipts | ✅ |
+| Combined activity timeline + one notification centre | ✅ |
 | Red Cross verification, inventory ledger, alerts, camps, analytics, audit | ✅ |
 | **Autonomous supply command** (`/supply`) | ✅ search, preview, atomic allocation, transfers, forecast, integrations |
 | **Geospatial search** | ✅ city / district / state / country policy with haversine distance |
@@ -148,8 +150,9 @@ For the first administrator, set `users.role = "admin"` in the Convex dashboard.
 | --- | --- | --- |
 | `/` | public | Landing page and network search |
 | `/auth`, `/signup` | public | OTP auth and role onboarding |
-| `/donor/dashboard` | donor | availability, offers, camps, invitations + consent |
-| `/requestor/dashboard` | requestor | request lifecycle |
+| `/community/dashboard` | community/donor/requestor | Overview, Donate Blood, Request Blood, My Activities, Notifications, My Profile, Settings |
+| `/donor/dashboard` | donor | legacy redirect → `/community/dashboard?section=donate` |
+| `/requestor/dashboard` | requestor | legacy redirect → `/community/dashboard?section=request` |
 | `/hospital/dashboard` | hospital | requests, storage, dispatch/receipt |
 | `/red-cross/dashboard` | red_cross/admin | verification, inventory, camps, audit |
 | `/supply` | hospital/red_cross/admin | allocation, transfers, forecasts, integrations |

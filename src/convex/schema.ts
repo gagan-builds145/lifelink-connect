@@ -705,6 +705,25 @@ const schema = defineSchema(
       .index("by_donor", ["donorUserId"])
       .index("by_profile", ["donorProfileId"]),
 
+    /**
+     * Community-side activity that cannot be derived from another record:
+     * availability flips and profile/consent edits. Everything else in the
+     * unified activity centre is derived from the real request, donation,
+     * invitation and transfer rows, so this table stays small.
+     */
+    communityActivity: defineTable({
+      userId: v.id("users"),
+      kind: v.union(
+        v.literal("availability"),
+        v.literal("consent"),
+        v.literal("donor_profile"),
+        v.literal("requestor_profile"),
+      ),
+      title: v.string(),
+      detail: v.optional(v.string()),
+      createdAt: v.number(),
+    }).index("by_user", ["userId"]),
+
     donorInvitations: defineTable({
       requestId: v.optional(v.id("bloodRequests")),
       stockAlertId: v.optional(v.id("stockAlerts")),

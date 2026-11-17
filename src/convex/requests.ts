@@ -488,6 +488,9 @@ export const getDetail = query({
     const assignedOrg = request.assignedOrgId
       ? await ctx.db.get(request.assignedOrgId)
       : null;
+    const orgsById = new Map(
+      (await ctx.db.query("organizations").collect()).map((org) => [String(org._id), org.name]),
+    );
     const hospitalOrg = request.hospitalOrgId
       ? await ctx.db.get(request.hospitalOrgId)
       : null;
@@ -507,6 +510,18 @@ export const getDetail = query({
           .collect()
       : [];
     const receivedUnits = verifiedReceipts.reduce((sum, receipt) => sum + receipt.units, 0);
+    const receiptRows = verifiedReceipts
+      .sort((a, b) => a.createdAt - b.createdAt)
+      .map((receipt) => ({
+        _id: receipt._id,
+        units: receipt.units,
+        bloodGroup: receipt.bloodGroup,
+        component: receipt.component,
+        receivedAt: receipt.createdAt,
+        evidenceCode: full ? receipt.evidenceCode ?? null : null,
+        supplierName:
+          orgsById.get(String(receipt.supplyingOrgId)) ?? "Supplying facility",
+      }));
     const linkedTransfers = full
       ? await ctx.db
           .query("transfers")
@@ -563,11 +578,101 @@ export const getDetail = query({
         })),
       document,
       offers: offerRows,
+      receipts: receiptRows,
       myOffer: myOffer
         ? { _id: myOffer._id, status: myOffer.status, note: myOffer.note ?? null }
         : null,
       canManage: full,
     };
+  },
+});
+
+/**
+ * Owner edit for a request that has not been verified yet.
+ *
+ * Only operational fields move: the patient identity, hospital and blood group
+ * are locked, because staff verify those against the uploaded prescription.
+ * Once a request is under verification or stock is attached, editing stops and
+ * the owner must cancel instead.
+ */
+export const updateOwnRequest = mutation({
+  args: {
+    id: v.id("bloodRequests"),
+    units: v.optional(v.number()),
+    requiredBy: v.optional(v.number()),
+    urgency: v.optional(urgencyValidator),
+    area: v.optional(v.string()),
+    requesterPhone: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireUser(ctx);
+    const request = await ctx.db.get(args.id);
+    if (!request || request.createdByUserId !== user._id) {
+      await recordRequestAccessDenied(ctx, user, "restricted");
+      throw safeError("Request not found.");
+    }
+    if (request.status !== "pending") {
+      throw safeError(
+        "This request can no longer be edited. Cancel it and submit a new one if the requirement changed.",
+      );
+    }
+
+    const now = Date.now();
+    const patch: Record<string, unknown> = { updatedAt: now };
+    const changes: string[] = [];
+    if (args.units !== undefined) {
+      patch.units = requireUnits(args.units);
+      changes.push(`units → ${patch.units}`);
+    }
+    if (args.requiredBy !== undefined) {
+      const requiredBy = Number(args.requiredBy);
+      if (!Number.isFinite(requiredBy) || requiredBy < now - 60_000) {
+        throw new Error("The required date and time must be in the future.");
+      }
+      if (requiredBy > now + 90 * 86_400_000) {
+        throw new Error("Required date must be within the next 90 days.");
+      }
+      patch.requiredBy = requiredBy;
+      changes.push(`needed by → ${new Date(requiredBy).toISOString()}`);
+    }
+    if (args.urgency !== undefined) {
+      patch.urgency = args.urgency;
+      changes.push(`urgency → ${args.urgency}`);
+    }
+    if (args.area !== undefined) {
+      patch.area = args.area.trim() || undefined;
+      changes.push("area updated");
+    }
+    if (args.requesterPhone !== undefined) {
+      patch.requesterPhone = requirePhone(args.requesterPhone);
+      changes.push("contact phone updated");
+    }
+    if (changes.length === 0) return { ok: true, changed: false };
+
+    await ctx.db.patch(request._id, patch);
+    await addHistory(
+      ctx,
+      { ...request, ...patch } as Doc<"bloodRequests">,
+      "pending",
+      roleOf(user),
+      user._id,
+      `Request updated by owner: ${changes.join(", ")}.`,
+    );
+    await notifyRole(ctx, "red_cross", {
+      title: `Request ${request.requestId} updated`,
+      body: `The requestor changed ${changes.join(", ")}. Re-check the requirement before verification.`,
+      kind: "request",
+      requestId: request._id,
+      link: "/red-cross/dashboard",
+    });
+    await audit(ctx, {
+      actor: user,
+      action: "request.updated",
+      entityType: "bloodRequest",
+      entityId: request.requestId,
+      detail: `Owner edit: ${changes.join(", ")}.`,
+    });
+    return { ok: true, changed: true };
   },
 });
 

@@ -231,7 +231,12 @@ export default function SupplyCommand() {
   const orgPoints: NetworkMapPoint[] = useMemo(
     () =>
       (facilities ?? [])
-        .filter((f) => f.latitude != null && f.longitude != null)
+        .filter(
+          (f) =>
+            (f.type === "hospital" || f.type === "red_cross") &&
+            f.latitude != null &&
+            f.longitude != null,
+        )
         .map((f) => ({
           id: String(f._id),
           lat: f.latitude!,
@@ -246,7 +251,13 @@ export default function SupplyCommand() {
   const candidateMapPoints: NetworkMapPoint[] = useMemo(() => {
     const seen = new Set<string>();
     return (search?.candidates ?? [])
-      .filter((c) => c.eligible && c.latitude != null && c.longitude != null)
+      .filter(
+        (c) =>
+          c.eligible &&
+          (c.organizationType === "hospital" || c.organizationType === "red_cross") &&
+          c.latitude != null &&
+          c.longitude != null,
+      )
       .filter((c) => {
         if (seen.has(c.organizationId)) return false;
         seen.add(c.organizationId);
@@ -262,6 +273,33 @@ export default function SupplyCommand() {
         active: true,
       }));
   }, [search]);
+  // One marker per location: a facility that is also an eligible candidate must
+  // not be plotted twice, and organization records sharing coordinates collapse
+  // into a single marker.
+  const mapPoints = useMemo(() => {
+    const byLocation = new Map<string, NetworkMapPoint>();
+    const keyOf = (point: NetworkMapPoint) =>
+      `${point.lat.toFixed(5)},${point.lng.toFixed(5)}`;
+    for (const point of orgPoints) byLocation.set(keyOf(point), point);
+    for (const point of candidateMapPoints) {
+      const key = keyOf(point);
+      const existing = byLocation.get(key);
+      byLocation.set(
+        key,
+        existing
+          ? {
+              ...point,
+              label:
+                existing.label === point.label
+                  ? point.label
+                  : `${existing.label} / ${point.label}`,
+              active: true,
+            }
+          : point,
+      );
+    }
+    return [...byLocation.values()];
+  }, [orgPoints, candidateMapPoints]);
 
   const runAllocation = async () => {
     if (!selected) return;
@@ -734,7 +772,7 @@ export default function SupplyCommand() {
 
             <Panel eyebrow="Spatial view" title="Facilities and eligible supply">
               <NetworkMap
-                points={[...orgPoints, ...candidateMapPoints]}
+                points={mapPoints}
                 height={300}
                 focus={candidateMapPoints[0] ? [candidateMapPoints[0].lat, candidateMapPoints[0].lng] : null}
               />

@@ -70,24 +70,18 @@ export const ROLE_CARDS = [
   {
     role: "community",
     title: "Donor & Blood Requestor",
-    description:
-      "Give blood, request blood for a patient, and add either profile from one verified account.",
     href: "/signup/community",
     accent: "crimson" as const,
   },
   {
     role: "red_cross",
     title: "Red Cross Society",
-    description:
-      "Verify requests, manage shared inventory and camps, and keep every stock movement auditable.",
     href: "/signup/red-cross",
     accent: "teal" as const,
   },
   {
     role: "hospital",
     title: "Hospital",
-    description:
-      "Submit hospital blood requests, track dispatch and confirm receipt against the shared ledger.",
     href: "/signup/hospital",
     accent: "amber" as const,
   },

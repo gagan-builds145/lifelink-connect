@@ -1,4 +1,5 @@
 import { api } from "@/convex/_generated/api";
+import { OrganizationMapPanel } from "@/components/lifelink/OrganizationMapPanel";
 import { SiteFooter } from "@/components/lifelink/SiteFooter";
 import { SiteHeader } from "@/components/lifelink/SiteHeader";
 import {
@@ -295,6 +296,23 @@ export default function BloodSearch() {
                 <Link to="/signup/requestor">Request this blood <ArrowRight className="size-3" /></Link>
               </Button>
             </div>
+          </div>
+
+          <div className="mt-5 rounded-2xl border border-border bg-card p-4">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <h2 className="text-[15px] font-bold">Verified network map</h2>
+                <p className="mt-0.5 text-[11px] leading-5 text-muted-foreground">
+                  Registered hospitals and Red Cross societies with verified coordinates.
+                  Your own base is highlighted when you are signed in with a verified
+                  organization account.
+                </p>
+              </div>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-border px-2 py-1 text-[9.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                <ShieldCheck className="size-3 text-teal-600" /> Verified records only
+              </span>
+            </div>
+            <OrganizationMapPanel height={340} className="mt-3" />
           </div>
 
           <div className="mt-5">

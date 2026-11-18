@@ -7,6 +7,7 @@ import {
   getRequestorProfile,
   nextSequentialId,
   normalizeEmail,
+  optionalUser,
   requireDateString,
   requireOrganization,
   requirePhone,
@@ -22,6 +23,7 @@ import {
 } from "./validators";
 import { logCommunityActivity } from "./lib/community";
 import { ageFromDob, citiesInState, stateOfCity } from "../lib/blood";
+import { isValidMapCoordinate } from "../lib/organizationMap";
 
 const orgTypeArg = v.union(v.literal("red_cross"), v.literal("hospital"));
 
@@ -376,6 +378,80 @@ export const updateRequestorProfile = mutation({
       detail: "Contact, city or relationship changed.",
     });
     return { ok: true };
+  },
+});
+
+/**
+ * Map-safe organization locations. Only verified hospitals and Red Cross
+ * societies with real, in-range coordinates are returned as markers. The
+ * viewer's own organization association is resolved from the authenticated
+ * user record on the server and never from client input.
+ */
+export const mapLocations = query({
+  args: {},
+  handler: async (ctx) => {
+    const viewer = await optionalUser(ctx);
+    const activeViewer =
+      viewer && !viewer.isAnonymous && !viewer.suspended ? viewer : null;
+    const viewerOrg = activeViewer?.organizationId
+      ? await ctx.db.get(activeViewer.organizationId)
+      : null;
+
+    const rows = await ctx.db.query("organizations").collect();
+    const eligible = rows.filter(
+      (o) =>
+        o.status === "verified" &&
+        (o.type === "hospital" || o.type === "red_cross"),
+    );
+    const isOwnBase = (org: (typeof eligible)[number]) =>
+      viewerOrg != null &&
+      viewerOrg.status === "verified" &&
+      (org._id === viewerOrg._id ||
+        (viewerOrg.orgId.length > 0 && org.orgId === viewerOrg.orgId));
+
+    const locations = eligible
+      .filter((o) => isValidMapCoordinate(o.latitude, o.longitude))
+      .map((o) => ({
+        id: String(o._id),
+        orgId: o.orgId,
+        name: o.name,
+        type: o.type,
+        latitude: o.latitude as number,
+        longitude: o.longitude as number,
+        address: o.address,
+        city: o.city,
+        area: o.area ?? null,
+        phone: o.phone,
+        status: o.status,
+        baseId: String(o._id),
+        isOwnBase: isOwnBase(o),
+        isDemo: o.isDemo ?? false,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    const missingLocations = eligible
+      .filter((o) => !isValidMapCoordinate(o.latitude, o.longitude))
+      .map((o) => ({
+        id: String(o._id),
+        orgId: o.orgId,
+        name: o.name,
+        type: o.type,
+        city: o.city,
+        address: o.address,
+        reason:
+          o.latitude == null || o.longitude == null
+            ? ("Missing registered coordinates" as const)
+            : ("Invalid registered coordinates" as const),
+        isOwnBase: isOwnBase(o),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    return {
+      viewerOrganizationId: viewerOrg ? String(viewerOrg._id) : null,
+      viewerOrganizationName: viewerOrg?.name ?? null,
+      locations,
+      missingLocations,
+    };
   },
 });
 

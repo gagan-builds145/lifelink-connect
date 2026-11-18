@@ -1,7 +1,7 @@
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { DashboardShell } from "@/components/lifelink/DashboardShell";
-import { NETWORK_MAP_NOTE, NetworkMap, type NetworkMapPoint } from "@/components/lifelink/NetworkMap";
+import { OrganizationMapPanel } from "@/components/lifelink/OrganizationMapPanel";
 import {
   BloodGroupChip,
   DemoBadge,
@@ -151,7 +151,6 @@ export default function SupplyCommand() {
   const { user } = useAuth();
   const org = useQuery(api.profiles.myOrganization);
   const requests = useQuery(api.requests.listForStaff, {});
-  const facilities = useQuery(api.allocation.networkFacilities);
   const transfers = useQuery(api.allocation.transfersForMe);
   const integrations = useQuery(api.integrations.listIntegrations);
   const modelStatus = useQuery(api.forecasting.modelStatus);
@@ -228,78 +227,6 @@ export default function SupplyCommand() {
   );
 
   const role = (user?.role ?? "hospital") as AppRole;
-  const orgPoints: NetworkMapPoint[] = useMemo(
-    () =>
-      (facilities ?? [])
-        .filter(
-          (f) =>
-            (f.type === "hospital" || f.type === "red_cross") &&
-            f.latitude != null &&
-            f.longitude != null,
-        )
-        .map((f) => ({
-          id: String(f._id),
-          lat: f.latitude!,
-          lng: f.longitude!,
-          label: f.name,
-          kind: "facility" as const,
-          detail: `${f.type.replace("_", " ")} · ${f.city}${f.autoAllocate ? " · auto-allocation enabled" : ""}`,
-          active: false,
-        })),
-    [facilities],
-  );
-  const candidateMapPoints: NetworkMapPoint[] = useMemo(() => {
-    const seen = new Set<string>();
-    return (search?.candidates ?? [])
-      .filter(
-        (c) =>
-          c.eligible &&
-          (c.organizationType === "hospital" || c.organizationType === "red_cross") &&
-          c.latitude != null &&
-          c.longitude != null,
-      )
-      .filter((c) => {
-        if (seen.has(c.organizationId)) return false;
-        seen.add(c.organizationId);
-        return true;
-      })
-      .map((c) => ({
-        id: `candidate-${c.organizationId}`,
-        lat: c.latitude!,
-        lng: c.longitude!,
-        label: c.organizationName,
-        kind: "facility" as const,
-        detail: `${c.usableUnits} free unit(s) · score ${c.score} · ${c.autoAuthorized ? "pre-authorised" : "agreement required"}`,
-        active: true,
-      }));
-  }, [search]);
-  // One marker per location: a facility that is also an eligible candidate must
-  // not be plotted twice, and organization records sharing coordinates collapse
-  // into a single marker.
-  const mapPoints = useMemo(() => {
-    const byLocation = new Map<string, NetworkMapPoint>();
-    const keyOf = (point: NetworkMapPoint) =>
-      `${point.lat.toFixed(5)},${point.lng.toFixed(5)}`;
-    for (const point of orgPoints) byLocation.set(keyOf(point), point);
-    for (const point of candidateMapPoints) {
-      const key = keyOf(point);
-      const existing = byLocation.get(key);
-      byLocation.set(
-        key,
-        existing
-          ? {
-              ...point,
-              label:
-                existing.label === point.label
-                  ? point.label
-                  : `${existing.label} / ${point.label}`,
-              active: true,
-            }
-          : point,
-      );
-    }
-    return [...byLocation.values()];
-  }, [orgPoints, candidateMapPoints]);
 
   const runAllocation = async () => {
     if (!selected) return;
@@ -771,12 +698,15 @@ export default function SupplyCommand() {
             </Panel>
 
             <Panel eyebrow="Spatial view" title="Facilities and eligible supply">
-              <NetworkMap
-                points={mapPoints}
+              <OrganizationMapPanel
                 height={300}
-                focus={candidateMapPoints[0] ? [candidateMapPoints[0].lat, candidateMapPoints[0].lng] : null}
+                candidates={search?.candidates ?? []}
               />
-              <p className="mt-2 text-[9.5px] leading-4 text-muted-foreground">{NETWORK_MAP_NOTE}</p>
+              <p className="mt-2 text-[9.5px] leading-4 text-muted-foreground">
+                Only verified hospitals and Red Cross societies with registered
+                coordinates are plotted. Highlighted facilities are eligible supplies
+                for the selected request.
+              </p>
             </Panel>
           </div>
         </div>

@@ -1,10 +1,9 @@
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
-import { cn } from "@/lib/utils";
 import { EmailOtpForm } from "./EmailOtpForm";
 import type { ReactNode } from "react";
 
-export function SignupGate({ children, className }: { children: ReactNode; className?: string }) {
+export function SignupGate({ children }: { children: ReactNode }) {
   const { isLoading, isAuthenticated } = useAuth();
 
   if (isLoading) {
@@ -20,7 +19,7 @@ export function SignupGate({ children, className }: { children: ReactNode; class
 
   if (!isAuthenticated) {
     return (
-      <div className={cn("space-y-5", className)}>
+      <div className="space-y-5">
         <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
           <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-primary">
             Step 1 of 2 · Verify email

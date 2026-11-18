@@ -134,11 +134,11 @@ export function EmailOtpForm({
         <h1 className={cn("mt-2 font-display font-extrabold text-foreground", compact ? "text-2xl" : "text-3xl")}>
           {step === "email" ? "Sign in to LifeLink" : "Enter your code"}
         </h1>
-        <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          {step === "email"
-            ? "LifeLink uses passwordless email codes — there is no password to leak or recover."
-            : <>We requested a 6-digit code for <strong className="text-foreground">{email}</strong>. Codes expire after 15 minutes.</>}
-        </p>
+        {step === "code" && (
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            We requested a 6-digit code for <strong className="text-foreground">{email}</strong>. Codes expire after 15 minutes.
+          </p>
+        )}
       </div>
 
       {error && (

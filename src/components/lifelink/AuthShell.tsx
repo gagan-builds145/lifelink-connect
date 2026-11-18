@@ -122,15 +122,16 @@ export function AuthShell({
             <h2 className="mt-4 max-w-md text-balance text-4xl font-bold leading-[1.08]">
               {asideTitle ?? "The right blood. The nearest verified source. One shared record."}
             </h2>
-            <p
-              className={cn(
-                "mt-5 max-w-md text-[15px] leading-7",
-                variant === "video" ? "text-white/65" : "text-muted-foreground",
-              )}
-            >
-              {asideBody ??
-                "LifeLink connects donors, requestors, Red Cross branches and hospitals to a single verified workflow — from request and document review to stock reservation, dispatch and receipt."}
-            </p>
+            {asideBody && (
+              <p
+                className={cn(
+                  "mt-5 max-w-md text-[15px] leading-7",
+                  variant === "video" ? "text-white/65" : "text-muted-foreground",
+                )}
+              >
+                {asideBody}
+              </p>
+            )}
           </div>
 
           <div className="mt-12 grid gap-3">

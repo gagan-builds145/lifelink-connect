@@ -1,4 +1,4 @@
-import { ArrowLeft, LockKeyhole } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { Link } from "react-router";
 import { LifeLinkLogo } from "./Logo";
 import { cn } from "@/lib/utils";
@@ -31,14 +31,6 @@ export function AuthCard({
         </Link>
       </div>
       {children}
-      <div className="mt-7 flex items-start gap-2 border-t border-border pt-4 text-[11px] leading-5 text-muted-foreground">
-        <LockKeyhole className="mt-0.5 size-3.5 shrink-0 text-primary" />
-        <p>
-          Protected by server-side role checks, verified organization access and
-          audit logging. Never share patient or donor details outside approved
-          workflows.
-        </p>
-      </div>
       {footer}
     </div>
   );

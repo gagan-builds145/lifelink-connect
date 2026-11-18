@@ -47,10 +47,6 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
               Recover access
             </Link>
           </p>
-          <p className="text-[10.5px] leading-5">
-            Passwordless by design. Access is verified with a short-lived email code,
-            and all protected actions still require a server-verified role.
-          </p>
         </div>
       </AuthCard>
     </AuthShell>

@@ -18,9 +18,11 @@ const STATUS_TONES: Record<RequestStatus, string> = {
 
 export function StatusBadge({
   status,
+  label,
   className,
 }: {
   status: RequestStatus | string;
+  label?: string;
   className?: string;
 }) {
   const tone = STATUS_TONES[status as RequestStatus] ?? "border-border bg-muted text-muted-foreground";
@@ -33,7 +35,7 @@ export function StatusBadge({
       )}
     >
       <span className="size-1.5 rounded-full bg-current opacity-70" />
-      {STATUS_LABELS[status as RequestStatus] ?? status}
+      {label ?? STATUS_LABELS[status as RequestStatus] ?? status}
     </span>
   );
 }

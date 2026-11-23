@@ -23,7 +23,7 @@ const choices = [
 export default function SignupCommunity() {
   return (
     <SignupFrame
-      eyebrow="Community registration"
+      eyebrow="Donor registration"
       title="One account for giving and receiving"
       description="Donor and blood requestor capabilities now live on one verified account. Add either profile now and the other later, whenever you need it."
       asideTitle="One role. Both profiles."
@@ -63,7 +63,7 @@ export default function SignupCommunity() {
             <ShieldCheck className="mt-0.5 size-3.5 shrink-0" />
             <p>
               One server-verified role covers both profiles. Add a donor profile first, then
-              add requestor access from the community dashboard — or do it the other way around.
+              add requestor access from the donor dashboard — or do it the other way around.
             </p>
           </div>
           <div className="flex items-start gap-2 rounded-xl border border-border bg-muted/25 p-3 text-[10.5px] leading-5 text-muted-foreground">

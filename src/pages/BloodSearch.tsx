@@ -162,7 +162,7 @@ export default function BloodSearch() {
                 Find reported blood availability, <span className="text-primary">without false promises.</span>
               </h1>
               <p className="mt-4 max-w-2xl text-[14px] leading-7 text-muted-foreground">
-                Search verified Red Cross branches, participating blood banks and hospitals
+                Search verified blood banks, participating organizations and hospitals
                 sharing the LifeLink database. Every result shows when stock was last
                 updated. Searches start inside your own city — state and country-wide
                 coverage opens only for emergencies.
@@ -303,7 +303,7 @@ export default function BloodSearch() {
               <div>
                 <h2 className="text-[15px] font-bold">Verified network map</h2>
                 <p className="mt-0.5 text-[11px] leading-5 text-muted-foreground">
-                  Registered hospitals and Red Cross societies with verified coordinates.
+                  Registered hospitals and blood banks with verified coordinates.
                   Your own base is highlighted when you are signed in with a verified
                   organization account.
                 </p>
@@ -415,7 +415,7 @@ export default function BloodSearch() {
               <EmptyState
                 icon={Building2}
                 title="No verified organizations in this view"
-                description="Verified Red Cross branches, blood banks and hospitals will appear here once registered and approved."
+                description="Verified blood banks and hospitals will appear here once registered and approved."
                 className="mt-4 bg-card"
               />
             ) : (

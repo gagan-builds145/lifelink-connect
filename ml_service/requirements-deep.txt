@@ -1,0 +1,5 @@
+# Optional deep-learning extras. Install in a Python 3.10-3.12 environment.
+# TensorFlow is intentionally not part of requirements.txt so the lightweight
+# prediction service and existing sklearn/XGBoost artifacts remain deployable.
+tensorflow-cpu==2.17.1
+keras==3.5.0

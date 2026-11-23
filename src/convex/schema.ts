@@ -2,6 +2,8 @@ import { authTables } from "@convex-dev/auth/server";
 import { defineSchema, defineTable } from "convex/server";
 import { Infer, v } from "convex/values";
 import {
+  ambulanceBookingStatusValidator,
+  ambulanceTypeValidator,
   anomalyKindValidator,
   bloodGroupValidator,
   campStatusValidator,
@@ -849,6 +851,91 @@ const schema = defineSchema(
       .index("by_status", ["status"])
       .index("by_user", ["userId"])
       .index("by_idempotency", ["idempotencyKey"]),
+
+    guardianProfiles: defineTable({
+      userId: v.id("users"),
+      companyName: v.string(),
+      contactPerson: v.string(),
+      phone: v.string(),
+      city: v.string(),
+      address: v.string(),
+      online: v.boolean(),
+      documentsStatus: v.union(
+        v.literal("pending"),
+        v.literal("verified"),
+        v.literal("rejected"),
+      ),
+      createdAt: v.number(),
+      updatedAt: v.number(),
+    }).index("by_user", ["userId"]),
+
+    ambulances: defineTable({
+      guardianUserId: v.id("users"),
+      registrationNumber: v.string(),
+      model: v.string(),
+      type: ambulanceTypeValidator,
+      capacity: v.number(),
+      driverName: v.string(),
+      driverPhone: v.string(),
+      driverLicenseRef: v.optional(v.string()),
+      documentRef: v.optional(v.string()),
+      documentId: v.optional(v.id("documentMetadata")),
+      available: v.boolean(),
+      latitude: v.optional(v.number()),
+      longitude: v.optional(v.number()),
+      lastLocationAt: v.optional(v.number()),
+      createdAt: v.number(),
+      updatedAt: v.number(),
+    })
+      .index("by_guardian", ["guardianUserId"])
+      .index("by_available", ["available"]),
+
+    ambulanceBookings: defineTable({
+      bookingRef: v.string(),
+      requesterUserId: v.id("users"),
+      requesterRole: v.string(),
+      patientName: v.optional(v.string()),
+      pickupLabel: v.string(),
+      pickupLat: v.number(),
+      pickupLng: v.number(),
+      destinationLabel: v.string(),
+      destinationLat: v.optional(v.number()),
+      destinationLng: v.optional(v.number()),
+      ambulanceType: v.optional(ambulanceTypeValidator),
+      notes: v.optional(v.string()),
+      status: ambulanceBookingStatusValidator,
+      targetAmbulanceId: v.optional(v.id("ambulances")),
+      assignedAmbulanceId: v.optional(v.id("ambulances")),
+      assignedGuardianUserId: v.optional(v.id("users")),
+      driverName: v.optional(v.string()),
+      driverPhone: v.optional(v.string()),
+      estimatedDistanceKm: v.optional(v.number()),
+      estimatedEtaMinutes: v.optional(v.number()),
+      estimatedFare: v.optional(v.number()),
+      cancellationReason: v.optional(v.string()),
+      clientRequestId: v.string(),
+      requestedAt: v.number(),
+      acceptedAt: v.optional(v.number()),
+      completedAt: v.optional(v.number()),
+      cancelledAt: v.optional(v.number()),
+      updatedAt: v.number(),
+    })
+      .index("by_requester", ["requesterUserId"])
+      .index("by_guardian", ["assignedGuardianUserId"])
+      .index("by_target_ambulance", ["targetAmbulanceId"])
+      .index("by_status", ["status"])
+      .index("by_client_request", ["clientRequestId"]),
+
+    ambulanceBookingEvents: defineTable({
+      bookingId: v.id("ambulanceBookings"),
+      status: ambulanceBookingStatusValidator,
+      actorUserId: v.id("users"),
+      actorRole: v.string(),
+      note: v.string(),
+      latitude: v.optional(v.number()),
+      longitude: v.optional(v.number()),
+      createdAt: v.number(),
+    }).index("by_booking", ["bookingId"]),
 
     counters: defineTable({
       key: v.string(),

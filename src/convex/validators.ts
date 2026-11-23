@@ -77,7 +77,28 @@ export const notificationKindValidator = v.union(
   v.literal("match"),
   v.literal("inventory"),
   v.literal("camp"),
+  v.literal("ambulance"),
   v.literal("system"),
+);
+
+export const ambulanceTypeValidator = v.union(
+  v.literal("bls"),
+  v.literal("als"),
+  v.literal("icu"),
+  v.literal("neonatal"),
+);
+
+export const ambulanceBookingStatusValidator = v.union(
+  v.literal("requested"),
+  v.literal("searching"),
+  v.literal("accepted"),
+  v.literal("guardian_assigned"),
+  v.literal("on_the_way"),
+  v.literal("arrived_pickup"),
+  v.literal("patient_picked_up"),
+  v.literal("in_transit"),
+  v.literal("completed"),
+  v.literal("cancelled"),
 );
 
 export const userRoleValidator = v.union(
@@ -87,6 +108,7 @@ export const userRoleValidator = v.union(
   v.literal("requestor"),
   v.literal("red_cross"),
   v.literal("hospital"),
+  v.literal("guardian"),
   v.literal("drone_ops"),
   v.literal("user"),
   v.literal("member"),

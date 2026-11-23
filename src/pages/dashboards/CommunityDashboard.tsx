@@ -9,6 +9,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useQuery } from "convex/react";
 import {
   Activity,
+  Ambulance,
   BellRing,
   ClipboardList,
   Droplets,
@@ -113,9 +114,9 @@ export default function CommunityDashboard() {
 
   return (
     <DashboardShell
-      roleLabel="Community account"
+      roleLabel="Donor"
       roleKey="Donor & blood requestor"
-      title="LifeLink – Unified Community Dashboard"
+      title="Donor dashboard"
       subtitle="Donate blood and request blood from one verified account. Every profile, invitation, request, allocation and receipt update lives in this single workspace."
       items={navItems}
       active={section}
@@ -124,6 +125,7 @@ export default function CommunityDashboard() {
       profileLabel="My profile"
       accentIcon={HeartHandshake}
       quickLinks={[
+        { label: "Book an ambulance", href: "/ambulance", icon: Ambulance },
         { label: "Verified blood search", href: "/blood-search", icon: Search },
         { label: "Public donation camps", href: "/donation-camps", icon: CalendarHeart },
         { label: "Request records", href: "/community/dashboard?section=request", icon: ClipboardList },

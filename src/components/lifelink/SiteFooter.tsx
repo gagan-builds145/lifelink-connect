@@ -15,7 +15,7 @@ const columns = [
   {
     title: "Network",
     links: [
-      { label: "Red Cross dashboard", href: "/red-cross/dashboard" },
+      { label: "Blood bank dashboard", href: "/red-cross/dashboard" },
       { label: "Hospital dashboard", href: "/hospital/dashboard" },
       { label: "How matching works", href: "/#how-it-works" },
       { label: "Our services", href: "/#services" },
@@ -41,7 +41,7 @@ export function SiteFooter() {
             <LifeLinkLogo onDark />
             <p className="mt-5 max-w-sm text-sm leading-6 text-white/60">
               One shared, verified blood network connecting donors, requestors,
-              Red Cross branches, hospitals and participating blood banks.
+              Blood banks, hospitals and verified ambulance Guardians.
             </p>
             <div className="mt-6 space-y-2.5 text-sm">
               <p className="flex items-center gap-2.5 text-white/70">

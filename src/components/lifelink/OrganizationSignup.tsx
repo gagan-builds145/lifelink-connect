@@ -45,11 +45,11 @@ export function OrganizationSignup({ type }: { type: "red_cross" | "hospital" })
 
   return (
     <SignupFrame
-      eyebrow={isRedCross ? "Red Cross authorization" : "Hospital authorization"}
-      title={isRedCross ? "Register an authorized branch" : "Register a verified hospital"}
+      eyebrow={isRedCross ? "Blood bank authorization" : "Hospital authorization"}
+      title={isRedCross ? "Register a verified blood bank" : "Register a verified hospital"}
       description={
         isRedCross
-          ? "Branch accounts can verify requests, manage shared inventory and camps, and record dispatch against the common ledger."
+          ? "Blood bank accounts verify requests, manage shared inventory and camps, and record dispatch against the common ledger."
           : "Hospital accounts can submit patient-linked requests, view reported partner availability and confirm receipt."
       }
       asideTitle={

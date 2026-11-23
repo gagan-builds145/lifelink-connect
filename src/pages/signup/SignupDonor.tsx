@@ -61,7 +61,7 @@ export default function SignupDonor() {
 
   return (
     <    SignupFrame
-      eyebrow="Community registration · Donor"
+      eyebrow="Donor registration"
       title="Create your donor profile"
       description="Add a donor profile to your verified community account. A unique donor ID is generated on the server, and you control availability and contact sharing."
       asideNote="Already have requestor access? Add this profile to give blood too."
@@ -214,7 +214,7 @@ export default function SignupDonor() {
           <label className="flex cursor-pointer items-start gap-2.5">
             <Checkbox checked={form.shareContact} onCheckedChange={(v) => set("shareContact", v === true)} className="mt-0.5" />
             <span className="text-[11.5px] leading-5">
-              <strong>Share my phone with authorized Red Cross coordinators.</strong>{" "}
+              <strong>Share my phone with authorized blood bank coordinators.</strong>{" "}
               <span className="text-muted-foreground">Hospitals and the public never see it. Your full address is never public.</span>
             </span>
           </label>

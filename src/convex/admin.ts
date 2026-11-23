@@ -21,7 +21,7 @@ export const overview = query({
     await requireAdmin(ctx);
     const now = Date.now();
     const today = todayIso();
-    const [orgs, inventory, requests, transfers, missions, invitations, jobs, integrations, runs, anomalies, agreements, forecasts, audits] =
+    const [orgs, inventory, requests, transfers, missions, invitations, jobs, integrations, runs, anomalies, agreements, forecasts, audits, guardians, ambulances, ambulanceBookings] =
       await Promise.all([
         ctx.db.query("organizations").collect(),
         ctx.db.query("inventory").collect(),
@@ -36,6 +36,9 @@ export const overview = query({
         ctx.db.query("transferAgreements").collect(),
         ctx.db.query("demandForecasts").collect(),
         ctx.db.query("auditLogs").collect(),
+        ctx.db.query("guardianProfiles").collect(),
+        ctx.db.query("ambulances").collect(),
+        ctx.db.query("ambulanceBookings").collect(),
       ]);
 
     const freeUnits = inventory.reduce(
@@ -118,6 +121,27 @@ export const overview = query({
         emergencies: missions.filter((m) => m.state === "EMERGENCY_LANDING").length,
         completed: missions.filter((m) => m.state === "COMPLETED").length,
         simulated: true,
+      },
+      ambulance: {
+        guardians: guardians.length,
+        verifiedGuardians: guardians.filter((g) => g.documentsStatus === "verified").length,
+        pendingGuardians: guardians.filter((g) => g.documentsStatus === "pending").length,
+        vehicles: ambulances.length,
+        availableVehicles: ambulances.filter((a) => a.available).length,
+        activeBookings: ambulanceBookings.filter((b) =>
+          [
+            "requested",
+            "searching",
+            "accepted",
+            "guardian_assigned",
+            "on_the_way",
+            "arrived_pickup",
+            "patient_picked_up",
+            "in_transit",
+          ].includes(b.status),
+        ).length,
+        completedBookings: ambulanceBookings.filter((b) => b.status === "completed").length,
+        cancelledBookings: ambulanceBookings.filter((b) => b.status === "cancelled").length,
       },
       donors: {
         invitations: invitations.length,

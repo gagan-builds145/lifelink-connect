@@ -51,6 +51,7 @@ import {
   ArrowRight,
   Building2,
   CalendarPlus,
+  Ambulance,
   CheckCircle2,
   ClipboardList,
   Clock3,
@@ -273,6 +274,7 @@ export default function HospitalDashboard() {
       demoData={demoPresent}
       accentIcon={Building2}
       quickLinks={[
+        { label: "Book an ambulance", href: "/ambulance", icon: Ambulance },
         { label: "Supply command", href: "/supply", icon: Siren },
         { label: "Drone operations", href: "/drones", icon: MapPin },
         { label: "Public blood search", href: "/blood-search", icon: Droplets },

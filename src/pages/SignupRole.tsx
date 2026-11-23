@@ -4,19 +4,21 @@ import { Button } from "@/components/ui/button";
 import { ROLE_CARDS } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
-import { ArrowRight, Building2, HeartHandshake, Hospital, Stethoscope } from "lucide-react";
+import { Ambulance, ArrowRight, Building2, HeartHandshake, Hospital, Stethoscope } from "lucide-react";
 import { Link } from "react-router";
 
 const icons = {
   community: HeartHandshake,
   red_cross: Building2,
   hospital: Hospital,
+  guardian: Ambulance,
 } as const;
 
 const accents = {
   crimson: "bg-primary/8 text-primary border-primary/20",
   teal: "bg-teal-50 text-teal-700 border-teal-200",
   amber: "bg-amber-50 text-amber-700 border-amber-200",
+  navy: "bg-sky-50 text-sky-800 border-sky-200",
 } as const;
 
 export default function SignupRole() {
@@ -45,7 +47,7 @@ export default function SignupRole() {
             </p>
           </motion.div>
 
-          <div className="mt-8 overflow-visible grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-8 overflow-visible grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {ROLE_CARDS.map((card, index) => {
               const Icon = icons[card.role as keyof typeof icons] ?? Stethoscope;
               return (

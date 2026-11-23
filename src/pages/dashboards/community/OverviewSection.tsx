@@ -83,7 +83,7 @@ export function OverviewSection({ onNavigate }: { onNavigate: (section: SectionK
         <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="max-w-2xl">
             <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-primary-foreground/70">
-              Unified community dashboard
+Donor dashboard
             </p>
             <h1 className="mt-2 font-display text-2xl font-extrabold leading-tight sm:text-3xl">
               Welcome back{overview.user.name ? `, ${overview.user.name.split(" ")[0]}` : ""}

@@ -564,7 +564,7 @@ export default function Landing() {
             </h2>
             <p className="mt-4 max-w-xl text-[14px] leading-7 text-white/65">
               Raise an emergency or urgent request with hospital details, units and a
-              prescription. Authorized Red Cross staff verify it, reserve compatible
+              prescription. Authorized blood bank staff verify it, reserve compatible
               stock, and notify the hospital for dispatch and receipt — with every step
               timestamped.
             </p>
@@ -602,7 +602,7 @@ export default function Landing() {
               {[
                 { title: "Request verified", body: "Hospital, patient reference, component and units checked.", done: true },
                 { title: "Compatible stock reserved", body: "The ledger holds units so another request cannot oversell them.", done: true },
-                { title: "Dispatch recorded", body: "Red Cross staff consume the reserved batch; hospital is notified.", done: false },
+                { title: "Dispatch recorded", body: "Blood bank staff consume the reserved batch; hospital is notified.", done: false },
                 { title: "Hospital receipt confirmed", body: "Only the receiving hospital can confirm receipt.", done: false },
               ].map((step, index) => (
                 <div key={step.title} className="flex gap-3">
@@ -643,7 +643,7 @@ export default function Landing() {
             <SectionHeading
               eyebrow="Verified blood search"
               title={<>Search reported availability, <span className="text-primary">not promises.</span></>}
-              description="Filter by blood group, component and city. Results come only from verified Red Cross branches, blood banks and hospitals sharing this database — with the last stock update time shown."
+              description="Filter by blood group, component and city. Results come only from verified blood banks and hospitals sharing this database — with the last stock update time shown."
             />
             <div className="mt-6 min-w-0">
               <SearchWidget onDemo={() => void loadDemo()} demoBusy={demoBusy} />
@@ -745,7 +745,7 @@ export default function Landing() {
                 icon: FileCheck2,
                 step: "02",
                 title: "Verify request",
-                body: "Authorized Red Cross staff review the request and uploaded document, then approve or reject with a reason.",
+                body: "Authorized blood bank staff review the request and uploaded document, then approve or reject with a reason.",
               },
               {
                 icon: Search,
@@ -1122,7 +1122,7 @@ export default function Landing() {
                 icon: HeartPulse,
               },
               {
-                title: "For Red Cross",
+                title: "For Blood Banks",
                 body: "Verify requests, manage inventory with expiry alerts, coordinate camps and leave a complete audit trail.",
                 icon: Building2,
               },

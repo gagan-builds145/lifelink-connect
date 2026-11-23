@@ -20,6 +20,9 @@ const SignupDonor = lazy(() => import("./pages/signup/SignupDonor.tsx"));
 const SignupRequestor = lazy(() => import("./pages/signup/SignupRequestor.tsx"));
 const SignupRedCross = lazy(() => import("./pages/signup/SignupRedCross.tsx"));
 const SignupHospital = lazy(() => import("./pages/signup/SignupHospital.tsx"));
+const SignupGuardian = lazy(() => import("./pages/signup/SignupGuardian.tsx"));
+const GuardianDashboard = lazy(() => import("./pages/GuardianDashboard.tsx"));
+const AmbulanceBooking = lazy(() => import("./pages/AmbulanceBooking.tsx"));
 const DashboardRedirect = lazy(() => import("./pages/DashboardRedirect.tsx"));
 const CommunityDashboard = lazy(() => import("./pages/dashboards/CommunityDashboard.tsx"));
 const DonorDashboard = lazy(() => import("./pages/dashboards/DonorDashboard.tsx"));
@@ -345,6 +348,38 @@ createRoot(document.getElementById("root")!).render(
                 }
               />
 
+              {/* Shared ambulance dispatch */}
+              <Route
+                path="/ambulance"
+                element={
+                  <RequireAuth
+                    redirectImmediately
+                    title="Sign in to book an ambulance"
+                    description="Donors, hospitals and blood banks can book and track an ambulance from one shared dispatch system."
+                  >
+                    <RequireRole
+                      roles={["community", "donor", "requestor", "hospital", "red_cross", "admin"]}
+                    >
+                      <AmbulanceBooking />
+                    </RequireRole>
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/guardian/dashboard"
+                element={
+                  <RequireAuth
+                    redirectImmediately
+                    title="Guardian sign-in required"
+                    description="Ambulance availability, driver details, incoming bookings and live journeys require a verified Guardian account."
+                  >
+                    <RequireRole roles={["guardian"]}>
+                      <GuardianDashboard />
+                    </RequireRole>
+                  </RequireAuth>
+                }
+              />
+
               {/* Autonomous supply chain operations */}
               <Route
                 path="/supply"
@@ -388,6 +423,8 @@ createRoot(document.getElementById("root")!).render(
                   </RequireAuth>
                 }
               />
+
+              <Route path="/signup/guardian" element={<SignupGuardian />} />
 
               {/* Protected records */}
               <Route

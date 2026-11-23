@@ -394,7 +394,7 @@ export default function SupplyCommand() {
 
   return (
     <DashboardShell
-      roleLabel={role === "hospital" ? "Hospital supply chain" : role === "red_cross" ? "Red Cross network" : ROLE_LABELS[role]}
+      roleLabel={role === "hospital" ? "Hospital supply chain" : role === "red_cross" ? "Blood bank network" : ROLE_LABELS[role]}
       roleKey={org?.orgId ?? "Network command"}
       title="Autonomous blood supply command"
       subtitle="Institutional search, deterministic allocation, custody-tracked transfers, demand forecasts and donor fallback — all backed by the shared LifeLink ledger."
@@ -703,7 +703,7 @@ export default function SupplyCommand() {
                 candidates={search?.candidates ?? []}
               />
               <p className="mt-2 text-[9.5px] leading-4 text-muted-foreground">
-                Only verified hospitals and Red Cross societies with registered
+                Only verified hospitals and blood banks with registered
                 coordinates are plotted. Highlighted facilities are eligible supplies
                 for the selected request.
               </p>

@@ -16,6 +16,7 @@ export const APP_ROLES = [
   "requestor",
   "red_cross",
   "hospital",
+  "guardian",
   "drone_ops",
   "user",
   "member",
@@ -162,7 +163,7 @@ export async function enforceRateLimit(
 type NotificationInput = {
   title: string;
   body: string;
-  kind: "request" | "match" | "inventory" | "camp" | "system";
+  kind: "request" | "match" | "inventory" | "camp" | "ambulance" | "system";
   requestId?: Doc<"bloodRequests">["_id"];
   link?: string;
 };

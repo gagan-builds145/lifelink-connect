@@ -9,6 +9,7 @@ import { cn, friendlyError } from "@/lib/utils";
 import { useAction, useMutation, useQuery } from "convex/react";
 import {
   Activity,
+  Ambulance,
   BrainCircuit,
   Building2,
   CheckCircle2,
@@ -127,6 +128,7 @@ export default function AdminConsole() {
   const anomalies = useQuery(api.forecasting.anomalyReport, {});
   const securityCounts = useQuery(api.security.securityEventCounts, {});
   const securityTimeline = useQuery(api.security.recentSecurityEvents, { limit: 60 });
+  const guardians = useQuery(api.ambulances.adminGuardians);
 
   const [tab, setTab] = useState("overview");
   const [busy, setBusy] = useState<string | null>(null);
@@ -148,6 +150,7 @@ export default function AdminConsole() {
   const trainDonorModel = useAction(api.ml.trainDonorModel);
   const trainDemandModel = useAction(api.ml.trainDemandModel);
   const checkMlService = useAction(api.ml.mlServiceStatus);
+  const reviewGuardian = useMutation(api.ambulances.reviewGuardian);
 
   const verified = facilities ?? [];
 
@@ -211,6 +214,7 @@ export default function AdminConsole() {
     { key: "network", label: "Institutions & policy", icon: Building2 },
     { key: "integrations", label: "Integrations & sync", icon: Database, badge: overview?.integrations.failing },
     { key: "safety", label: "Safety & notifications", icon: Siren, badge: overview?.anomalies.critical },
+    { key: "ambulance", label: "Ambulance network", icon: Ambulance, badge: overview?.ambulance.pendingGuardians },
     { key: "ml", label: "AI / ML registry", icon: BrainCircuit },
     { key: "security", label: "Security monitoring", icon: ShieldAlert, badge: securityCounts?.unresolved },
     { key: "audit", label: "Audit trail", icon: ScrollText },
@@ -934,6 +938,70 @@ export default function AdminConsole() {
                   Push notifications are not implemented. Missing email/SMS credentials mark jobs{" "}
                   <code className="rounded bg-muted px-1">skipped_no_provider</code> rather than
                   pretending they were delivered.
+                </p>
+              </Panel>
+            </div>
+          )}
+
+          {tab === "ambulance" && (
+            <div className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <StatCard label="Guardian providers" value={overview?.ambulance.guardians ?? 0} hint={`${overview?.ambulance.pendingGuardians ?? 0} awaiting document review`} icon={Ambulance} />
+                <StatCard label="Ambulances" value={overview?.ambulance.vehicles ?? 0} hint={`${overview?.ambulance.availableVehicles ?? 0} available`} icon={Truck} />
+                <StatCard label="Active bookings" value={overview?.ambulance.activeBookings ?? 0} hint="Requested through in transit" icon={Activity} />
+                <StatCard label="Completed bookings" value={overview?.ambulance.completedBookings ?? 0} hint={`${overview?.ambulance.cancelledBookings ?? 0} cancelled`} icon={CheckCircle2} />
+              </div>
+
+              <Panel eyebrow="Guardian verification" title="Ambulance service providers">
+                {(guardians ?? []).length === 0 ? (
+                  <p className="rounded-xl border border-dashed border-border p-4 text-[11.5px] text-muted-foreground">
+                    No Guardian ambulance providers have registered yet.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {(guardians ?? []).map((guardian) => (
+                      <div key={String(guardian.userId)} className="rounded-xl border border-border p-3">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div>
+                            <p className="text-[12.5px] font-bold">{guardian.companyName}</p>
+                            <p className="text-[10.5px] text-muted-foreground">
+                              {guardian.contactPerson} · {guardian.phone} · {guardian.city}
+                            </p>
+                            <p className="mt-0.5 text-[10px] text-muted-foreground">
+                              {guardian.email ?? "No email"} · {guardian.online ? "Online" : "Offline"}
+                            </p>
+                          </div>
+                          <span className="rounded-full border border-border px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-[0.08em]">
+                            {guardian.documentsStatus}
+                          </span>
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {(["verified", "rejected", "pending"] as const).map((status) => (
+                            <Button
+                              key={status}
+                              size="sm"
+                              variant={guardian.documentsStatus === status ? "default" : "outline"}
+                              className="h-7 text-[10px] capitalize"
+                              disabled={busy === `guardian-${guardian.userId}-${status}`}
+                              onClick={() =>
+                                void run(
+                                  `guardian-${guardian.userId}-${status}`,
+                                  () => reviewGuardian({ guardianUserId: guardian.userId, status }),
+                                  `Guardian marked ${status}.`,
+                                )
+                              }
+                            >
+                              {status}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <p className="mt-2 text-[9px] leading-4 text-muted-foreground">
+                  Only verified, online Guardians with an available ambulance appear in nearby searches.
+                  Document review is an administrative check, not a medical endorsement.
                 </p>
               </Panel>
             </div>

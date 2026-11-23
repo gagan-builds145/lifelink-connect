@@ -34,7 +34,7 @@ export type OrganizationMapCandidate = {
 const FILTERS: Array<{ key: MapFilter; label: string }> = [
   { key: "all", label: "All locations" },
   { key: "hospital", label: "Hospitals" },
-  { key: "red_cross", label: "Red Cross" },
+  { key: "red_cross", label: "Blood banks" },
   { key: "own", label: "Your bases" },
 ];
 
@@ -114,7 +114,7 @@ function OrganizationMapData({
           ? "YOUR ORGANIZATION BASE"
           : location.type === "hospital"
             ? "Registered hospital"
-            : "Registered Red Cross society";
+            : "Registered blood bank";
         const meta = [
           location.city +
             (location.area ? ` · ${location.area}` : ""),
@@ -144,7 +144,7 @@ function OrganizationMapData({
 
   const legend: NetworkMapLegendItem[] = [
     { color: HOSPITAL_COLOR, label: "Registered hospitals" },
-    { color: RED_CROSS_COLOR, label: "Registered Red Cross" },
+    { color: RED_CROSS_COLOR, label: "Registered blood banks" },
     {
       color: OWN_BASE_COLOR,
       label: "Your organization base",
@@ -209,7 +209,7 @@ function OrganizationMapData({
       {points.length === 0 && (
         <p className="mt-2 rounded-xl border border-dashed border-border bg-muted/20 px-3 py-2 text-[11px] text-muted-foreground">
           {locations.length === 0
-            ? "No verified hospitals or Red Cross societies with registered coordinates are available yet."
+            ? "No verified hospitals or blood banks with registered coordinates are available yet."
             : filter === "own"
               ? counts.own === 0
                 ? "No organization base is linked to this account."

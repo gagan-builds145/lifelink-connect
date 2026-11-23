@@ -62,6 +62,7 @@ import {
 import { useMutation, useQuery } from "convex/react";
 import {
   AlertTriangle,
+  Ambulance,
   BarChart3,
   Building2,
   CalendarHeart,
@@ -640,9 +641,9 @@ export default function RedCrossDashboard() {
 
   return (
     <DashboardShell
-      roleLabel="Red Cross Society"
+      roleLabel="Blood Bank"
       roleKey={org?.orgId ?? "Staff workspace"}
-      title="Red Cross dashboard"
+      title="Blood bank dashboard"
       subtitle={
         org
           ? `${org.name} · verified ${org.city} branch. Requests, inventory, camps and donor records share one database with hospitals and requestors.`
@@ -654,6 +655,7 @@ export default function RedCrossDashboard() {
       demoData={demoPresent}
       accentIcon={Building2}
       quickLinks={[
+        { label: "Book an ambulance", href: "/ambulance", icon: Ambulance },
         { label: "Supply command", href: "/supply", icon: Siren },
         { label: "Drone operations", href: "/drones", icon: MapPin },
         { label: "Public blood search", href: "/blood-search", icon: Search },
@@ -724,7 +726,7 @@ export default function RedCrossDashboard() {
             </div>
           )}
 
-          <BloodTypeCoverage coverage={coverage} city={org?.city} roleLabel="Red Cross" />
+          <BloodTypeCoverage coverage={coverage} city={org?.city} roleLabel="Blood Bank" />
 
           {(inboundAlerts ?? []).length > 0 && (
             <section className="rounded-2xl border border-border bg-card p-4">
@@ -1007,7 +1009,7 @@ export default function RedCrossDashboard() {
 
       {tab === "inventory" && (
         <div className="mt-4 space-y-4">
-          <BloodTypeCoverage coverage={coverage} city={org?.city} roleLabel="Red Cross" />
+          <BloodTypeCoverage coverage={coverage} city={org?.city} roleLabel="Blood Bank" />
 
           <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -1081,7 +1083,7 @@ export default function RedCrossDashboard() {
             )}
           </div>
 
-          <BatchDeadlineEditor batches={inventory} roleLabel="Red Cross" />
+          <BatchDeadlineEditor batches={inventory} roleLabel="Blood Bank" />
 
           <div className="overflow-hidden rounded-2xl border border-border bg-card">
             <div className="border-b border-border p-4">

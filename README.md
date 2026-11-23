@@ -6,6 +6,16 @@ LifeLink is a working React + Convex application that connects donors, requestor
 
 It is not a static prototype. It is also **not** certified medical software or an aircraft control system. Read [Known limitations](docs/limitations.md) before any real use.
 
+## LifeLink Connect 2.0 additions
+
+- User-facing role names are now **Donor**, **Hospital**, **Blood Bank** and **Guardian**. Legacy internal role/org keys are preserved so existing records keep working.
+- New **Guardian ambulance provider** role, registration, fleet/driver management, document review and dispatch dashboard.
+- Shared **ambulance booking** for Donor, Hospital and Blood Bank at `/ambulance`, with nearby discovery, GPS pickup, fare/ETA estimates, lifecycle status, live location sharing and history.
+- Convex tables and indexes for Guardian profiles, ambulances, bookings and append-only booking events; all authorization is server-side.
+- TensorFlow/Keras ANN, LSTM and Autoencoder training pipelines are present under `ml_service/scripts/`. They require `ml_service/requirements-deep.txt` and were **not trained** in this environment (TensorFlow unavailable, disk space insufficient). No deep-learning metrics are claimed.
+
+See [docs/lifelink-2.md](docs/lifelink-2.md) for role mapping, ambulance security rules, schema additions and the exact ML limitation.
+
 ---
 
 ## 1. What is implemented
@@ -13,7 +23,7 @@ It is not a static prototype. It is also **not** certified medical software or a
 | Area | Status |
 | --- | --- |
 | Public landing, verified blood search, camps, privacy, terms | ✅ |
-| Passwordless email OTP auth, donor/requestor/hospital/Red Cross signup | ✅ |
+| Passwordless email OTP auth, Donor/Hospital/Blood Bank/Guardian signup | ✅ |
 | **Unified community dashboard** — donor + requestor in one sidebar | ✅ |
 | Donor capability: availability, invitations, offers, camps, history, consent | ✅ |
 | Requestor capability: create/edit/cancel, timeline, allocation, receipts | ✅ |
@@ -33,7 +43,7 @@ It is not a static prototype. It is also **not** certified medical software or a
 | **Drone operations** (`/drones`) | ✅ bases, fleet, airspace, route proxy, 12 preflight checks |
 | **Simulated mission lifecycle** | ✅ 15 states, telemetry, failure drills, handoff code, return-to-base |
 | **Admin control room** (`/admin/dashboard`) | ✅ network health, policy, agreements, sync, ML, safety, audit |
-| **Automated tests** | ✅ 41 TypeScript tests (28 domain + 13 real Convex integration) + 22 Python model/training/SITL-validation tests, executed on Python 3.13.15 and 3.10.12 |
+| **Automated tests** | ✅ 126 TypeScript tests across 8 suites, including map, Guardian and ambulance dispatch coverage; 22 existing Python model/training/SITL tests remain available |
 | Real HMS/blood-bank production connector | ❌ framework + mock only |
 | PX4/ArduPilot SITL / MAVLink | ⚠️ SITL export + MAVSDK bridge present; **not executed** because no SITL runtime is installed |
 | Live API/E2E/load/security/live-SITL suites | ❌ not included |

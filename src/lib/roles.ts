@@ -5,19 +5,21 @@ export type AppRole =
   | "requestor"
   | "red_cross"
   | "hospital"
+  | "guardian"
   | "drone_ops"
   | "user"
   | "member";
 
 export const ROLE_LABELS: Record<AppRole, string> = {
   admin: "Administrator",
-  community: "Donor & Blood Requestor",
-  // Legacy role values are kept for existing accounts, but both map to the
-  // combined self-service role in the interface.
-  donor: "Donor & Blood Requestor",
-  requestor: "Donor & Blood Requestor",
-  red_cross: "Red Cross Society",
+  community: "Donor",
+  // Legacy role values are kept for existing accounts, but every self-service
+  // profile now presents as Donor in the interface.
+  donor: "Donor",
+  requestor: "Donor",
+  red_cross: "Blood Bank",
   hospital: "Hospital",
+  guardian: "Guardian ambulance provider",
   drone_ops: "Drone operations",
   user: "Visitor",
   member: "Member",
@@ -33,6 +35,8 @@ export function dashboardPathForRole(role?: string | null): string {
       return "/community/dashboard";
     case "red_cross":
       return "/red-cross/dashboard";
+    case "guardian":
+      return "/guardian/dashboard";
     case "admin":
       return "/admin/dashboard";
     case "hospital":
@@ -61,6 +65,7 @@ export function hasDashboardRole(role?: string | null): boolean {
     role === "requestor" ||
     role === "red_cross" ||
     role === "hospital" ||
+    role === "guardian" ||
     role === "drone_ops" ||
     role === "admin"
   );
@@ -69,7 +74,7 @@ export function hasDashboardRole(role?: string | null): boolean {
 export const ROLE_CARDS = [
   {
     role: "community",
-    title: "Donor & Blood Requestor",
+    title: "Donor",
     description:
       "Give blood, request blood for a patient, and add either profile from one verified account.",
     href: "/signup/community",
@@ -77,9 +82,9 @@ export const ROLE_CARDS = [
   },
   {
     role: "red_cross",
-    title: "Red Cross Society",
+    title: "Blood Bank",
     description:
-      "Verify requests, manage shared inventory and camps, and keep every stock movement auditable.",
+      "Verify requests, manage blood inventory, expiry and stock movements with an auditable ledger.",
     href: "/signup/red-cross",
     accent: "teal" as const,
   },
@@ -87,8 +92,16 @@ export const ROLE_CARDS = [
     role: "hospital",
     title: "Hospital",
     description:
-      "Submit hospital blood requests, track dispatch and confirm receipt against the shared ledger.",
+      "Submit hospital blood requests, track dispatch, confirm receipt and book patient transport.",
     href: "/signup/hospital",
     accent: "amber" as const,
+  },
+  {
+    role: "guardian",
+    title: "Guardian ambulance provider",
+    description:
+      "Register ambulances, manage drivers, accept nearby bookings and share live journey status.",
+    href: "/signup/guardian",
+    accent: "navy" as const,
   },
 ];

@@ -468,9 +468,6 @@ export default function Landing() {
                 Autonomous Blood Supply & Drone Logistics
               </span>
             </h1>
-            <p className="mt-5 font-display text-[18px] font-bold tracking-tight text-primary sm:text-[21px]">
-              Donate Blood, Save Lives. Every Second Matters.
-            </p>
             <div className="mt-7 flex flex-wrap gap-2.5">
               <Button asChild size="lg" className="h-11 gap-2 px-5">
                 <Link to="/blood-search">

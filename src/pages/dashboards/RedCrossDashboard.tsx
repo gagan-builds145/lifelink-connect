@@ -644,11 +644,6 @@ export default function RedCrossDashboard() {
       roleLabel="Blood Bank"
       roleKey={org?.orgId ?? "Staff workspace"}
       title="Blood bank dashboard"
-      subtitle={
-        org
-          ? `${org.name} · verified ${org.city} branch. Requests, inventory, camps and donor records share one database with hospitals and requestors.`
-          : "Your branch profile is being prepared."
-      }
       items={navItems}
       active={tab}
       onSelect={(key) => setTab(key as Tab)}

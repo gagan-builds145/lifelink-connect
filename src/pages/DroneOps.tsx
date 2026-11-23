@@ -334,7 +334,6 @@ export default function DroneOps() {
       roleLabel={ROLE_LABELS[role] ?? "Drone operations"}
       roleKey={user?.name ?? "Uncrewed logistics"}
       title="Drone operations control"
-      subtitle="Plan, validate, dispatch and monitor facility-to-facility blood transport missions in software-in-the-loop simulation."
       items={navItems}
       active={tab}
       onSelect={setTab}

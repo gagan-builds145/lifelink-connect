@@ -129,11 +129,6 @@ export default function DonationCamps() {
               <h1 className="mt-3 text-balance font-display text-[36px] font-extrabold leading-[1.06] tracking-tight sm:text-[46px]">
                 Give an hour. <span className="text-primary">Give someone a future.</span>
               </h1>
-              <p className="mt-4 text-[14px] leading-7 text-muted-foreground">
-                Register at a verified donation camp near you. Capacity is live from the
-                shared database, and an actual donation is recorded only by authorized staff
-                after on-site screening.
-              </p>
               <div className="mt-5 flex flex-wrap gap-2.5">
                 <Button asChild variant="outline" className="gap-2">
                   <Link to="/signup/donor"><HeartHandshake className="size-4 text-primary" /> Become a donor</Link>

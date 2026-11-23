@@ -13,6 +13,7 @@ import { Progress } from "@/components/ui/progress";
 import { formatDate, formatRelative } from "@/lib/blood";
 import { useQuery } from "convex/react";
 import {
+  Ambulance,
   ArrowRight,
   BellRing,
   CheckCircle2,
@@ -82,16 +83,9 @@ export function OverviewSection({ onNavigate }: { onNavigate: (section: SectionK
         />
         <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="max-w-2xl">
-            <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-primary-foreground/70">
-Donor dashboard
-            </p>
-            <h1 className="mt-2 font-display text-2xl font-extrabold leading-tight sm:text-3xl">
-              Welcome back{overview.user.name ? `, ${overview.user.name.split(" ")[0]}` : ""}
+            <h1 className="font-display text-2xl font-extrabold leading-tight sm:text-3xl">
+              Donor dashboard
             </h1>
-            <p className="mt-2 text-[12.5px] leading-6 text-background/70">
-              One verified account for both sides of the network. Give blood, request blood,
-              and follow every update without changing workspace.
-            </p>
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-[10.5px] font-semibold">
                 <HeartHandshake className="size-3 text-primary-foreground" />
@@ -113,6 +107,15 @@ Donor dashboard
               onClick={() => onNavigate("request")}
             >
               <Plus className="size-4" /> New blood request
+            </Button>
+            <Button
+              asChild
+              variant="outline"
+              className="gap-2 border-white/25 bg-transparent text-background hover:bg-white/10 hover:text-background"
+            >
+              <Link to="/ambulance?auto=1">
+                <Ambulance className="size-4" /> Book Ambulance
+              </Link>
             </Button>
             <Button
               variant="outline"

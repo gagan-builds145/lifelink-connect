@@ -1,7 +1,7 @@
 {
   "model": "isolation_forest_inventory",
   "version": "isolation-forest-2026-11-23-240",
-  "trained_at": "2026-11-23T07:06:15.215745+00:00",
+  "trained_at": "2026-11-23T15:47:34.502848+00:00",
   "synthetic": true,
   "sample_size": 240,
   "feature_names": [

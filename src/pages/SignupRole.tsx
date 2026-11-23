@@ -38,13 +38,6 @@ export default function SignupRole() {
             <h1 className="text-balance font-display text-[36px] font-extrabold leading-[1.05] tracking-tight sm:text-[46px]">
               Create your LifeLink account
             </h1>
-            <p className="mt-3 max-w-2xl text-[12.5px] leading-6 text-muted-foreground">
-              One account today can cover both giving blood and requesting blood. Add either profile first,
-              then switch between your donor and requestor workspaces from the same community dashboard.
-            </p>
-            <p className="mt-2 text-[11.5px] leading-5 text-muted-foreground">
-              Donors give blood. Requestors ask for blood. With one account, you can do both.
-            </p>
           </motion.div>
 
           <div className="mt-8 overflow-visible grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

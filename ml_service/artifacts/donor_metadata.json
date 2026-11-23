@@ -1,7 +1,7 @@
 {
   "model": "random_forest_donor_response",
   "version": "rf-donor-2026-11-23-f8337253ac",
-  "trained_at": "2026-11-23T07:06:14.234322+00:00",
+  "trained_at": "2026-11-23T15:47:33.702059+00:00",
   "dataset_label": "deterministic synthetic consented donor-response sample",
   "synthetic": true,
   "sample_size": 900,

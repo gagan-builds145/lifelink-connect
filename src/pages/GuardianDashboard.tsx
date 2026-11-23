@@ -176,7 +176,6 @@ export default function GuardianDashboard() {
       roleLabel="Guardian"
       roleKey={profile?.companyName ?? "Ambulance provider"}
       title="Guardian ambulance dashboard"
-      subtitle="Manage your fleet, incoming requests, live journeys and booking history."
       items={navItems}
       active={tab}
       onSelect={(key) => setTab(key as Tab)}

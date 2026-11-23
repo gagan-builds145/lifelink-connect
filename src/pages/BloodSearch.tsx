@@ -161,12 +161,6 @@ export default function BloodSearch() {
               <h1 className="mt-3 max-w-3xl text-balance font-display text-[36px] font-extrabold leading-[1.06] tracking-tight sm:text-[46px]">
                 Find reported blood availability, <span className="text-primary">without false promises.</span>
               </h1>
-              <p className="mt-4 max-w-2xl text-[14px] leading-7 text-muted-foreground">
-                Search verified blood banks, participating organizations and hospitals
-                sharing the LifeLink database. Every result shows when stock was last
-                updated. Searches start inside your own city — state and country-wide
-                coverage opens only for emergencies.
-              </p>
               <div className="mt-5 flex flex-wrap gap-2.5">
                 <Button asChild className="gap-2">
                   <Link to="/signup/requestor">

@@ -397,7 +397,6 @@ export default function SupplyCommand() {
       roleLabel={role === "hospital" ? "Hospital supply chain" : role === "red_cross" ? "Blood bank network" : ROLE_LABELS[role]}
       roleKey={org?.orgId ?? "Network command"}
       title="Autonomous blood supply command"
-      subtitle="Institutional search, deterministic allocation, custody-tracked transfers, demand forecasts and donor fallback — all backed by the shared LifeLink ledger."
       items={navItems}
       active={tab}
       onSelect={setTab}

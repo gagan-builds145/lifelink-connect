@@ -2,6 +2,8 @@
 
 ## Status in this deployment
 
+> **UI note (Phase 4):** the donor dashboard “Identity & Blood Group” page was removed at the user's request. This document describes the retained backend, consent, callback and administrator audit architecture. No donor-facing identity UI is currently routed.
+
 - **Live UIDAI/Aadhaar verification: DISABLED.** No live provider contract, credentials, legal approval or certification is present in this repository.
 - **Sandbox provider: ENABLED by default** (`AADHAAR_SANDBOX_MODE` not set to `false`). Sandbox sessions are explicitly labelled and stored with `sandbox: true`. A sandbox result is **not** a UIDAI Aadhaar verification and must never be presented as one.
 - No Aadhaar number, OTP, biometric, raw provider payload or identity-document image is stored by this feature.

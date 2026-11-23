@@ -5,7 +5,7 @@ import { LayoutDashboard, LogOut } from "lucide-react";
 import { useNavigate } from "react-router";
 
 export default function Dashboard() {
-  const { user, signOut } = useAuth();
+  const { signOut } = useAuth();
   const navigate = useNavigate();
 
   const handleSignOut = async () => {
@@ -18,12 +18,7 @@ export default function Dashboard() {
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-8">
         <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-sm font-medium text-muted-foreground">
-              Authenticated workspace
-            </p>
-            <h1 className="mt-1 text-3xl font-bold tracking-tight">
-              Welcome{user?.name ? `, ${user.name}` : ""}
-            </h1>
+            <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
           </div>
           <Button
             type="button"

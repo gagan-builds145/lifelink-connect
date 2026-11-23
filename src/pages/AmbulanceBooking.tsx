@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
+import { useSearchParams } from "react-router";
 import { toast } from "sonner";
 import {
   Ambulance,
@@ -34,6 +35,7 @@ import {
   type AmbulanceType,
 } from "@/lib/ambulance";
 import { formatRelative } from "@/lib/blood";
+import { AmbulanceOneTap } from "./AmbulanceOneTap";
 
 type Tab = "book" | "bookings";
 
@@ -43,7 +45,17 @@ function asNumber(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+/**
+ * `/ambulance` keeps one route. `?auto=1` is the donor one-tap GPS flow; the
+ * existing manual/staff booking interface remains available otherwise.
+ */
 export default function AmbulanceBooking() {
+  const [params] = useSearchParams();
+  if (params.get("auto") === "1") return <AmbulanceOneTap />;
+  return <ManualAmbulanceBooking />;
+}
+
+function ManualAmbulanceBooking() {
   const { user } = useAuth();
   const role = (user?.role ?? "donor") as AppRole;
   const [tab, setTab] = useState<Tab>("book");
@@ -257,7 +269,6 @@ export default function AmbulanceBooking() {
       roleLabel={ROLE_LABELS[role] ?? "LifeLink"}
       roleKey="Shared ambulance dispatch"
       title="Book an ambulance"
-      subtitle="One dispatch system for donors, hospitals and blood banks. Requests are sent to verified, available Guardians."
       items={navItems}
       active={tab}
       onSelect={(key) => setTab(key as Tab)}

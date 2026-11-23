@@ -34,6 +34,12 @@ Phase 3 adds production hardening without rebuilding the project: provider-indep
 
 Read [docs/phase3-audit-report.md](docs/phase3-audit-report.md), [docs/phase3-report.md](docs/phase3-report.md) and [docs/identity-verification.md](docs/identity-verification.md).
 
+### Phase 4 verification
+
+Phase 4 adds a donor one-tap GPS ambulance request (no destination or patient questions), heading-only dashboards, and removes the donor Identity & Blood Group dashboard section while keeping all blood-group data and backend verification records. The three lightweight models were retrained; ANN, LSTM and Autoencoder remain untrained because TensorFlow is unavailable and cannot be installed with the free disk on this host. `bun test` now reports **151 passing tests**, `pytest` **57 passed**, TypeScript is clean and the production build succeeds. Browser/GPS behaviour and deep-model training are still unverified in this environment.
+
+Read [docs/phase4-report.md](docs/phase4-report.md) for actual metrics, commands and limitations.
+
 ---
 
 ## 1. What is implemented
@@ -42,8 +48,10 @@ Read [docs/phase3-audit-report.md](docs/phase3-audit-report.md), [docs/phase3-re
 | --- | --- |
 | Public landing, verified blood search, camps, privacy, terms | ✅ |
 | Passwordless email OTP auth, Donor/Hospital/Blood Bank/Guardian signup | ✅ |
-| **Donor identity verification** (provider adapter, signed callbacks, consent) | ✅ sandbox only; live verification disabled |
-| **Donor-declared blood group** with change history and medical lock | ✅ never derived from Aadhaar |
+| **One-tap ambulance request** from live GPS | ✅ auto-booking, real assignment, no destination questions |
+| **Heading-only UI** across dashboards and public pages | ✅ descriptions under main headings removed |
+| **Identity verification backend** (provider adapter, signed callbacks, consent) | ✅ sandbox only; donor dashboard section removed |
+| **Donor-declared blood group** with change history and medical lock | ✅ preserved in profiles/matching; no dedicated dashboard page |
 | **Guardian onboarding** — personal, driver, service, payout, vehicles, documents | ✅ admin review + immutable events |
 | **Multi-role account** — Donor + Guardian without a second login | ✅ server-granted roles, workspace switcher |
 | **Unified community dashboard** — donor + requestor in one sidebar | ✅ |
@@ -65,7 +73,7 @@ Read [docs/phase3-audit-report.md](docs/phase3-audit-report.md), [docs/phase3-re
 | **Drone operations** (`/drones`) | ✅ bases, fleet, airspace, route proxy, 12 preflight checks |
 | **Simulated mission lifecycle** | ✅ 15 states, telemetry, failure drills, handoff code, return-to-base |
 | **Admin control room** (`/admin/dashboard`) | ✅ network health, policy, agreements, sync, ML, safety, audit |
-| **Automated tests** | ✅ 146 TypeScript tests across 10 suites, including Phase 3 identity/Guardian/booking coverage; ✅ 45 Python tests in this environment |
+| **Automated tests** | ✅ 151 TypeScript tests across 11 suites, including one-tap ambulance coverage; ✅ 57 Python tests |
 | Real HMS/blood-bank production connector | ❌ framework + mock only |
 | PX4/ArduPilot SITL / MAVLink | ⚠️ SITL export + MAVSDK bridge present; **not executed** because no SITL runtime is installed |
 | Live API/E2E/load/security/live-SITL suites | ❌ not included |

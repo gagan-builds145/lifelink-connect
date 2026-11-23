@@ -8,7 +8,6 @@ import { Link } from "react-router";
 export function SignupFrame({
   eyebrow,
   title,
-  description,
   asideTitle,
   asideBody,
   asideNote,
@@ -40,7 +39,6 @@ export function SignupFrame({
         <h1 className="mt-2 font-display text-[28px] font-extrabold leading-tight">
           {title}
         </h1>
-        <p className="mt-2 text-[12.5px] leading-6 text-muted-foreground">{description}</p>
         {asideNote ? (
           <p className="mt-2 text-[11.5px] font-semibold text-primary">{asideNote}</p>
         ) : null}

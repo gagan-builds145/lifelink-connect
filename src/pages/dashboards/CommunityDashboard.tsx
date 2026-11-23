@@ -13,7 +13,6 @@ import {
   BellRing,
   ClipboardList,
   Droplets,
-  Fingerprint,
   HeartHandshake,
   HeartPulse,
   Search,
@@ -27,7 +26,6 @@ import { DonateSection } from "./community/DonateSection";
 import { NotificationsSection } from "./community/NotificationsSection";
 import { OverviewSection } from "./community/OverviewSection";
 import { ProfileSection } from "./community/ProfileSection";
-import { IdentitySection } from "./community/IdentitySection";
 import { RequestSection } from "./community/RequestSection";
 import { SettingsSection } from "./community/SettingsSection";
 
@@ -37,7 +35,6 @@ export type SectionKey =
   | "request"
   | "activities"
   | "notifications"
-  | "identity"
   | "profile"
   | "settings";
 
@@ -47,7 +44,6 @@ const SECTION_KEYS: SectionKey[] = [
   "request",
   "activities",
   "notifications",
-  "identity",
   "profile",
   "settings",
 ];
@@ -58,7 +54,6 @@ const SECTION_LABELS: Record<SectionKey, string> = {
   request: "Request Blood",
   activities: "My Activities",
   notifications: "Notifications",
-  identity: "Identity & Blood Group",
   profile: "My Profile",
   settings: "Settings",
 };
@@ -111,7 +106,6 @@ export default function CommunityDashboard() {
       icon: BellRing,
       badge: unread || undefined,
     },
-    { key: "identity", label: SECTION_LABELS.identity, icon: Fingerprint },
     { key: "profile", label: SECTION_LABELS.profile, icon: UserRound },
     { key: "settings", label: SECTION_LABELS.settings, icon: Settings2 },
   ];
@@ -123,7 +117,6 @@ export default function CommunityDashboard() {
       roleLabel="Donor"
       roleKey="Donor & blood requestor"
       title="Donor dashboard"
-      subtitle="Donate blood and request blood from one verified account. Every profile, invitation, request, allocation and receipt update lives in this single workspace."
       items={navItems}
       active={section}
       onSelect={(key) => go(key as SectionKey)}
@@ -167,7 +160,6 @@ export default function CommunityDashboard() {
             )}
             {section === "activities" && <ActivitySection onNavigate={go} />}
             {section === "notifications" && <NotificationsSection onNavigate={go} />}
-            {section === "identity" && <IdentitySection onNavigate={go} />}
             {section === "profile" && me && <ProfileSection me={me} onNavigate={go} />}
             {section === "settings" && me && <SettingsSection me={me} onNavigate={go} />}
           </SectionErrorBoundary>

@@ -261,11 +261,6 @@ export default function HospitalDashboard() {
       roleLabel="Hospital"
       roleKey={org?.orgId ?? "Hospital workspace"}
       title="Hospital dashboard"
-      subtitle={
-        org
-          ? `${org.name} · verified hospital. Requests, dispatch and receipt use the same inventory ledger as the Red Cross dashboard.`
-          : "Your hospital profile is being prepared."
-      }
       items={navItems}
       active={tab}
       onSelect={(key) => setTab(key as Tab)}

@@ -4,7 +4,7 @@
   "demand": {
     "model": "xgboost_demand",
     "version": "xgboost-demand-2026-09-30-58530099a9",
-    "trained_at": "2026-11-23T07:06:13.352409+00:00",
+    "trained_at": "2026-11-23T15:47:32.689161+00:00",
     "source": "train_all.py",
     "dataset_label": "deterministic synthetic demand, 32 blood-group/component series, 365 days",
     "synthetic": true,
@@ -637,7 +637,7 @@
   "donor": {
     "model": "random_forest_donor_response",
     "version": "rf-donor-2026-11-23-f8337253ac",
-    "trained_at": "2026-11-23T07:06:14.234322+00:00",
+    "trained_at": "2026-11-23T15:47:33.702059+00:00",
     "dataset_label": "deterministic synthetic consented donor-response sample",
     "synthetic": true,
     "sample_size": 900,
@@ -687,7 +687,7 @@
   "anomaly": {
     "model": "isolation_forest_inventory",
     "version": "isolation-forest-2026-11-23-240",
-    "trained_at": "2026-11-23T07:06:15.215745+00:00",
+    "trained_at": "2026-11-23T15:47:34.502848+00:00",
     "synthetic": true,
     "sample_size": 240,
     "feature_names": [

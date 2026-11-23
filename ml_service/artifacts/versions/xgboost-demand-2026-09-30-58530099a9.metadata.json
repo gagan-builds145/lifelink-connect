@@ -1,7 +1,7 @@
 {
   "model": "xgboost_demand",
   "version": "xgboost-demand-2026-09-30-58530099a9",
-  "trained_at": "2026-11-23T07:06:13.352409+00:00",
+  "trained_at": "2026-11-23T15:47:32.689161+00:00",
   "source": "train_all.py",
   "dataset_label": "deterministic synthetic demand, 32 blood-group/component series, 365 days",
   "synthetic": true,

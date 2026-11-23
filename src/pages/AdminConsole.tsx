@@ -258,7 +258,6 @@ export default function AdminConsole() {
       roleLabel="System administrator"
       roleKey={user?.name ?? "Network control"}
       title="Network control room"
-      subtitle="Every number below is derived from the live LifeLink ledger, transaction log and mission table. Demo records stay labelled wherever they appear."
       items={navItems}
       active={tab}
       onSelect={setTab}

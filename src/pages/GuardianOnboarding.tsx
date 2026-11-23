@@ -99,7 +99,6 @@ function Onboarding() {
       roleLabel="Donor / Guardian"
       roleKey={me?.user.name ?? "Onboarding"}
       title="Register as a Guardian ambulance partner"
-      subtitle="One account can be a donor and a Guardian. Guardian access stays pending until an administrator approves the application and the required documents are valid."
       items={navItems}
       active="application"
       onSelect={(key) => {

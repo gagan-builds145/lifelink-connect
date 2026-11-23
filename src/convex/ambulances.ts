@@ -554,6 +554,149 @@ export const createBooking = mutation({
   },
 });
 
+/**
+ * One-tap emergency booking.
+ *
+ * The donor has only supplied live GPS coordinates. The server finds a
+ * genuinely available, approved, online ambulance; if none exists the booking
+ * is still created in `searching` so the request is not lost, and the UI shows
+ * an honest pending state. No hospital, patient or destination is invented.
+ * Destination coordination is left to the assigned provider.
+ */
+export const createEmergencyBooking = mutation({
+  args: {
+    pickupLat: v.number(),
+    pickupLng: v.number(),
+    clientRequestId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireRole(ctx, [...BOOKING_ROLES]);
+    const clientRequestId = requireText(args.clientRequestId, "Request id", 8, 120);
+    const existing = await ctx.db
+      .query("ambulanceBookings")
+      .withIndex("by_client_request", (q) => q.eq("clientRequestId", clientRequestId))
+      .first();
+    if (existing) {
+      if (existing.requesterUserId !== user._id) {
+        throw new Error("That request id belongs to another account.");
+      }
+      return {
+        bookingId: existing._id,
+        bookingRef: existing.bookingRef,
+        reused: true,
+        assigned: existing.targetAmbulanceId != null,
+        status: existing.status,
+      };
+    }
+
+    if (!validCoordinate(args.pickupLat, args.pickupLng)) {
+      throw new Error("A valid live GPS location is required to request an ambulance.");
+    }
+
+    const active = await ctx.db
+      .query("ambulanceBookings")
+      .withIndex("by_requester", (q) => q.eq("requesterUserId", user._id))
+      .collect();
+    const current = active.find((booking) => isActiveAmbulanceStatus(booking.status));
+    if (current) {
+      return {
+        bookingId: current._id,
+        bookingRef: current.bookingRef,
+        reused: true,
+        assigned: current.targetAmbulanceId != null,
+        status: current.status,
+        existingActive: true,
+      };
+    }
+
+    const [profiles, ambulances, bookings] = await Promise.all([
+      ctx.db.query("guardianProfiles").collect(),
+      ctx.db.query("ambulances").collect(),
+      ctx.db.query("ambulanceBookings").collect(),
+    ]);
+    const approvedOnline = new Set(
+      profiles
+        .filter((profile) => profile.online && isGuardianApproved(profile))
+        .map((profile) => String(profile.userId)),
+    );
+    const busy = new Set(
+      bookings
+        .filter(
+          (booking) =>
+            booking.assignedAmbulanceId != null &&
+            ACTIVE_AMBULANCE_STATUSES.includes(booking.status as AmbulanceBookingStatus),
+        )
+        .map((booking) => String(booking.assignedAmbulanceId)),
+    );
+
+    const candidates = ambulances
+      .filter(
+        (ambulance) =>
+          ambulance.available &&
+          !busy.has(String(ambulance._id)) &&
+          approvedOnline.has(String(ambulance.guardianUserId)) &&
+          ambulance.latitude != null &&
+          ambulance.longitude != null &&
+          validCoordinate(ambulance.latitude, ambulance.longitude),
+      )
+      .map((ambulance) => ({
+        ambulance,
+        distanceKm: haversineKm(
+          { lat: args.pickupLat, lng: args.pickupLng },
+          { lat: ambulance.latitude as number, lng: ambulance.longitude as number },
+        ),
+      }))
+      .filter((candidate) => candidate.distanceKm <= 100)
+      .sort((a, b) => a.distanceKm - b.distanceKm);
+
+    const selected = candidates[0];
+    const now = Date.now();
+    const bookingRef = await nextSequentialId(ctx, "ambulance_booking", "AMB", 5);
+    const bookingId = await ctx.db.insert("ambulanceBookings", {
+      bookingRef,
+      requesterUserId: user._id,
+      requesterRole: roleOf(user),
+      pickupLabel: "Current GPS location",
+      pickupLat: args.pickupLat,
+      pickupLng: args.pickupLng,
+      destinationLabel: "Destination to be coordinated by the assigned ambulance provider",
+      status: selected ? "requested" : "searching",
+      targetAmbulanceId: selected?.ambulance._id,
+      ambulanceType: selected?.ambulance.type,
+      estimatedEtaMinutes: selected ? estimateEtaMinutes(selected.distanceKm) : undefined,
+      clientRequestId,
+      requestedAt: now,
+      updatedAt: now,
+    });
+    const booking = (await ctx.db.get(bookingId))!;
+    await addEvent(
+      ctx,
+      booking,
+      selected ? "requested" : "searching",
+      user,
+      selected
+        ? "Emergency request created from live GPS. Searching for the selected provider."
+        : "Emergency request created from live GPS. No approved ambulance is currently available.",
+    );
+    if (selected) {
+      await notifyUser(ctx, selected.ambulance.guardianUserId, {
+        title: "Emergency ambulance request",
+        body: `${bookingRef}: live GPS pickup ${selected.distanceKm.toFixed(1)} km away.`,
+        kind: "ambulance",
+        link: "/guardian/dashboard",
+      });
+    }
+    return {
+      bookingId,
+      bookingRef,
+      reused: false,
+      assigned: selected != null,
+      status: booking.status,
+      distanceKm: selected ? Math.round(selected.distanceKm * 10) / 10 : null,
+    };
+  },
+});
+
 export const acceptBooking = mutation({
   args: { bookingId: v.id("ambulanceBookings") },
   handler: async (ctx, args) => {

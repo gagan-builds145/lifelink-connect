@@ -157,7 +157,6 @@ export function DashboardShell({
   roleLabel,
   roleKey,
   title,
-  subtitle,
   items,
   active,
   onSelect,
@@ -171,7 +170,6 @@ export function DashboardShell({
   roleLabel: string;
   roleKey: string;
   title: string;
-  subtitle?: string;
   items: DashNavItem[];
   active: string;
   onSelect: (key: string) => void;
@@ -419,11 +417,6 @@ export function DashboardShell({
         </header>
 
         <main className="mx-auto w-full max-w-[1180px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-          {subtitle && (
-            <p className="mb-5 max-w-3xl text-[13px] leading-6 text-muted-foreground">
-              {subtitle}
-            </p>
-          )}
           {children}
         </main>
       </div>

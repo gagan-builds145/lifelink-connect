@@ -59,6 +59,15 @@ crons.interval(
   internal.aadhaar.expirePendingSessions,
 );
 
+// Searching emergency bookings re-check the live network on a bounded schedule.
+// Each booking carries its own next-attempt time and attempt cap, so this job is
+// idempotent and cannot schedule unlimited retries.
+crons.interval(
+  "re-match searching ambulance bookings",
+  { minutes: 1 },
+  internal.ambulances.rematchSearchingBookings,
+);
+
 // Ambulance requests that nobody accepts must not stay open forever.
 crons.interval(
   "expire stale ambulance requests",

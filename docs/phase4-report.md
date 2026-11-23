@@ -131,7 +131,7 @@ One-tap tests cover: real assignment from live coordinates, idempotent retry, ac
 
 1. No browser/GPS/mobile/animation verification; Chromium is unavailable.
 2. GPS behaviour depends on browser permissions and device hardware. Denial/timeout code paths exist but were not exercised in a real browser.
-3. One-tap assignment picks the nearest approved available vehicle within 100 km. If none exists, the request stays `searching`; automatic re-matching when a vehicle later becomes free is not implemented.
+3. One-tap assignment picks the nearest approved available vehicle within 100 km. If none exists, the request stays `searching`. **Phase 5 adds bounded automatic re-matching** — see `docs/phase5-report.md`.
 4. Destination coordination is explicitly deferred to the assigned provider, as required.
 5. ANN, LSTM and Autoencoder are not trained; TensorFlow is unavailable. No deep-model comparison or production-ready claim is made.
 6. Metrics are synthetic and are not evidence of hospital performance.

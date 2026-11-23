@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { internalMutation, mutation, query } from "./_generated/server";
+import type { MutationCtx } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 import {
   audit,
@@ -17,7 +18,10 @@ import {
 } from "./validators";
 import {
   ACTIVE_AMBULANCE_STATUSES,
-  AMBULANCE_REQUEST_TTL_MS,
+  AMBULANCE_MAX_REMATCH_ATTEMPTS,
+  AMBULANCE_REMATCH_INTERVAL_MS,
+  AMBULANCE_SEARCH_WINDOW_MS,
+  ambulanceOpenDeadline,
   estimateAmbulanceFare,
   estimateEtaMinutes,
   haversineKm,
@@ -73,6 +77,10 @@ function bookingSummary(booking: Doc<"ambulanceBookings">) {
     estimatedEtaMinutes: booking.estimatedEtaMinutes ?? null,
     estimatedFare: booking.estimatedFare ?? null,
     cancellationReason: booking.cancellationReason ?? null,
+    searchExpiresAt: booking.searchExpiresAt ?? null,
+    rematchAttempts: booking.rematchAttempts ?? 0,
+    nextRematchAt: booking.nextRematchAt ?? null,
+    rematchExhaustedAt: booking.rematchExhaustedAt ?? null,
     requestedAt: booking.requestedAt,
     acceptedAt: booking.acceptedAt ?? null,
     completedAt: booking.completedAt ?? null,
@@ -98,6 +106,100 @@ async function addEvent(
     latitude: location?.lat,
     longitude: location?.lng,
     createdAt: Date.now(),
+  });
+}
+
+type EmergencyCandidate = {
+  ambulance: Doc<"ambulances">;
+  distanceKm: number;
+};
+
+/**
+ * Find genuinely dispatchable ambulances for an emergency pickup.
+ *
+ * A vehicle is excluded when its provider is not approved/online, when it is
+ * offline, when it is already assigned to an active booking, or when another
+ * open booking has already requested it. The last rule prevents two searching
+ * bookings from repeatedly selecting the same vehicle.
+ */
+async function emergencyCandidates(
+  ctx: MutationCtx,
+  pickupLat: number,
+  pickupLng: number,
+  excludeBookingId?: Doc<"ambulanceBookings">["_id"],
+): Promise<EmergencyCandidate[]> {
+  const [profiles, ambulances, bookings] = await Promise.all([
+    ctx.db.query("guardianProfiles").collect(),
+    ctx.db.query("ambulances").collect(),
+    ctx.db.query("ambulanceBookings").collect(),
+  ]);
+  const approvedOnline = new Set(
+    profiles
+      .filter((profile) => profile.online && isGuardianApproved(profile))
+      .map((profile) => String(profile.userId)),
+  );
+  const reserved = new Set<string>();
+  for (const booking of bookings) {
+    if (
+      booking._id === excludeBookingId ||
+      !ACTIVE_AMBULANCE_STATUSES.includes(booking.status as AmbulanceBookingStatus)
+    ) {
+      continue;
+    }
+    if (booking.assignedAmbulanceId) reserved.add(String(booking.assignedAmbulanceId));
+    if (booking.targetAmbulanceId) reserved.add(String(booking.targetAmbulanceId));
+  }
+
+  return ambulances
+    .filter(
+      (ambulance) =>
+        ambulance.available &&
+        !reserved.has(String(ambulance._id)) &&
+        approvedOnline.has(String(ambulance.guardianUserId)) &&
+        ambulance.latitude != null &&
+        ambulance.longitude != null &&
+        validCoordinate(ambulance.latitude, ambulance.longitude),
+    )
+    .map((ambulance) => ({
+      ambulance,
+      distanceKm: haversineKm(
+        { lat: pickupLat, lng: pickupLng },
+        { lat: ambulance.latitude as number, lng: ambulance.longitude as number },
+      ),
+    }))
+    .filter((candidate) => candidate.distanceKm <= 100)
+    .sort((a, b) => a.distanceKm - b.distanceKm);
+}
+
+/** Close an open booking honestly and record why the search ended. */
+async function expireOpenBooking(
+  ctx: MutationCtx,
+  booking: Doc<"ambulanceBookings">,
+  now: number,
+  reason: string,
+  note: string,
+) {
+  await ctx.db.patch(booking._id, {
+    status: "expired",
+    cancellationReason: reason,
+    rematchExhaustedAt: now,
+    nextRematchAt: undefined,
+    cancelledAt: now,
+    updatedAt: now,
+  });
+  await ctx.db.insert("ambulanceBookingEvents", {
+    bookingId: booking._id,
+    status: "expired",
+    actorUserId: booking.requesterUserId,
+    actorRole: "system",
+    note,
+    createdAt: now,
+  });
+  await notifyUser(ctx, booking.requesterUserId, {
+    title: "No ambulance confirmed",
+    body: `${booking.bookingRef}: ${reason} Call your local emergency service if this is still urgent.`,
+    kind: "ambulance",
+    link: "/ambulance?auto=1",
   });
 }
 
@@ -609,46 +711,7 @@ export const createEmergencyBooking = mutation({
       };
     }
 
-    const [profiles, ambulances, bookings] = await Promise.all([
-      ctx.db.query("guardianProfiles").collect(),
-      ctx.db.query("ambulances").collect(),
-      ctx.db.query("ambulanceBookings").collect(),
-    ]);
-    const approvedOnline = new Set(
-      profiles
-        .filter((profile) => profile.online && isGuardianApproved(profile))
-        .map((profile) => String(profile.userId)),
-    );
-    const busy = new Set(
-      bookings
-        .filter(
-          (booking) =>
-            booking.assignedAmbulanceId != null &&
-            ACTIVE_AMBULANCE_STATUSES.includes(booking.status as AmbulanceBookingStatus),
-        )
-        .map((booking) => String(booking.assignedAmbulanceId)),
-    );
-
-    const candidates = ambulances
-      .filter(
-        (ambulance) =>
-          ambulance.available &&
-          !busy.has(String(ambulance._id)) &&
-          approvedOnline.has(String(ambulance.guardianUserId)) &&
-          ambulance.latitude != null &&
-          ambulance.longitude != null &&
-          validCoordinate(ambulance.latitude, ambulance.longitude),
-      )
-      .map((ambulance) => ({
-        ambulance,
-        distanceKm: haversineKm(
-          { lat: args.pickupLat, lng: args.pickupLng },
-          { lat: ambulance.latitude as number, lng: ambulance.longitude as number },
-        ),
-      }))
-      .filter((candidate) => candidate.distanceKm <= 100)
-      .sort((a, b) => a.distanceKm - b.distanceKm);
-
+    const candidates = await emergencyCandidates(ctx, args.pickupLat, args.pickupLng);
     const selected = candidates[0];
     const now = Date.now();
     const bookingRef = await nextSequentialId(ctx, "ambulance_booking", "AMB", 5);
@@ -664,6 +727,9 @@ export const createEmergencyBooking = mutation({
       targetAmbulanceId: selected?.ambulance._id,
       ambulanceType: selected?.ambulance.type,
       estimatedEtaMinutes: selected ? estimateEtaMinutes(selected.distanceKm) : undefined,
+      searchExpiresAt: selected ? undefined : now + AMBULANCE_SEARCH_WINDOW_MS,
+      rematchAttempts: selected ? undefined : 0,
+      nextRematchAt: selected ? undefined : now + AMBULANCE_REMATCH_INTERVAL_MS,
       clientRequestId,
       requestedAt: now,
       updatedAt: now,
@@ -1282,6 +1348,110 @@ export const ambulanceTypes = query({
 });
 
 /**
+ * Bounded automatic re-matching for emergency bookings that entered
+ * `searching` with no available ambulance.
+ *
+ * The cron runs this once a minute. Each booking has a durable next-attempt
+ * time and attempt count, so repeated or overlapping runs are idempotent. A
+ * booking is only patched while it is still `searching` and has no target; a
+ * vehicle already targeted by another open booking is never selected. When the
+ * 30-minute window or attempt cap is reached the booking is closed honestly as
+ * expired — it is never marked assigned or dispatched without a real vehicle.
+ */
+export const rematchSearchingBookings = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const searching = await ctx.db
+      .query("ambulanceBookings")
+      .withIndex("by_status", (q) => q.eq("status", "searching"))
+      .collect();
+    let scanned = 0;
+    let assigned = 0;
+    let retried = 0;
+    let expired = 0;
+
+    for (const booking of searching) {
+      if (booking.targetAmbulanceId != null) continue;
+      if (booking.nextRematchAt != null && booking.nextRematchAt > now) continue;
+      scanned += 1;
+
+      const attempts = booking.rematchAttempts ?? 0;
+      const deadline = ambulanceOpenDeadline(booking);
+      if (now >= deadline || attempts >= AMBULANCE_MAX_REMATCH_ATTEMPTS) {
+        await expireOpenBooking(
+          ctx,
+          booking,
+          now,
+          `No approved ambulance became available within the ${Math.round(
+            AMBULANCE_SEARCH_WINDOW_MS / 60_000,
+          )}-minute search window.`,
+          "Automatic re-matching ended without a confirmed ambulance.",
+        );
+        expired += 1;
+        continue;
+      }
+
+      const candidates = await emergencyCandidates(
+        ctx,
+        booking.pickupLat,
+        booking.pickupLng,
+        booking._id,
+      );
+      const selected = candidates[0];
+      if (!selected) {
+        await ctx.db.patch(booking._id, {
+          rematchAttempts: attempts + 1,
+          nextRematchAt: Math.min(now + AMBULANCE_REMATCH_INTERVAL_MS, deadline),
+          updatedAt: now,
+        });
+        retried += 1;
+        continue;
+      }
+
+      // Re-read immediately before assigning: availability can change between
+      // the candidate query and this patch.
+      const vehicle = await ctx.db.get(selected.ambulance._id);
+      if (!vehicle || !vehicle.available) {
+        await ctx.db.patch(booking._id, {
+          rematchAttempts: attempts + 1,
+          nextRematchAt: Math.min(now + AMBULANCE_REMATCH_INTERVAL_MS, deadline),
+          updatedAt: now,
+        });
+        retried += 1;
+        continue;
+      }
+
+      await ctx.db.patch(booking._id, {
+        targetAmbulanceId: vehicle._id,
+        ambulanceType: vehicle.type ?? booking.ambulanceType,
+        estimatedEtaMinutes: estimateEtaMinutes(selected.distanceKm),
+        rematchAttempts: attempts + 1,
+        nextRematchAt: undefined,
+        updatedAt: now,
+      });
+      await ctx.db.insert("ambulanceBookingEvents", {
+        bookingId: booking._id,
+        status: "searching",
+        actorUserId: booking.requesterUserId,
+        actorRole: "system",
+        note: `Ambulance became available ${selected.distanceKm.toFixed(1)} km away. Awaiting provider acceptance.`,
+        createdAt: now,
+      });
+      await notifyUser(ctx, vehicle.guardianUserId, {
+        title: "Emergency ambulance request",
+        body: `${booking.bookingRef}: live GPS pickup ${selected.distanceKm.toFixed(1)} km away.`,
+        kind: "ambulance",
+        link: "/guardian/dashboard",
+      });
+      assigned += 1;
+    }
+
+    return { scanned, assigned, retried, expired };
+  },
+});
+
+/**
  * Release requests that no Guardian accepted. Runs from the cron and is safe to
  * run repeatedly: each booking is cancelled exactly once and the target vehicle
  * is never held by an expired request.
@@ -1299,28 +1469,14 @@ export const expireStaleBookings = internalMutation({
       ) {
         continue;
       }
-      if (now - booking.requestedAt < AMBULANCE_REQUEST_TTL_MS) continue;
-      await ctx.db.patch(booking._id, {
-        status: "expired",
-        cancellationReason:
-          "No ambulance provider accepted the request within the response window.",
-        cancelledAt: now,
-        updatedAt: now,
-      });
-      await ctx.db.insert("ambulanceBookingEvents", {
-        bookingId: booking._id,
-        status: "expired",
-        actorUserId: booking.requesterUserId,
-        actorRole: "system",
-        note: "Request expired with no provider acceptance.",
-        createdAt: now,
-      });
-      await notifyUser(ctx, booking.requesterUserId, {
-        title: "Ambulance request expired",
-        body: `${booking.bookingRef}: no provider accepted in time. You can book another ambulance.`,
-        kind: "ambulance",
-        link: "/ambulance",
-      });
+      if (now < ambulanceOpenDeadline(booking)) continue;
+      await expireOpenBooking(
+        ctx,
+        booking,
+        now,
+        "No ambulance provider accepted the request within the response window.",
+        "Request expired with no provider acceptance.",
+      );
       expired += 1;
     }
     return { expired };

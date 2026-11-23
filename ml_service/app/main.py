@@ -33,24 +33,33 @@ from collections import defaultdict, deque
 from pathlib import Path
 from typing import Annotated, Any, Sequence
 
+import numpy as np
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from .anomaly_model import AnomalyModel, LabeledObservation, Observation
+from .anomaly_model import (
+    AnomalyModel,
+    LabeledObservation,
+    Observation,
+    _feature_vector,
+)
 from .demand_model import DemandModel
 from .donor_model import DonorModel, DonorSample
 from .features import MIN_TRAINING_DAYS, DemandPoint, DemandRecord, normalize_points
 from .schemas import (
     AnomalyDetectRequest,
     AnomalyTrainRequest,
+    AnnPredictRequest,
+    AutoencoderDetectRequest,
     DemandBatchPredictRequest,
     DemandPredictRequest,
     DemandTrainRequest,
     DonorBatchPredictRequest,
     DonorPredictRequest,
     DonorTrainRequest,
+    LstmPredictRequest,
 )
 
 MAX_REQUEST_BYTES = 512 * 1024  # 512 KB practical cap on JSON bodies
@@ -360,6 +369,70 @@ def _deep_summary(prefix: str, model_name: str) -> dict[str, Any]:
         "error": None
         if metadata
         else "Artifact not present; install requirements-deep.txt and train this model.",
+    }
+
+
+DEEP_LOCK = threading.Lock()
+DEEP_CACHE: dict[str, tuple[Any, Any, dict[str, Any]]] = {}
+
+
+def _load_deep(prefix: str, label: str) -> tuple[Any, Any, dict[str, Any]]:
+    """Lazily load a verified deep artifact, or fail honestly.
+
+    TensorFlow is optional for the service. Missing runtime, metadata or model
+    files return 503; this function never falls back to a different model.
+    """
+    metadata = _latest_deep(prefix)
+    if not metadata or not metadata.get("_ready"):
+        raise HTTPException(
+            status_code=503,
+            detail=f"{label} is not trained or its artifact is missing.",
+        )
+    version = str(metadata["version"])
+    with DEEP_LOCK:
+        cached = DEEP_CACHE.get(f"{prefix}:{version}")
+        if cached is not None:
+            return cached
+        try:
+            import joblib  # type: ignore
+            import tensorflow as tf  # type: ignore
+            from tensorflow import keras  # type: ignore
+        except ImportError:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    f"{label} artifact is present, but TensorFlow is not installed "
+                    "in this ML service environment."
+                ),
+            )
+        directory = ARTIFACTS_DIR / "deep"
+        try:
+            model = keras.models.load_model(directory / f"{version}.keras", compile=False)
+            scaler = joblib.load(directory / f"{version}.scaler.joblib")
+        except Exception:
+            _safe_log_event("deep_model_load_failed", model=prefix)
+            raise HTTPException(
+                status_code=503,
+                detail=f"{label} artifact could not be loaded. Do not use its predictions.",
+            )
+        metadata["_tensorflow"] = tf.__version__
+        metadata["_keras"] = keras.__version__
+        DEEP_CACHE[f"{prefix}:{version}"] = (model, scaler, metadata)
+        return DEEP_CACHE[f"{prefix}:{version}"]
+
+
+def _deep_base(metadata: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "status": "ok",
+        "model_version": metadata.get("version"),
+        "trained_at": metadata.get("trained_at"),
+        "synthetic_training_data": bool(metadata.get("synthetic")),
+        "metrics": metadata.get("metrics"),
+        "advisory_only": True,
+        "clinical_rule": (
+            "Prediction is advisory only. Eligibility, compatibility, allocation "
+            "and release remain deterministic and human-reviewed."
+        ),
     }
 
 
@@ -708,3 +781,95 @@ async def train_anomalies(request: AnomalyTrainRequest) -> dict:
     metadata = await _run_model(anomaly_model.train, _labeled_observations(request))
     _safe_log_event("anomaly_model_trained")
     return {"trained": True, **metadata}
+
+
+# ---------------------------------------------------------------------------
+# Deep-model inference (available only after verified artifacts are installed)
+# ---------------------------------------------------------------------------
+
+
+@app.post("/ai/ann/predict", dependencies=[Depends(require_token)])
+async def predict_ann(request: AnnPredictRequest) -> dict:
+    if not request.consented:
+        raise HTTPException(
+            status_code=403,
+            detail="Donor scoring is only allowed for donors who explicitly consented.",
+        )
+    model, scaler, metadata = _load_deep("ann-donor", "ANN donor-response model")
+    raw = np.asarray(
+        [[
+            request.distance_km,
+            request.days_since_donation,
+            request.previous_donations,
+            request.prior_response_rate,
+        ]],
+        dtype=float,
+    )
+
+    def run() -> dict[str, Any]:
+        probability = float(model.predict(scaler.transform(raw), verbose=0).ravel()[0])
+        return {
+            **_deep_base(metadata),
+            "model": "ann_donor_response",
+            "response_probability": round(min(1.0, max(0.0, probability)), 4),
+            "threshold": 0.5,
+            "explanation": (
+                "Neural-network response likelihood for a consented donor. Not a "
+                "medical eligibility or compatibility decision."
+            ),
+        }
+
+    return await run_in_threadpool(run)
+
+
+@app.post("/ai/lstm/predict", dependencies=[Depends(require_token)])
+async def predict_lstm(request: LstmPredictRequest) -> dict:
+    model, scaler, metadata = _load_deep("lstm-demand", "LSTM demand model")
+    raw = np.asarray([request.units], dtype=float)
+
+    def run() -> dict[str, Any]:
+        scaled = scaler.transform(raw.reshape(-1, 1)).reshape(1, len(request.units), 1)
+        prediction = float(model.predict(scaled, verbose=0).ravel()[0])
+        return {
+            **_deep_base(metadata),
+            "model": "lstm_demand",
+            "forecast_units": round(max(0.0, prediction), 4),
+            "lookback_days": len(request.units),
+            "explanation": (
+                "Predicted next-day units from the supplied 28-day history. A "
+                "forecast, not confirmed inventory or allocation."
+            ),
+        }
+
+    return await run_in_threadpool(run)
+
+
+@app.post("/ai/autoencoder/detect", dependencies=[Depends(require_token)])
+async def detect_autoencoder(request: AutoencoderDetectRequest) -> dict:
+    model, scaler, metadata = _load_deep(
+        "autoencoder-inventory", "Autoencoder inventory model"
+    )
+    features = np.asarray(
+        [_feature_vector(request.units, len(request.units) - 1)], dtype=float
+    )
+    threshold = float((metadata.get("metrics") or {}).get("threshold", 0.0))
+
+    def run() -> dict[str, Any]:
+        scaled = scaler.transform(features)
+        reconstruction = model.predict(scaled, verbose=0)
+        error = float(np.mean((reconstruction - scaled) ** 2))
+        flagged = bool(threshold > 0 and error > threshold)
+        return {
+            **_deep_base(metadata),
+            "model": "autoencoder_inventory",
+            "reconstruction_error": round(error, 6),
+            "threshold": threshold,
+            "is_anomaly": flagged,
+            "review_required": True,
+            "explanation": (
+                "Reconstruction error above the stored validation threshold is a "
+                "review prompt, not proof of error, theft or wastage."
+            ),
+        }
+
+    return await run_in_threadpool(run)

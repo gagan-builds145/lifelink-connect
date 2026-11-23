@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -87,6 +89,36 @@ class ObservationIn(BaseModel):
 
 class AnomalyDetectRequest(BaseModel):
     observations: list[ObservationIn] = Field(min_length=1)
+
+
+class AnnPredictRequest(BaseModel):
+    distance_km: float = Field(ge=0)
+    days_since_donation: int = Field(ge=0)
+    previous_donations: int = Field(ge=0)
+    prior_response_rate: float = Field(ge=0, le=1)
+    consented: bool
+
+
+class LstmPredictRequest(BaseModel):
+    units: list[float] = Field(min_length=28, max_length=28)
+
+    @field_validator("units")
+    @classmethod
+    def finite_non_negative(cls, units: list[float]) -> list[float]:
+        if any(not math.isfinite(value) or value < 0 for value in units):
+            raise ValueError("Units must be finite and non-negative.")
+        return units
+
+
+class AutoencoderDetectRequest(BaseModel):
+    units: list[float] = Field(min_length=29, max_length=365)
+
+    @field_validator("units")
+    @classmethod
+    def finite_non_negative(cls, units: list[float]) -> list[float]:
+        if any(not math.isfinite(value) or value < 0 for value in units):
+            raise ValueError("Units must be finite and non-negative.")
+        return units
 
 
 class LabeledObservationIn(ObservationIn):

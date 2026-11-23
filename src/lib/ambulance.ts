@@ -87,6 +87,30 @@ export function nextGuardianStatuses(
 /** Open requests may be released by the system after this window. */
 export const AMBULANCE_REQUEST_TTL_MS = 15 * 60 * 1000;
 
+/**
+ * Emergency one-tap requests keep searching for a genuinely available
+ * ambulance for this bounded window. Manual requests keep the shorter TTL
+ * above because a person chose a specific vehicle.
+ */
+export const AMBULANCE_SEARCH_WINDOW_MS = 30 * 60 * 1000;
+export const AMBULANCE_REMATCH_INTERVAL_MS = 60 * 1000;
+export const AMBULANCE_MAX_REMATCH_ATTEMPTS = 20;
+
+/** Deadline for an open booking, used by both re-matching and expiry sweeps. */
+export function ambulanceOpenDeadline(booking: {
+  status: string;
+  requestedAt: number;
+  searchExpiresAt?: number;
+}): number {
+  if (booking.searchExpiresAt != null) return booking.searchExpiresAt;
+  return (
+    booking.requestedAt +
+    (booking.status === "searching"
+      ? AMBULANCE_SEARCH_WINDOW_MS
+      : AMBULANCE_REQUEST_TTL_MS)
+  );
+}
+
 export const AMBULANCE_BASE_FARE = 250;
 export const AMBULANCE_PER_KM_FARE = 28;
 

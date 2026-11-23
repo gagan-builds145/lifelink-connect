@@ -78,12 +78,14 @@ function SirenAmbulance({ moving }: { moving: boolean }) {
  */
 export function AmbulanceOneTap() {
   const mine = useQuery(api.ambulances.myBookings);
+  const cancelBooking = useMutation(api.ambulances.cancelBooking);
   const createEmergency = useMutation(api.ambulances.createEmergencyBooking);
   const [phase, setPhase] = useState<Phase>("locating");
   const [error, setError] = useState<LocationError | null>(null);
   const [bookingId, setBookingId] = useState<Id<"ambulanceBookings"> | null>(null);
   const [attemptId, setAttemptId] = useState(() => crypto.randomUUID());
   const [note, setNote] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
   const started = useRef(false);
   const activeExisting = mine?.find((row) =>
     ACTIVE_AMBULANCE_STATUSES.includes(row.status),
@@ -334,9 +336,41 @@ export function AmbulanceOneTap() {
                   {status === "searching" && (
                     <p className="mt-3 flex items-start gap-2 rounded-xl border border-border bg-muted/30 p-2.5 text-[11px] leading-5 text-muted-foreground">
                       <Radio className="mt-0.5 size-3.5 shrink-0 animate-pulse text-primary" />
-                      Your request is open on the network. No approved ambulance is currently
-                      available; the status will update when one is assigned.
+                      {booking.rematchAttempts > 0
+                        ? `Continuing to search. The network has been re-checked ${booking.rematchAttempts} time${booking.rematchAttempts === 1 ? "" : "s"}.`
+                        : "Your request is open on the network. No approved ambulance is currently available; the status will update when one is assigned."}
                     </p>
+                  )}
+                  {status === "searching" && assignment && (
+                    <p className="mt-2 rounded-xl border border-primary/25 bg-primary/5 p-2.5 text-[11px] leading-5">
+                      An ambulance has been requested and is awaiting provider acceptance.
+                      Assignment is not confirmed yet.
+                    </p>
+                  )}
+                  {!terminal && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="mt-3 h-8 gap-1.5 text-muted-foreground"
+                      disabled={cancelling}
+                      onClick={async () => {
+                        if (!effectiveBookingId) return;
+                        setCancelling(true);
+                        try {
+                          await cancelBooking({
+                            bookingId: effectiveBookingId,
+                            reason: "Cancelled by the requester from one-tap tracking.",
+                          });
+                        } catch (err) {
+                          setNote(friendlyError(err, "Could not cancel the request."));
+                        } finally {
+                          setCancelling(false);
+                        }
+                      }}
+                    >
+                      {cancelling ? <Loader2 className="size-3.5 animate-spin" /> : null}
+                      Cancel request
+                    </Button>
                   )}
                   {terminal && (
                     <div className="mt-3 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-[11px] leading-5">
@@ -353,6 +387,9 @@ export function AmbulanceOneTap() {
                     <InfoRow icon={Clock3} label="Requested" value={formatRelative(booking.requestedAt)} />
                     {booking.estimatedEtaMinutes != null && !terminal && (
                       <InfoRow icon={Navigation} label="Estimated arrival" value={`~${booking.estimatedEtaMinutes} min to pickup`} />
+                    )}
+                    {status === "searching" && booking.searchExpiresAt != null && (
+                      <InfoRow icon={Clock3} label="Searching until" value={new Date(booking.searchExpiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} />
                     )}
                     {assignment?.lastLocationAt != null && (
                       <InfoRow icon={Radio} label="Last location update" value={formatRelative(assignment.lastLocationAt)} />
@@ -395,7 +432,7 @@ export function AmbulanceOneTap() {
 
                 <div className="rounded-3xl border border-border bg-card p-5">
                   <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
-                    {assignment && status === "requested" ? "Requested provider" : "Assignment"}
+                    {assignment && (status === "requested" || status === "searching") ? "Requested provider" : "Assignment"}
                   </p>
                   {assignment ? (
                     <div className="mt-3 space-y-2.5">

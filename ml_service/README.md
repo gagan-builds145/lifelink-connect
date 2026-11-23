@@ -13,6 +13,7 @@ Python 3.10+/3.13 FastAPI service for:
 - **Random Forest donor-response ranking** for consented donors. It never
   determines medical eligibility, compatibility or release.
 - **Isolation Forest anomaly detection** with an explanatory trailing z-score.
+- Optional **ANN donor**, **LSTM demand** and **Autoencoder inventory** inference, only after verified TensorFlow artifacts are installed.
 
 Clinical compatibility, reservation and allocation remain deterministic in
 LifeLink's shared rules engine. No model in this service decides whether blood
@@ -20,10 +21,12 @@ can be issued.
 
 ## Verified environment
 
-The checked-in artifacts and the complete **22-test suite passed on both Python
-3.13.15 and 3.10.12**. The Dockerfile targets 3.13; the image itself was not
-built here because Docker is unavailable. `requirements.txt` selects the
-NumPy/SciPy wheels appropriate to each interpreter.
+The checked-in classical artifacts and the **64-test suite** pass on Python
+3.10.12 in this workspace (the earlier 22-test run also passed on 3.13.15). The
+Dockerfile targets 3.13; the image was not built here because Docker is
+unavailable. `requirements.txt` selects the NumPy/SciPy wheels appropriate to
+each interpreter. Deep models are **not trained in this workspace** because
+TensorFlow is absent; see [Deep training](#deep-training-colab) below.
 
 ## Install and run (Windows PowerShell)
 
@@ -92,9 +95,34 @@ Authenticated aliases for application integration:
 | GET | `/ai/models/{name}/status` | One model's readiness |
 | GET | `/ai/models/{name}/metrics` | Stored evaluation metrics |
 | GET | `/ai/health` | AI service and model health |
+| POST | `/ai/ann/predict` | ANN consented donor-response probability |
+| POST | `/ai/lstm/predict` | LSTM next-day demand forecast from 28 units |
+| POST | `/ai/autoencoder/detect` | Autoencoder reconstruction-error review prompt |
 
 Deep models report `not_trained` until a TensorFlow environment produces and
-registers `.keras` artifacts. No metrics are fabricated.
+registers `.keras` artifacts. The three deep endpoints return **503** when the
+artifact or TensorFlow runtime is absent; they never fall back to another model.
+ANN scoring also rejects `consented: false` with 403. No metrics are fabricated.
+
+## Deep training (Colab)
+
+The reproducible workflow is
+[`notebooks/LifeLink_Deep_Training_Colab.ipynb`](notebooks/LifeLink_Deep_Training_Colab.ipynb).
+It installs the pinned dependencies, reports the actual CPU/GPU device, runs the
+existing `scripts/train_all_deep.py`, reports stored metrics, then loads each
+model and runs a one-row inference with
+`scripts/verify_deep_artifacts.py --package lifelink-deep-artifacts.zip`.
+
+The verifier writes SHA-256 checksums, TensorFlow/Keras versions and a manifest
+inside `artifacts/deep/`. It exits 2 if any model, scaler, history, metadata
+field or inference check is missing. Extract the package into
+`ml_service/artifacts/deep/`, then run the verifier and pytest again; do not
+integrate a package that fails.
+
+Current status: **ANN, LSTM and Autoencoder are NOT TRAINED here.**
+`train_all_deep.py` and `evaluate_all.py` exit 2 because TensorFlow is not
+installed. No `.keras` placeholder or invented metric exists. The classical
+XGBoost, Random Forest and Isolation Forest artifacts are unchanged.
 
 ## Endpoints
 
@@ -121,6 +149,8 @@ OpenAPI docs are served at `/docs` while the service is running.
 - `artifacts/donor_response.joblib` and metadata.
 - `artifacts/inventory_anomaly.joblib` and metadata.
 - `artifacts/training-summary.json` — actual run summary.
+- `artifacts/deep/` — optional TensorFlow artifacts, history, scaler, metadata,
+  manifest and checksums. **Empty of models in this workspace.**
 - `data/*.csv` — deterministic, explicitly synthetic sample datasets.
 
 The bundled metrics were measured on synthetic data. They are **not evidence of
@@ -133,11 +163,12 @@ $env:PYTHONPATH="ml_service;drone_bridge"
 python -m pytest ml_service/tests drone_bridge/tests -q
 ```
 
-The suite covers artifact loading, real holdout metrics shape, prediction
-horizons, insufficient-history refusal, consent rejection, batch donor scoring
-with explainability, anomaly detection, authenticated health/readiness,
-service-token enforcement, SITL export validation and dry-run-only safety. It
-passed on Python 3.13.15 and 3.10.12.
+The **64-test suite** covers artifact loading, real holdout metrics shape,
+prediction horizons, insufficient-history refusal, consent rejection, batch
+donor scoring with explainability, anomaly detection, authenticated
+health/readiness, service-token enforcement, deep endpoints failing closed,
+chronological split integrity, deep artifact verification failing closed, SITL
+export validation and dry-run-only safety.
 
 ```powershell
 # Python 3.13

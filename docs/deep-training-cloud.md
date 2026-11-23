@@ -1,11 +1,14 @@
 # Deep-model training in a capable external environment
 
-The development workspace has **1 CPU, 1.9 GiB RAM and ~115 MB free disk**.
+The development workspace has **1 CPU, 1.9 GiB RAM and ~44 MB free disk**.
 TensorFlow/Keras is not installed, and the TensorFlow wheel cannot be installed
 without freeing substantially more disk. No deep model was trained here.
 
-Use this guide in Google Colab, Kaggle, a cloud VM or a GPU workstation. Do not
-copy real patient/donor identifiers into the notebook.
+Use this guide in Google Colab, Kaggle, a cloud VM or a GPU workstation. The
+reproducible notebook is
+[`ml_service/notebooks/LifeLink_Deep_Training_Colab.ipynb`](../ml_service/notebooks/LifeLink_Deep_Training_Colab.ipynb).
+Do not copy real patient/donor identifiers into the notebook or upload a `.env`
+file.
 
 ## 1. Choose an environment
 
@@ -50,14 +53,29 @@ The scripts use deterministic synthetic development data and save:
 ```text
 artifacts/deep/ann-donor-<timestamp>.keras
 artifacts/deep/ann-donor-<timestamp>.scaler.joblib
+artifacts/deep/ann-donor-<timestamp>.history.json
 artifacts/deep/ann-donor-<timestamp>.metadata.json
 artifacts/deep/lstm-demand-<timestamp>.keras
 artifacts/deep/autoencoder-inventory-<timestamp>.keras
 ```
 
 Training refuses to run if TensorFlow is unavailable. It never writes fake
-metrics. All metadata records the dataset label, synthetic flag, split method,
-hyperparameters and metrics.
+metrics. All metadata records the dataset label, provenance, synthetic flag,
+split method, feature names, environment, TensorFlow/Keras version, actual
+device (CPU/GPU), duration, hyperparameters and metrics. The LSTM splits each
+series chronologically before concatenation; the Autoencoder chooses its
+threshold on held-out normal validation data and scores a separate test set.
+
+After training, verify, checksum and package in the same environment:
+
+```bash
+python scripts/verify_deep_artifacts.py --package /content/lifelink-deep-artifacts.zip
+```
+
+This loads every `.keras` model and scaler, runs a deterministic inference,
+validates metadata and writes `artifacts/deep/deep-artifacts-manifest.json` with
+SHA-256 hashes. It exits 2 if anything is missing or unloadable. A downloaded
+file alone is not integration.
 
 ## 4. Upload artifacts and metadata
 
@@ -109,10 +127,18 @@ Never automatically replace a production model after training completes.
 
 ## 7. Current blocked result
 
-In this workspace:
+In this workspace (verified 2026-11-23):
 
-- `train_ann.py`, `train_lstm.py`, `train_autoencoder.py` and
-  `train_all_deep.py` all exit with code 2 and report TensorFlow missing.
+- `train_all_deep.py` exits 2 with “TensorFlow is not installed … No model
+  artifacts or metrics were produced.”
 - No `.keras` files or deep metrics exist.
-- `evaluate_all.py` exits 2 and reports the missing artifacts.
-- The `/ai` endpoints report those models as not trained.
+- `evaluate_all.py` exits 2 and reports ANN, LSTM and Autoencoder missing.
+- `scripts/verify_deep_artifacts.py` exits 2 with the same three models missing.
+- `/ai/models` reports them not trained; `/ai/ann/predict`, `/ai/lstm/predict`
+  and `/ai/autoencoder/detect` return 503 rather than a fabricated result.
+- Playwright browser verification is also blocked: the browser cache is empty
+  and ~44 MB free disk is insufficient for the Chromium download.
+
+Run the Colab notebook, verify the package, extract it into
+`ml_service/artifacts/deep/`, then rerun `verify_deep_artifacts.py`, the FastAPI
+tests and `/ai/models`. Only then can the deep models be considered integrated.

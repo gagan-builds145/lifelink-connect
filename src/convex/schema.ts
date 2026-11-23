@@ -1191,6 +1191,11 @@ const schema = defineSchema(
       estimatedEtaMinutes: v.optional(v.number()),
       estimatedFare: v.optional(v.number()),
       cancellationReason: v.optional(v.string()),
+      /** Bounded emergency re-matching state. */
+      searchExpiresAt: v.optional(v.number()),
+      rematchAttempts: v.optional(v.number()),
+      nextRematchAt: v.optional(v.number()),
+      rematchExhaustedAt: v.optional(v.number()),
       clientRequestId: v.string(),
       requestedAt: v.number(),
       acceptedAt: v.optional(v.number()),

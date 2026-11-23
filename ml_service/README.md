@@ -1,5 +1,11 @@
 # LifeLink ML service
 
+AI datasets and model artifacts are designed for S3-compatible object storage;
+Convex stores versions, checksums, lineage and model references. See
+[`docs/ai-storage.md`](../docs/ai-storage.md) for the bucket layout, capacity
+plan, retention and the bounded local scalability results. Bulk storage requires
+`requirements-storage.txt`; it is separate from the inference service.
+
 Python 3.10+/3.13 FastAPI service for:
 
 - **XGBoost blood-demand forecasting** (24-hour, 7-day and 30-day horizons;

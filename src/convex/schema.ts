@@ -2,6 +2,11 @@ import { authTables } from "@convex-dev/auth/server";
 import { defineSchema, defineTable } from "convex/server";
 import { Infer, v } from "convex/values";
 import {
+  aiDatasetStageValidator,
+  aiDatasetStatusValidator,
+  aiModelKindValidator,
+  aiModelStatusValidator,
+  aiTrainingRunStatusValidator,
   ambulanceBookingStatusValidator,
   ambulanceTypeValidator,
   anomalyKindValidator,
@@ -809,6 +814,123 @@ const schema = defineSchema(
       metricsJson: v.string(),
       active: v.boolean(),
     }).index("by_kind", ["kind", "active"]),
+
+    /** AI dataset and object-storage metadata. Payloads stay in S3/Parquet. */
+    aiDatasets: defineTable({
+      datasetKey: v.string(),
+      version: v.string(),
+      stage: aiDatasetStageValidator,
+      format: v.union(v.literal("parquet"), v.literal("csv"), v.literal("json")),
+      objectKey: v.string(),
+      sizeBytes: v.number(),
+      rowCount: v.optional(v.number()),
+      checksumSha256: v.string(),
+      synthetic: v.boolean(),
+      containsPhi: v.boolean(),
+      source: v.string(),
+      schemaJson: v.string(),
+      retentionDays: v.number(),
+      lineage: v.optional(v.string()),
+      status: aiDatasetStatusValidator,
+      createdAt: v.number(),
+      createdByUserId: v.optional(v.id("users")),
+    })
+      .index("by_dataset", ["datasetKey", "version"])
+      .index("by_stage", ["stage", "createdAt"])
+      .index("by_checksum", ["checksumSha256"])
+      .index("by_status", ["status", "createdAt"]),
+
+    /** Versioned model artifact references. Artifacts live in object storage. */
+    aiModelArtifacts: defineTable({
+      modelKind: aiModelKindValidator,
+      version: v.string(),
+      datasetKey: v.string(),
+      datasetVersion: v.string(),
+      framework: v.string(),
+      artifactKey: v.string(),
+      artifactFormat: v.union(
+        v.literal("keras"),
+        v.literal("joblib"),
+        v.literal("json"),
+        v.literal("onnx"),
+        v.literal("safetensors"),
+      ),
+      sizeBytes: v.number(),
+      checksumSha256: v.string(),
+      preprocessingKey: v.optional(v.string()),
+      evaluationKey: v.optional(v.string()),
+      metricsJson: v.string(),
+      trainingConfigJson: v.string(),
+      status: aiModelStatusValidator,
+      trainedAt: v.number(),
+      approvedByUserId: v.optional(v.id("users")),
+      approvedAt: v.optional(v.number()),
+      createdAt: v.number(),
+    })
+      .index("by_kind", ["modelKind", "status"])
+      .index("by_dataset", ["datasetKey", "datasetVersion"])
+      .index("by_status", ["status", "createdAt"]),
+
+    aiTrainingRuns: defineTable({
+      runKey: v.string(),
+      modelKind: aiModelKindValidator,
+      modelVersion: v.string(),
+      datasetKey: v.string(),
+      datasetVersion: v.string(),
+      status: aiTrainingRunStatusValidator,
+      startedAt: v.optional(v.number()),
+      finishedAt: v.optional(v.number()),
+      durationSeconds: v.optional(v.number()),
+      configJson: v.string(),
+      metricsJson: v.optional(v.string()),
+      logsKey: v.optional(v.string()),
+      artifactKey: v.optional(v.string()),
+      error: v.optional(v.string()),
+      createdAt: v.number(),
+      createdByUserId: v.optional(v.id("users")),
+    })
+      .index("by_run", ["runKey"])
+      .index("by_status", ["status", "createdAt"])
+      .index("by_kind", ["modelKind", "createdAt"]),
+
+    aiStorageSnapshots: defineTable({
+      capturedAt: v.number(),
+      provider: v.string(),
+      bucket: v.string(),
+      capacityBytes: v.number(),
+      usedBytes: v.number(),
+      objectCount: v.number(),
+      thresholdPct: v.number(),
+      needsExpansion: v.boolean(),
+      byStageJson: v.string(),
+      reportJson: v.string(),
+    }).index("by_captured", ["capturedAt"]),
+
+    aiPredictionSummaries: defineTable({
+      modelKind: aiModelKindValidator,
+      modelVersion: v.string(),
+      windowStart: v.number(),
+      windowEnd: v.number(),
+      predictionCount: v.number(),
+      errorCount: v.number(),
+      p50LatencyMs: v.optional(v.number()),
+      p95LatencyMs: v.optional(v.number()),
+      synthetic: v.boolean(),
+      updatedAt: v.number(),
+    })
+      .index("by_model", ["modelKind", "modelVersion"])
+      .index("by_window", ["windowStart"]),
+
+    aiRetentionRuns: defineTable({
+      policy: v.string(),
+      startedAt: v.number(),
+      finishedAt: v.optional(v.number()),
+      status: v.union(v.literal("running"), v.literal("succeeded"), v.literal("failed")),
+      scannedBytes: v.number(),
+      deletedBytes: v.number(),
+      deletedObjects: v.number(),
+      reportJson: v.string(),
+    }).index("by_started", ["startedAt"]),
 
     anomalyEvents: defineTable({
       organizationId: v.optional(v.id("organizations")),

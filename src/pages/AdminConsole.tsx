@@ -116,9 +116,16 @@ function Distribution({ data, labels }: { data: Record<string, number>; labels?:
   );
 }
 
+function formatStorage(bytes: number) {
+  if (bytes <= 0) return "0 GB";
+  const gb = bytes / 1024 ** 3;
+  return gb >= 1024 ? `${(gb / 1024).toFixed(2)} TB` : `${gb.toFixed(2)} GB`;
+}
+
 export default function AdminConsole() {
   const { user } = useAuth();
   const overview = useQuery(api.admin.overview);
+  const aiStorage = useQuery(api.aiRegistry.overview);
   const runs = useQuery(api.admin.recentSyncRuns);
   const queue = useQuery(api.admin.notificationQueue);
   const facilities = useQuery(api.allocation.networkFacilities);
@@ -151,6 +158,7 @@ export default function AdminConsole() {
   const trainDemandModel = useAction(api.ml.trainDemandModel);
   const checkMlService = useAction(api.ml.mlServiceStatus);
   const reviewGuardian = useMutation(api.ambulances.reviewGuardian);
+  const promoteAiModel = useMutation(api.aiRegistry.promoteModel);
 
   const verified = facilities ?? [];
 
@@ -1009,6 +1017,117 @@ export default function AdminConsole() {
 
           {tab === "ml" && (
             <div className="space-y-4">
+              <Panel
+                eyebrow="AI infrastructure"
+                title="Object storage and model registry"
+                action={
+                  <span
+                    className={cn(
+                      "rounded-full border px-2.5 py-1 text-[10px] font-semibold",
+                      aiStorage?.storage?.needsExpansion
+                        ? "border-destructive/30 bg-destructive/10 text-destructive"
+                        : "border-border bg-muted text-muted-foreground",
+                    )}
+                  >
+                    {aiStorage?.storage
+                      ? aiStorage.storage.needsExpansion
+                        ? "Expansion required"
+                        : "Within capacity"
+                      : "No storage snapshot"}
+                  </span>
+                }
+              >
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="rounded-lg border border-border bg-background p-2.5">
+                    <p className="text-[8px] uppercase tracking-[0.08em] text-muted-foreground">Used / capacity</p>
+                    <p className="mt-1 text-[13px] font-extrabold">
+                      {aiStorage?.storage
+                        ? `${formatStorage(aiStorage.storage.usedBytes)} / ${formatStorage(aiStorage.storage.capacityBytes)}`
+                        : "Not measured"}
+                    </p>
+                    <p className="text-[9px] text-muted-foreground">
+                      {aiStorage?.storage?.usagePct != null ? `${aiStorage.storage.usagePct}% used` : "Run a storage report"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border bg-background p-2.5">
+                    <p className="text-[8px] uppercase tracking-[0.08em] text-muted-foreground">Datasets</p>
+                    <p className="mt-1 text-[13px] font-extrabold">{aiStorage?.datasets.active ?? 0}</p>
+                    <p className="text-[9px] text-muted-foreground">
+                      {aiStorage?.datasets.synthetic ?? 0} synthetic · {aiStorage?.datasets.containsPhi ?? 0} PHI
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border bg-background p-2.5">
+                    <p className="text-[8px] uppercase tracking-[0.08em] text-muted-foreground">Models</p>
+                    <p className="mt-1 text-[13px] font-extrabold">{aiStorage?.models.active ?? 0} active</p>
+                    <p className="text-[9px] text-muted-foreground">{aiStorage?.models.candidates ?? 0} awaiting approval</p>
+                  </div>
+                  <div className="rounded-lg border border-border bg-background p-2.5">
+                    <p className="text-[8px] uppercase tracking-[0.08em] text-muted-foreground">Training runs</p>
+                    <p className="mt-1 text-[13px] font-extrabold">{aiStorage?.training.total ?? 0}</p>
+                    <p className="text-[9px] text-muted-foreground">
+                      {aiStorage?.training.succeeded ?? 0} succeeded · {aiStorage?.training.failed ?? 0} failed
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-background px-2.5 py-2">
+                  <p className="text-[9.5px] leading-4 text-muted-foreground">
+                    Dataset payloads stay in S3-compatible object storage; Convex stores version, checksum, lineage and model references only. PHI is refused.
+                  </p>
+                  <p className="text-[9px] font-bold">
+                    {aiStorage?.storage
+                      ? `${aiStorage.storage.provider} · ${aiStorage.storage.bucket} · ${aiStorage.storage.objectCount} objects`
+                      : "No snapshot recorded"}
+                  </p>
+                </div>
+                <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                  <div className="rounded-lg border border-border bg-background p-2.5">
+                    <p className="text-[8px] font-bold uppercase tracking-[0.1em] text-muted-foreground">Active approved models</p>
+                    <div className="mt-1.5 space-y-1">
+                      {aiStorage?.models.activeByKind.length ? (
+                        aiStorage.models.activeByKind.map((model) => (
+                          <p key={model.id} className="text-[10px] font-semibold">
+                            {model.kind.replace(/_/g, " ")} · {model.version}
+                            <span className="ml-1 font-normal text-muted-foreground">dataset {model.datasetVersion}</span>
+                          </p>
+                        ))
+                      ) : (
+                        <p className="text-[10px] text-muted-foreground">No object-storage model is active. Existing bundled artifacts remain in use.</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-border bg-background p-2.5">
+                    <p className="text-[8px] font-bold uppercase tracking-[0.1em] text-muted-foreground">Candidates awaiting approval</p>
+                    <div className="mt-1.5 space-y-1.5">
+                      {aiStorage?.models.recentCandidates.length ? (
+                        aiStorage.models.recentCandidates.map((model) => (
+                          <div key={model.id} className="flex items-center justify-between gap-2">
+                            <p className="text-[10px] font-semibold">
+                              {model.kind.replace(/_/g, " ")} · {model.version}
+                            </p>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-6 text-[9px]"
+                              disabled={busy === `ai-promote-${model.id}`}
+                              onClick={() =>
+                                void run(
+                                  `ai-promote-${model.id}`,
+                                  () => promoteAiModel({ artifactId: model.id }),
+                                  "Model approved and activated.",
+                                )
+                              }
+                            >
+                              Approve
+                            </Button>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-[10px] text-muted-foreground">No candidate artifacts registered.</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </Panel>
               <div className="grid gap-4 lg:grid-cols-2">
                 <Panel eyebrow="Demand model" title="Python XGBoost service">
                   <p className="text-[10.5px] leading-5 text-muted-foreground">

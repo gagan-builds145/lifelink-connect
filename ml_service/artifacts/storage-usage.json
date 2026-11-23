@@ -1,0 +1,14 @@
+{
+  "provider": "local-dev",
+  "bucket": "local-dev",
+  "capacity_bytes": 536870912000,
+  "capacity_gb": 500.0,
+  "used_bytes": 0,
+  "used_gb": 0.0,
+  "usage_pct": 0.0,
+  "object_count": 0,
+  "expansion_threshold_pct": 80,
+  "needs_expansion": false,
+  "headroom_bytes": 536870912000,
+  "by_stage": {}
+}

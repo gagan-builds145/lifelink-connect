@@ -1,0 +1,5 @@
+# AI object storage, Parquet preparation and load testing.
+# Install in the training/operations environment, never in the request-serving
+# container unless the inference path actually needs S3 access.
+boto3==1.35.99
+pyarrow==18.1.0

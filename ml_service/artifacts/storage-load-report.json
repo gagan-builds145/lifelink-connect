@@ -1,0 +1,47 @@
+{
+  "generated_at": "2026-11-23T06:45:59.522252+00:00",
+  "scope": "Bounded storage smoke test. NOT a 1M/10M-user load test, and not evidence of production capacity.",
+  "backend": "local-dev",
+  "warning": "local-dev is a filesystem test backend, not cloud object storage.",
+  "parameters": {
+    "objects": 16,
+    "object_size_kb": 256,
+    "concurrency": 4,
+    "capacity_gb": 500.0
+  },
+  "results": {
+    "total_seconds": 0.021,
+    "bytes_written": 4194304,
+    "upload_p50_ms": 0.0,
+    "upload_p95_ms": 0.0,
+    "download_p50_ms": 0.0,
+    "download_p95_ms": 0.0,
+    "list_seconds": 0.001,
+    "listed_objects": 16,
+    "backup_restore_seconds": 0.003,
+    "mean_upload_ms": 0.4
+  },
+  "usage": {
+    "provider": "local-dev",
+    "bucket": "local-dev",
+    "capacity_bytes": 536870912000,
+    "capacity_gb": 500.0,
+    "used_bytes": 4456448,
+    "used_gb": 0.0042,
+    "usage_pct": 0.001,
+    "object_count": 17,
+    "expansion_threshold_pct": 80,
+    "needs_expansion": false,
+    "headroom_bytes": 536866455552,
+    "by_stage": {
+      "backups": 262144,
+      "training": 4194304
+    }
+  },
+  "limitations": [
+    "No million-user or ten-million-user concurrency was simulated.",
+    "No network, S3 throttling, lifecycle-policy or multi-region latency was exercised.",
+    "No TensorFlow model was loaded because TensorFlow is unavailable.",
+    "No real patient/donor data was used."
+  ]
+}

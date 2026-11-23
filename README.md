@@ -16,6 +16,12 @@ It is not a static prototype. It is also **not** certified medical software or a
 
 See [docs/lifelink-2.md](docs/lifelink-2.md) for role mapping, ambulance security rules, schema additions and the exact ML limitation.
 
+### AI storage and model registry
+
+Convex now stores versioned AI dataset/model/training-run metadata and storage snapshots. Bulk datasets, `.keras`/Joblib artifacts, checkpoints, logs and backups are designed for S3-compatible object storage with explicit 500 GB initial / 5 TB scale targets. PHI datasets are refused, checksums prevent duplicate payloads, and only administrators can approve or roll back model versions.
+
+See [docs/ai-storage.md](docs/ai-storage.md) for bucket layout, retention, IAM/encryption guidance, capacity math, commands and **measured local-only** scalability results. No million-user capacity claim is made.
+
 ---
 
 ## 1. What is implemented
@@ -43,7 +49,7 @@ See [docs/lifelink-2.md](docs/lifelink-2.md) for role mapping, ambulance securit
 | **Drone operations** (`/drones`) | ✅ bases, fleet, airspace, route proxy, 12 preflight checks |
 | **Simulated mission lifecycle** | ✅ 15 states, telemetry, failure drills, handoff code, return-to-base |
 | **Admin control room** (`/admin/dashboard`) | ✅ network health, policy, agreements, sync, ML, safety, audit |
-| **Automated tests** | ✅ 126 TypeScript tests across 8 suites, including map, Guardian and ambulance dispatch coverage; 22 existing Python model/training/SITL tests remain available |
+| **Automated tests** | ✅ 132 TypeScript tests across 9 suites, including AI registry, map, Guardian and ambulance coverage; ✅ 36 Python tests in this environment |
 | Real HMS/blood-bank production connector | ❌ framework + mock only |
 | PX4/ArduPilot SITL / MAVLink | ⚠️ SITL export + MAVSDK bridge present; **not executed** because no SITL runtime is installed |
 | Live API/E2E/load/security/live-SITL suites | ❌ not included |

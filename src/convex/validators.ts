@@ -245,3 +245,44 @@ export const anomalyKindValidator = v.union(
   v.literal("sync_failure"),
   v.literal("inventory_mismatch"),
 );
+
+export const aiDatasetStageValidator = v.union(
+  v.literal("raw"),
+  v.literal("cleaned"),
+  v.literal("processed"),
+  v.literal("training"),
+  v.literal("validation"),
+  v.literal("testing"),
+);
+
+export const aiModelKindValidator = v.union(
+  v.literal("xgboost_demand"),
+  v.literal("random_forest_donor"),
+  v.literal("isolation_forest"),
+  v.literal("ann_donor"),
+  v.literal("lstm_demand"),
+  v.literal("autoencoder_inventory"),
+  v.literal("cnn_research"),
+);
+
+export const aiModelStatusValidator = v.union(
+  v.literal("candidate"),
+  v.literal("approved"),
+  v.literal("active"),
+  v.literal("rolled_back"),
+  v.literal("rejected"),
+);
+
+export const aiTrainingRunStatusValidator = v.union(
+  v.literal("queued"),
+  v.literal("running"),
+  v.literal("succeeded"),
+  v.literal("failed"),
+  v.literal("cancelled"),
+);
+
+export const aiDatasetStatusValidator = v.union(
+  v.literal("active"),
+  v.literal("archived"),
+  v.literal("deleted"),
+);

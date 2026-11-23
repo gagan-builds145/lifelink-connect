@@ -1,0 +1,24 @@
+{
+  "generated_at": "2026-11-23T07:00:19.871135+00:00",
+  "scope": "Bounded in-process FastAPI/model test. No network, Convex, S3, multi-region latency or million-user concurrency.",
+  "parameters": {
+    "requests": 40,
+    "concurrency": 4,
+    "endpoint": "/ai/demand/predict"
+  },
+  "results": {
+    "total_seconds": 0.265,
+    "throughput_requests_per_second": 150.83,
+    "errors": 0,
+    "p50_ms": 26.16,
+    "p95_ms": 32.85,
+    "max_ms": 36.17,
+    "mean_response_bytes": 876
+  },
+  "limitations": [
+    "Runs in the same Python process as the model; no ASGI server/network overhead.",
+    "One model endpoint only; no database or object-store calls.",
+    "1 CPU, 1.9 GiB RAM test host.",
+    "No evidence of 1M or 10M supported users."
+  ]
+}

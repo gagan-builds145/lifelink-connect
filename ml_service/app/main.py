@@ -24,8 +24,10 @@ from __future__ import annotations
 
 import asyncio
 import hmac
+import json
 import logging
 import os
+import threading
 import time
 from collections import defaultdict, deque
 from pathlib import Path
@@ -104,6 +106,13 @@ def _rate_limit_per_minute() -> int:
 demand_model = DemandModel(ARTIFACTS_DIR)
 donor_model = DonorModel(ARTIFACTS_DIR)
 anomaly_model = AnomalyModel(ARTIFACTS_DIR)
+
+# sklearn/xgboost objects are not guaranteed to be safe for concurrent calls.
+# Serialize calls per model instance; requests still run off the event loop and
+# multiple model kinds can proceed independently.
+MODEL_LOCKS: dict[int, threading.Lock] = {}
+for _model in (demand_model, donor_model, anomaly_model):
+    MODEL_LOCKS[id(_model)] = threading.Lock()
 
 if os.environ.get("ML_REQUIRE_AUTH", "").lower() in {"1", "true", "yes"} and not os.environ.get(
     "ML_SERVICE_TOKEN"
@@ -264,8 +273,17 @@ def require_token(
 
 async def _run_model(func, *args):
     """Run blocking model work off the event loop with a hard timeout."""
+    owner = getattr(func, "__self__", None)
+    lock = MODEL_LOCKS.get(id(owner)) if owner is not None else None
+
+    def invoke():
+        if lock is None:
+            return func(*args)
+        with lock:
+            return func(*args)
+
     try:
-        return await asyncio.wait_for(run_in_threadpool(func, *args), timeout=_timeout_seconds())
+        return await asyncio.wait_for(run_in_threadpool(invoke), timeout=_timeout_seconds())
     except asyncio.TimeoutError as error:
         _safe_log_event("ml_model_timeout")
         raise HTTPException(
@@ -307,6 +325,89 @@ def _model_summary(model, kind: str) -> dict:
         "metrics": metadata.get("metrics"),
         "sample_size": metadata.get("sample_size") or metadata.get("training_rows"),
         "error": model.load_error,
+    }
+
+
+def _latest_deep(prefix: str, model_file: str | None = None) -> dict[str, Any] | None:
+    """Read the newest saved deep-model metadata without inventing a result."""
+    directory = ARTIFACTS_DIR / "deep"
+    candidates = sorted(directory.glob(f"{prefix}-*.metadata.json"))
+    for path in reversed(candidates):
+        try:
+            metadata = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        version = metadata.get("version")
+        artifact = directory / model_file if model_file else directory / f"{version}.keras"
+        metadata["_metadata_file"] = path.name
+        metadata["_artifact_present"] = artifact.exists()
+        metadata["_ready"] = bool(version and artifact.exists())
+        return metadata
+    return None
+
+
+def _deep_summary(prefix: str, model_name: str) -> dict[str, Any]:
+    metadata = _latest_deep(prefix) or {}
+    return {
+        "name": model_name,
+        "ready": bool(metadata.get("_ready")),
+        "version": metadata.get("version"),
+        "trained_at": metadata.get("trained_at"),
+        "synthetic": metadata.get("synthetic"),
+        "dataset_label": metadata.get("dataset_label"),
+        "metrics": metadata.get("metrics"),
+        "artifact_present": bool(metadata.get("_artifact_present")),
+        "error": None
+        if metadata
+        else "Artifact not present; install requirements-deep.txt and train this model.",
+    }
+
+
+AI_MODEL_NAMES = {
+    "xgboost_demand": "demand",
+    "lstm_demand": "lstm",
+    "random_forest_donor": "donor",
+    "ann_donor": "ann",
+    "isolation_forest": "anomaly",
+    "autoencoder_inventory": "autoencoder",
+    "cnn_research": "cnn",
+}
+
+
+def _ai_model_catalog() -> dict[str, dict[str, Any]]:
+    return {
+        "xgboost_demand": {
+            **_model_summary(demand_model, "demand_forecast"),
+            "name": "xgboost_demand",
+            "family": "gradient_boosting",
+            "status": "active" if demand_model.ready else "unavailable",
+        },
+        "lstm_demand": _deep_summary("lstm-demand", "lstm_demand"),
+        "random_forest_donor": {
+            **_model_summary(donor_model, "donor_response"),
+            "name": "random_forest_donor",
+            "family": "random_forest",
+            "status": "active" if donor_model.ready else "unavailable",
+        },
+        "ann_donor": _deep_summary("ann-donor", "ann_donor"),
+        "isolation_forest": {
+            **_model_summary(anomaly_model, "inventory_anomaly"),
+            "name": "isolation_forest",
+            "family": "isolation_forest",
+            "status": "active" if anomaly_model.ready else "unavailable",
+        },
+        "autoencoder_inventory": _deep_summary("autoencoder-inventory", "autoencoder_inventory"),
+        "cnn_research": {
+            "name": "cnn_research",
+            "ready": False,
+            "version": None,
+            "trained_at": None,
+            "synthetic": None,
+            "dataset_label": None,
+            "metrics": None,
+            "artifact_present": False,
+            "error": "No validated image dataset or image-based task; intentionally not trained.",
+        },
     }
 
 
@@ -366,6 +467,76 @@ async def models() -> dict:
     }
 
 
+@app.get("/ai/health", dependencies=[Depends(require_token)])
+async def ai_health() -> dict:
+    catalog = _ai_model_catalog()
+    active = [name for name, item in catalog.items() if item.get("ready")]
+    return {
+        "status": "ok" if len(active) >= 3 else "degraded",
+        "service": "lifelink-ai",
+        "version": SERVICE_VERSION,
+        "active_models": active,
+        "model_count": len(catalog),
+        "advisory_only": True,
+        "clinical_rule": (
+            "AI output is advisory. Eligibility, compatibility, release and "
+            "allocation remain deterministic and human-reviewed."
+        ),
+    }
+
+
+@app.get("/ai/models", dependencies=[Depends(require_token)])
+async def ai_models() -> dict:
+    catalog = _ai_model_catalog()
+    return {"models": list(catalog.values()), "advisory_only": True}
+
+
+@app.get("/ai/models/{model_name}/status", dependencies=[Depends(require_token)])
+async def ai_model_status(model_name: str) -> dict:
+    catalog = _ai_model_catalog()
+    item = catalog.get(model_name)
+    if item is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown model. Available models: {', '.join(sorted(catalog))}",
+        )
+    return {
+        "name": model_name,
+        "ready": bool(item.get("ready")),
+        "status": item.get("status") or ("available" if item.get("ready") else "not_trained"),
+        "version": item.get("version"),
+        "trained_at": item.get("trained_at"),
+        "synthetic": item.get("synthetic"),
+        "artifact_present": item.get("artifact_present"),
+        "error": item.get("error"),
+    }
+
+
+@app.get("/ai/models/{model_name}/metrics", dependencies=[Depends(require_token)])
+async def ai_model_metrics(model_name: str) -> dict:
+    item = _ai_model_catalog().get(model_name)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Unknown model.")
+    if not item.get("metrics"):
+        raise HTTPException(
+            status_code=404,
+            detail="No evaluation metrics are stored for this model version.",
+        )
+    return {
+        "name": model_name,
+        "version": item.get("version"),
+        "dataset_label": item.get("dataset_label"),
+        "synthetic": item.get("synthetic"),
+        "metrics": item.get("metrics"),
+        "metrics_context": (
+            "Metrics are synthetic-data evaluation results, not evidence of "
+            "real-world medical performance."
+            if item.get("synthetic")
+            else "Metrics are stored evaluation results; verify the dataset label."
+        ),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Demand
 # ---------------------------------------------------------------------------
@@ -388,6 +559,7 @@ async def train_demand(request: DemandTrainRequest) -> dict:
 
 
 @app.post("/v1/predict/demand", dependencies=[Depends(require_token)])
+@app.post("/ai/demand/predict", dependencies=[Depends(require_token)])
 async def predict_demand(request: DemandPredictRequest) -> dict:
     series = normalize_points(_points(request.points), request.blood_group, request.component)
     return await _run_model(demand_model.predict, series, request.horizon_days)
@@ -454,6 +626,7 @@ async def train_donor(request: DonorTrainRequest) -> dict:
 
 
 @app.post("/v1/predict/donor", dependencies=[Depends(require_token)])
+@app.post("/ai/donor-response/predict", dependencies=[Depends(require_token)])
 async def predict_donor(request: DonorPredictRequest) -> dict:
     sample = DonorSample(
         distance_km=request.distance_km,
@@ -522,6 +695,7 @@ async def predict_donor_batch(request: DonorBatchPredictRequest) -> dict:
 
 
 @app.post("/v1/detect/anomalies", dependencies=[Depends(require_token)])
+@app.post("/ai/inventory/anomaly-detect", dependencies=[Depends(require_token)])
 async def detect_anomalies(request: AnomalyDetectRequest) -> dict:
     observations = [
         Observation(date=item.date, units=item.units) for item in request.observations

@@ -79,6 +79,23 @@ The app uses:
 - donor invitation action → `POST /v1/predict/donor/batch`
 - `ml.mlServiceStatus` → `GET /health` (bearer token required when configured)
 
+## AI endpoints
+
+Authenticated aliases for application integration:
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| POST | `/ai/demand/predict` | XGBoost demand forecast |
+| POST | `/ai/donor-response/predict` | Consent-gated Random Forest response score |
+| POST | `/ai/inventory/anomaly-detect` | Isolation Forest + z-score review prompt |
+| GET | `/ai/models` | Trained and missing model status |
+| GET | `/ai/models/{name}/status` | One model's readiness |
+| GET | `/ai/models/{name}/metrics` | Stored evaluation metrics |
+| GET | `/ai/health` | AI service and model health |
+
+Deep models report `not_trained` until a TensorFlow environment produces and
+registers `.keras` artifacts. No metrics are fabricated.
+
 ## Endpoints
 
 | Method | Path | Purpose |

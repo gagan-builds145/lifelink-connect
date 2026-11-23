@@ -292,6 +292,14 @@ class DemandModel:
                 "holdout_size": len(holdout_positions),
                 "mean_actual": round(float(np.mean(y_holdout)), 4),
             },
+            # Bounded sample of the chronological holdout for an actual-vs-
+            # predicted chart. Not used for inference or metric calculation.
+            "evaluation_plot": {
+                "points": min(180, len(holdout_positions)),
+                "actual": [round(float(value), 3) for value in y_holdout[:180]],
+                "predicted": [round(float(value), 3) for value in predictions[:180]],
+                "baseline": [round(float(value), 3) for value in baseline[:180]],
+            },
             "validation_method": (
                 "Chronological 80/20 date split; one-step-ahead holdout MAE/RMSE "
                 "versus a 7-day rolling-mean baseline. Final model refit on all rows."

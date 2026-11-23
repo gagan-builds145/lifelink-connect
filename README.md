@@ -22,6 +22,12 @@ Convex now stores versioned AI dataset/model/training-run metadata and storage s
 
 See [docs/ai-storage.md](docs/ai-storage.md) for bucket layout, retention, IAM/encryption guidance, capacity math, commands and **measured local-only** scalability results. No million-user capacity claim is made.
 
+### Phase 2 verification
+
+FastAPI now exposes `/ai/demand/predict`, `/ai/donor-response/predict`, `/ai/inventory/anomaly-detect`, `/ai/models`, model status/metrics and `/ai/health`. The admin AI panel shows storage, model health, approval/disable controls and recent training runs. Existing XGBoost, Random Forest and Isolation Forest models were retrained and evaluated; deep models remain untrained because TensorFlow cannot be installed on this host. Browser testing could not run because Chromium is absent and disk space is insufficient.
+
+Read [docs/phase2-report.md](docs/phase2-report.md) for actual metrics, repairs, test counts and unresolved limitations, and [docs/deep-training-cloud.md](docs/deep-training-cloud.md) for external TensorFlow training.
+
 ---
 
 ## 1. What is implemented
@@ -49,7 +55,7 @@ See [docs/ai-storage.md](docs/ai-storage.md) for bucket layout, retention, IAM/e
 | **Drone operations** (`/drones`) | ✅ bases, fleet, airspace, route proxy, 12 preflight checks |
 | **Simulated mission lifecycle** | ✅ 15 states, telemetry, failure drills, handoff code, return-to-base |
 | **Admin control room** (`/admin/dashboard`) | ✅ network health, policy, agreements, sync, ML, safety, audit |
-| **Automated tests** | ✅ 132 TypeScript tests across 9 suites, including AI registry, map, Guardian and ambulance coverage; ✅ 36 Python tests in this environment |
+| **Automated tests** | ✅ 133 TypeScript tests across 9 suites, including AI registry, map, Guardian and ambulance coverage; ✅ 45 Python tests in this environment |
 | Real HMS/blood-bank production connector | ❌ framework + mock only |
 | PX4/ArduPilot SITL / MAVLink | ⚠️ SITL export + MAVSDK bridge present; **not executed** because no SITL runtime is installed |
 | Live API/E2E/load/security/live-SITL suites | ❌ not included |

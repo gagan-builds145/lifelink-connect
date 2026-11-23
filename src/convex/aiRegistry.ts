@@ -336,6 +336,27 @@ export const registerModelArtifact = mutation({
   },
 });
 
+export const disableModel = mutation({
+  args: { artifactId: v.id("aiModelArtifacts"), reason: v.string() },
+  handler: async (ctx, args) => {
+    const admin = await requireAdmin(ctx);
+    const model = await ctx.db.get(args.artifactId);
+    if (!model) throw new Error("Model artifact not found.");
+    if (model.status !== "active" && model.status !== "candidate") {
+      throw new Error("Only active or candidate models can be disabled.");
+    }
+    await ctx.db.patch(model._id, { status: "rejected" });
+    await audit(ctx, {
+      actor: admin,
+      action: "ai.model_disabled",
+      entityType: "aiModelArtifacts",
+      entityId: model._id,
+      detail: `${model.modelKind}@${model.version}: ${requireText(args.reason, "Reason", 300)}`,
+    });
+    return { ok: true };
+  },
+});
+
 export const promoteModel = mutation({
   args: { artifactId: v.id("aiModelArtifacts"), note: v.optional(v.string()) },
   handler: async (ctx, args) => {

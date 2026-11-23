@@ -165,6 +165,24 @@ describe("AI registry and storage metadata", () => {
     expect(overview.models.activeByKind[0].version).toBe("2026.11.2");
   });
 
+  test("an active model can be disabled but a rejected model cannot be promoted", async () => {
+    const t = convexTest(schema, modules);
+    const { admin } = await seed(t);
+    const asAdmin = t.withIdentity({ subject: admin });
+    await asAdmin.mutation(api.aiRegistry.registerDataset, datasetArgs());
+    const model = await asAdmin.mutation(api.aiRegistry.registerModelArtifact, modelArgs());
+    await asAdmin.mutation(api.aiRegistry.promoteModel, { artifactId: model.id });
+    await asAdmin.mutation(api.aiRegistry.disableModel, {
+      artifactId: model.id,
+      reason: "Regression test disable",
+    });
+    const overview = await asAdmin.query(api.aiRegistry.overview, {});
+    expect(overview.models.active).toBe(0);
+    await expect(
+      asAdmin.mutation(api.aiRegistry.promoteModel, { artifactId: model.id }),
+    ).rejects.toThrow(/Rejected/i);
+  });
+
   test("storage snapshots enforce explicit finite capacity and expansion flags", async () => {
     const t = convexTest(schema, modules);
     const { admin } = await seed(t);

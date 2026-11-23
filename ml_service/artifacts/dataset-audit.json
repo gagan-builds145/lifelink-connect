@@ -1,0 +1,128 @@
+{
+  "generated_at": "2026-11-23T07:02:33.258233+00:00",
+  "warning": "All checked-in datasets are deterministic synthetic development data. Metrics from them are not real-world medical performance.",
+  "privacy": {
+    "phi_columns_found": [],
+    "action": "No direct identifiers permitted in AI datasets."
+  },
+  "demand": {
+    "rows": 11680,
+    "columns": [
+      "date",
+      "blood_group",
+      "component",
+      "units",
+      "is_synthetic",
+      "source"
+    ],
+    "missing": {},
+    "duplicate_rows": 0,
+    "phi_columns": [],
+    "numeric": {
+      "units": {
+        "count": 11680,
+        "min": 0.5,
+        "max": 39.0,
+        "mean": 8.2774,
+        "iqr_outliers": 367
+      }
+    },
+    "synthetic_flag": true,
+    "date_start": "2025-10-01",
+    "date_end": "2026-09-30",
+    "unique_dates": 365,
+    "series_count": 32,
+    "series_lengths": [
+      365
+    ],
+    "chronological_split": {
+      "cutoff": "2026-07-20",
+      "train_rows": 9344,
+      "test_rows": 2336,
+      "train_max_date": "2026-07-19",
+      "test_min_date": "2026-07-20",
+      "no_date_overlap": true,
+      "leakage_check": "chronological split; no future-held-out date is in training"
+    }
+  },
+  "donor": {
+    "rows": 900,
+    "columns": [
+      "distance_km",
+      "days_since_donation",
+      "previous_donations",
+      "prior_response_rate",
+      "consented",
+      "responded",
+      "is_synthetic"
+    ],
+    "missing": {},
+    "duplicate_rows": 0,
+    "phi_columns": [],
+    "numeric": {
+      "distance_km": {
+        "count": 900,
+        "min": 0.5,
+        "max": 64.8,
+        "mean": 22.6393,
+        "iqr_outliers": 1
+      },
+      "days_since_donation": {
+        "count": 900,
+        "min": 1.0,
+        "max": 391.0,
+        "mean": 149.4444,
+        "iqr_outliers": 1
+      },
+      "previous_donations": {
+        "count": 900,
+        "min": 0.0,
+        "max": 10.0,
+        "mean": 2.6911,
+        "iqr_outliers": 5
+      },
+      "prior_response_rate": {
+        "count": 900,
+        "min": 0.009,
+        "max": 0.965,
+        "mean": 0.4942,
+        "iqr_outliers": 0
+      }
+    },
+    "synthetic_flag": true,
+    "consented": 900,
+    "not_consented": 0,
+    "class_counts": {
+      "true": 747,
+      "false": 153
+    },
+    "positive_ratio": 0.83,
+    "recommended_split": "stratified 70/15/15 or 80/20 by responded label"
+  },
+  "anomaly": {
+    "rows": 240,
+    "columns": [
+      "date",
+      "units",
+      "is_anomaly",
+      "is_synthetic"
+    ],
+    "missing": {},
+    "duplicate_rows": 0,
+    "phi_columns": [],
+    "numeric": {
+      "units": {
+        "count": 240,
+        "min": 6.406,
+        "max": 47.319,
+        "mean": 18.8453,
+        "iqr_outliers": 5
+      }
+    },
+    "synthetic_flag": true,
+    "normal_rows": 235,
+    "anomaly_rows": 5,
+    "anomaly_ratio": 0.0208,
+    "recommended_split": "fit scaler/Isolation Forest only on normal training rows; use labelled anomalies for independent evaluation"
+  }
+}

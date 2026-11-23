@@ -122,10 +122,22 @@ function formatStorage(bytes: number) {
   return gb >= 1024 ? `${(gb / 1024).toFixed(2)} TB` : `${gb.toFixed(2)} GB`;
 }
 
+type AiCatalogModel = {
+  name: string;
+  ready: boolean;
+  status?: string;
+  version?: string | null;
+  synthetic?: boolean | null;
+  artifact_present?: boolean | null;
+  error?: string | null;
+  metrics?: Record<string, number> | null;
+};
+
 export default function AdminConsole() {
   const { user } = useAuth();
   const overview = useQuery(api.admin.overview);
   const aiStorage = useQuery(api.aiRegistry.overview);
+  const aiRuns = useQuery(api.aiRegistry.trainingRuns, { limit: 8 });
   const runs = useQuery(api.admin.recentSyncRuns);
   const queue = useQuery(api.admin.notificationQueue);
   const facilities = useQuery(api.allocation.networkFacilities);
@@ -157,8 +169,15 @@ export default function AdminConsole() {
   const trainDonorModel = useAction(api.ml.trainDonorModel);
   const trainDemandModel = useAction(api.ml.trainDemandModel);
   const checkMlService = useAction(api.ml.mlServiceStatus);
+  const loadAiCatalog = useAction(api.ml.aiModelCatalog);
   const reviewGuardian = useMutation(api.ambulances.reviewGuardian);
   const promoteAiModel = useMutation(api.aiRegistry.promoteModel);
+  const disableAiModel = useMutation(api.aiRegistry.disableModel);
+  const [aiCatalog, setAiCatalog] = useState<{
+    reachable: boolean;
+    models: AiCatalogModel[];
+    error?: string;
+  } | null>(null);
 
   const verified = facilities ?? [];
 
@@ -1079,16 +1098,104 @@ export default function AdminConsole() {
                       : "No snapshot recorded"}
                   </p>
                 </div>
+                <div className="mt-3 rounded-lg border border-border bg-background p-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-[8px] font-bold uppercase tracking-[0.1em] text-muted-foreground">FastAPI model health</p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-6 text-[9px]"
+                      disabled={busy === "load-ai-catalog"}
+                      onClick={() =>
+                        void run(
+                          "load-ai-catalog",
+                          async () => {
+                            const catalog = await loadAiCatalog();
+                            setAiCatalog(catalog);
+                          },
+                          "AI model catalog loaded.",
+                        )
+                      }
+                    >
+                      {busy === "load-ai-catalog" ? "Loading…" : "Load catalog"}
+                    </Button>
+                  </div>
+                  {aiCatalog ? (
+                    aiCatalog.reachable ? (
+                      <div className="mt-2 grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
+                        {aiCatalog.models.map((model) => (
+                          <div key={model.name} className="rounded-md border border-border px-2 py-1.5">
+                            <p className="text-[9.5px] font-bold">{model.name.replace(/_/g, " ")}</p>
+                            <p className={cn("text-[8.5px]", model.ready ? "text-primary" : "text-muted-foreground")}>
+                              {model.ready ? `Ready · ${model.version ?? "version unknown"}` : model.status ?? "Not trained"}
+                            </p>
+                            {model.synthetic ? (
+                              <p className="text-[8px] text-amber-700 dark:text-amber-400">Synthetic-trained metrics only</p>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="mt-2 text-[10px] text-muted-foreground">
+                        AI service unreachable: {aiCatalog.error ?? "unknown error"}. No model health is inferred.
+                      </p>
+                    )
+                  ) : (
+                    <p className="mt-2 text-[10px] text-muted-foreground">
+                      Load the catalog to distinguish trained artifacts from unavailable models. No training is started here.
+                    </p>
+                  )}
+                </div>
+                <div className="mt-3 rounded-lg border border-border bg-background p-2.5">
+                  <p className="text-[8px] font-bold uppercase tracking-[0.1em] text-muted-foreground">Recent training runs</p>
+                  <div className="mt-1.5 space-y-1">
+                    {aiRuns?.length ? (
+                      aiRuns.map((run) => (
+                        <div key={run._id} className="flex flex-wrap items-center justify-between gap-1 text-[9.5px]">
+                          <span className="font-semibold">{run.modelKind.replace(/_/g, " ")} · {run.modelVersion}</span>
+                          <span className="text-muted-foreground">
+                            {run.status} · {run.durationSeconds != null ? `${run.durationSeconds}s` : "duration unknown"}
+                          </span>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-[10px] text-muted-foreground">
+                        No training run has been registered. Deep models were not trained in this environment.
+                      </p>
+                    )}
+                  </div>
+                </div>
                 <div className="mt-3 grid gap-3 lg:grid-cols-2">
                   <div className="rounded-lg border border-border bg-background p-2.5">
                     <p className="text-[8px] font-bold uppercase tracking-[0.1em] text-muted-foreground">Active approved models</p>
                     <div className="mt-1.5 space-y-1">
                       {aiStorage?.models.activeByKind.length ? (
                         aiStorage.models.activeByKind.map((model) => (
-                          <p key={model.id} className="text-[10px] font-semibold">
-                            {model.kind.replace(/_/g, " ")} · {model.version}
-                            <span className="ml-1 font-normal text-muted-foreground">dataset {model.datasetVersion}</span>
-                          </p>
+                          <div key={model.id} className="flex items-center justify-between gap-2">
+                            <p className="text-[10px] font-semibold">
+                              {model.kind.replace(/_/g, " ")} · {model.version}
+                              <span className="ml-1 font-normal text-muted-foreground">dataset {model.datasetVersion}</span>
+                            </p>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 text-[9px] text-destructive"
+                              disabled={busy === `ai-disable-${model.id}`}
+                              onClick={() =>
+                                void run(
+                                  `ai-disable-${model.id}`,
+                                  () =>
+                                    disableAiModel({
+                                      artifactId: model.id,
+                                      reason: "Disabled from the administrator AI dashboard.",
+                                    }),
+                                  "Model disabled.",
+                                )
+                              }
+                            >
+                              Disable
+                            </Button>
+                          </div>
                         ))
                       ) : (
                         <p className="text-[10px] text-muted-foreground">No object-storage model is active. Existing bundled artifacts remain in use.</p>

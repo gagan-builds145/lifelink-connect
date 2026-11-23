@@ -1008,6 +1008,25 @@ export const storeDemandModelMetadata = internalMutation({
   },
 });
 
+export const aiModelCatalog = action({
+  args: {},
+  handler: async (ctx) => {
+    const auth = await ctx.runMutation(internal.ml.authorizeMlAction, { mode: "train" });
+    if (!auth.allowed) throw safeError(auth.error);
+    try {
+      const response = await mlFetch("/ai/models", { method: "GET" }, { timeoutMs: 8_000, attempts: 2 });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return { reachable: true, ...(await response.json()) };
+    } catch (error) {
+      return {
+        reachable: false,
+        models: [],
+        error: error instanceof Error ? error.message : "AI model catalog unreachable",
+      };
+    }
+  },
+});
+
 export const mlServiceStatus = action({
   args: {},
   handler: async (ctx) => {

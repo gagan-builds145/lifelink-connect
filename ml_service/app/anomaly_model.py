@@ -213,10 +213,22 @@ class AnomalyModel:
         precision, recall, f1, _ = precision_recall_fscore_support(
             labels, detected, average="binary", zero_division=0
         )
+        false_positives = int(((detected == 1) & (labels == 0)).sum())
+        true_negatives = int(((detected == 0) & (labels == 0)).sum())
+        false_positive_rate = (
+            false_positives / (false_positives + true_negatives)
+            if (false_positives + true_negatives)
+            else 0.0
+        )
         metrics = {
             "precision": round(float(precision), 4),
             "recall": round(float(recall), 4),
             "f1": round(float(f1), 4),
+            "false_positive_rate": round(float(false_positive_rate), 4),
+            "confusion_matrix": [
+                [true_negatives, false_positives],
+                [int(((labels == 1) & (detected == 0)).sum()), int(((labels == 1) & (detected == 1)).sum())],
+            ],
             "holdout_size": int(len(labels)),
             "labelled_anomalies": int(labels.sum()),
             "normal_samples": len(normal_values),

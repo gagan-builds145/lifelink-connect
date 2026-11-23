@@ -1,7 +1,7 @@
 {
   "model": "isolation_forest_inventory",
-  "version": "isolation-forest-2026-11-08-240",
-  "trained_at": "2026-11-08T17:26:12.769508+00:00",
+  "version": "isolation-forest-2026-11-23-240",
+  "trained_at": "2026-11-23T07:06:15.215745+00:00",
   "synthetic": true,
   "sample_size": 240,
   "feature_names": [
@@ -17,6 +17,17 @@
     "precision": 0.3333,
     "recall": 1.0,
     "f1": 0.5,
+    "false_positive_rate": 0.0452,
+    "confusion_matrix": [
+      [
+        211,
+        10
+      ],
+      [
+        0,
+        5
+      ]
+    ],
     "holdout_size": 226,
     "labelled_anomalies": 5,
     "normal_samples": 235

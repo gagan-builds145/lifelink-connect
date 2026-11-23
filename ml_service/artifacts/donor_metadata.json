@@ -1,7 +1,7 @@
 {
   "model": "random_forest_donor_response",
-  "version": "rf-donor-2026-11-08-f8337253ac",
-  "trained_at": "2026-11-08T17:26:12.050088+00:00",
+  "version": "rf-donor-2026-11-23-f8337253ac",
+  "trained_at": "2026-11-23T07:06:14.234322+00:00",
   "dataset_label": "deterministic synthetic consented donor-response sample",
   "synthetic": true,
   "sample_size": 900,
@@ -11,13 +11,37 @@
     "previous_donations",
     "prior_response_rate"
   ],
+  "feature_importances": {
+    "distance_km": 0.317,
+    "days_since_donation": 0.2463,
+    "previous_donations": 0.1106,
+    "prior_response_rate": 0.3261
+  },
   "metrics": {
     "roc_auc": 0.6066,
     "accuracy": 0.7056,
     "precision": 0.8288,
     "recall": 0.8121,
     "f1": 0.8203,
+    "brier_score": 0.1809,
+    "confusion_matrix": [
+      [
+        6,
+        25
+      ],
+      [
+        28,
+        121
+      ]
+    ],
     "base_rate": 0.83,
+    "class_imbalance": {
+      "positive": 747,
+      "negative": 153,
+      "positive_ratio": 0.83,
+      "handling": "class_weight=balanced"
+    },
+    "calibration_note": "Probabilities are uncalibrated Random Forest scores. Brier score is reported; advisory ranking only, never clinical eligibility.",
     "train_size": 720,
     "holdout_size": 180
   },

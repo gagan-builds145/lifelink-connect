@@ -22,6 +22,8 @@ import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import (
     accuracy_score,
+    brier_score_loss,
+    confusion_matrix,
     f1_score,
     precision_score,
     recall_score,
@@ -196,7 +198,19 @@ class DonorModel:
             "precision": round(float(precision_score(y_test, predictions, zero_division=0)), 4),
             "recall": round(float(recall_score(y_test, predictions, zero_division=0)), 4),
             "f1": round(float(f1_score(y_test, predictions, zero_division=0)), 4),
+            "brier_score": round(float(brier_score_loss(y_test, probabilities)), 4),
+            "confusion_matrix": confusion_matrix(y_test, predictions).tolist(),
             "base_rate": round(float(labels.mean()), 4),
+            "class_imbalance": {
+                "positive": positives,
+                "negative": negatives,
+                "positive_ratio": round(positives / len(labels), 4),
+                "handling": "class_weight=balanced",
+            },
+            "calibration_note": (
+                "Probabilities are uncalibrated Random Forest scores. Brier score is "
+                "reported; advisory ranking only, never clinical eligibility."
+            ),
             "train_size": int(len(y_train)),
             "holdout_size": int(len(y_test)),
         }

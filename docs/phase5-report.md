@@ -118,7 +118,23 @@ Covered: no ambulance initially; vehicle becomes available; offline provider com
 
 Unverified in a real browser: donor dashboard button order, GPS permission/capture, one-tap submission, searching/assignment transitions, refresh reuse, GPS denial/timeout/weak fix, animations, reduced motion, responsive layout, heading-only pages and the removed identity section. Backend and unit tests cover the server logic; they are not a substitute for the browser walkthrough.
 
-## F. Final six-model acceptance
+## F. Authenticated-user routing
+
+**Files changed:** `src/main.tsx`, `src/lib/home-routing.ts`, `src/components/lifelink/Logo.tsx`, `src/components/lifelink/DashboardShell.tsx`, `src/pages/dashboards/community/SettingsSection.tsx`, `tests/roleRouting.test.ts`.
+
+- `/` now renders a loading screen while Convex Auth restores the session; the public landing page is not mounted during that time.
+- Signed-out visitors still receive the public landing page.
+- Signed-in users are redirected through the existing `dashboardPathForRole()`: donor/requestor/community → community dashboard, hospital, Red Cross, admin, Guardian, drone operations.
+- An authenticated account with no finished role goes to `/signup`, never a default donor dashboard.
+- The shared logo links to the role dashboard when authenticated and `/` when signed out.
+- Sign-out buttons now open a confirmation dialog; cancel keeps the session. Confirmed sign-out calls the existing `signOut()` and navigates to `/login`.
+- Pure routing decisions are covered by 12 tests, including every role, auth loading, signed-out visitors and logo destinations.
+
+No second auth system was added. Protected routes still use `RequireAuth` / `RequireRole`.
+
+**Browser verification:** not performed (no browser binary; see section E).
+
+## G. Final six-model acceptance
 
 | Model | Training | Artifact | Validation | Independent test | API inference |
 |---|---|---|---|---|---|
@@ -137,12 +153,13 @@ Comparisons:
 
 The three available models are synthetic-data evaluations, not hospital performance. AI remains advisory; deterministic clinical, compatibility and allocation rules remain authoritative.
 
-## G. Quality checks
+## H. Quality checks
 
 | Check | Result |
 |---|---|
-| `bun test` | **160 passed, 0 failed**, 751 assertions, 12 files |
+| `bun test` | **172 passed, 0 failed**, 798 assertions, 13 files |
 | Ambulance re-matching tests | **9 passed** |
+| Auth/role routing tests | **12 passed** |
 | `python3 -m pytest -q` | **64 passed**, 1 deprecation warning |
 | `bunx convex dev --once` | Convex functions ready |
 | `bunx tsc -b --noEmit` | Clean |
@@ -151,9 +168,11 @@ The three available models are synthetic-data evaluations, not hospital performa
 | Deep artifact load/inference | **Blocked**; verifier exits 2, no artifacts |
 | Manual browser walkthrough | **Blocked**; no browser binary and insufficient disk |
 
-## H. Release archive
+## I. Release archive
 
-`lifelink-connect-2.0-phase5.zip` — created after the final checks, integrity-tested with `unzip -t`, excludes virtual environments, caches, secrets and the previous archives. It includes the Colab notebook, verifier, Phase 5 report and existing classical artifacts; it does **not** include deep `.keras` artifacts because none exist. The Phase 4 archive is retained.
+`lifelink-connect-2.0-phase5-authfix.zip` — **8.9 MB**, created after the final checks and integrity-tested with `unzip -t`. It excludes virtual environments, caches, secrets and previous archives. It includes the Colab notebook, verifier, Phase 5 report, ambulance re-matching, authentication routing and the existing classical artifacts.
+
+The archived source was selectively extracted to a clean directory (source/config/public only, with the working `node_modules` symlinked) and verified: **TypeScript exit 0** and **production build exit 0**. The archive does **not** include deep `.keras` artifacts because none exist, so it is not labelled fully verified. The previous Phase 5 archive is retained.
 
 ## Remaining acceptance gaps
 
@@ -161,3 +180,4 @@ The three available models are synthetic-data evaluations, not hospital performa
 2. Deep-model comparisons cannot be produced.
 3. The manual browser walkthrough, GPS simulations, animation and responsive checks remain unperformed.
 4. The release can be built from source, but a “production-ready six-model” claim is not supportable until the Colab package is generated, verified, extracted and re-tested here.
+5. Browser verification and authenticated-routing visual checks remain unperformed; only pure routing decisions are unit-tested.

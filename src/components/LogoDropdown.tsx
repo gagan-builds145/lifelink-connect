@@ -10,27 +10,23 @@ import {
 } from "@/components/ui/dropdown-menu";
 import logo from "@/assets/logo.svg";
 import { useAuth } from "@/hooks/use-auth";
+import { resolveLogoHref } from "@/lib/home-routing";
 import { Home, LogOut } from "lucide-react";
 import { useNavigate } from "react-router";
+import { LogoutDialog, useLogoutConfirmation } from "./lifelink/LogoutConfirmation";
 
 export function LogoDropdown() {
-  const { isAuthenticated, signOut } = useAuth();
+  const { isAuthenticated, user } = useAuth();
+  const logout = useLogoutConfirmation();
   const navigate = useNavigate();
-
-  const handleSignOut = async () => {
-    try {
-      await signOut();
-      navigate("/login", { replace: true });
-    } catch (error) {
-      console.error("Sign out error:", error);
-    }
-  };
+  const homeHref = resolveLogoHref({ isAuthenticated, role: user?.role });
 
   const handleGoHome = () => {
-    navigate("/");
+    navigate(homeHref);
   };
 
   return (
+    <>
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon" className="h-10 w-10">
@@ -46,13 +42,13 @@ export function LogoDropdown() {
       <DropdownMenuContent align="start" className="w-48">
         <DropdownMenuItem onClick={handleGoHome} className="cursor-pointer">
           <Home className="mr-2 h-4 w-4" />
-          Landing Page
+          {isAuthenticated ? "Dashboard" : "Landing Page"}
         </DropdownMenuItem>
         {isAuthenticated && (
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem
-              onClick={handleSignOut}
+              onClick={logout.requestLogout}
               className="cursor-pointer text-destructive focus:text-destructive"
             >
               <LogOut className="mr-2 h-4 w-4" />
@@ -62,5 +58,12 @@ export function LogoDropdown() {
         )}
       </DropdownMenuContent>
     </DropdownMenu>
+    <LogoutDialog
+      open={logout.open}
+      onOpenChange={logout.onOpenChange}
+      pending={logout.pending}
+      onConfirm={() => void logout.confirmLogout()}
+    />
+    </>
   );
 }

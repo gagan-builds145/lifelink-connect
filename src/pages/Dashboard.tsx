@@ -1,17 +1,13 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useAuth } from "@/hooks/use-auth";
+import {
+  LogoutDialog,
+  useLogoutConfirmation,
+} from "@/components/lifelink/LogoutConfirmation";
 import { LayoutDashboard, LogOut } from "lucide-react";
-import { useNavigate } from "react-router";
 
 export default function Dashboard() {
-  const { signOut } = useAuth();
-  const navigate = useNavigate();
-
-  const handleSignOut = async () => {
-    await signOut();
-    navigate("/login", { replace: true });
-  };
+  const logout = useLogoutConfirmation();
 
   return (
     <main className="min-h-screen bg-background px-6 py-10 text-foreground">
@@ -24,7 +20,7 @@ export default function Dashboard() {
             type="button"
             variant="outline"
             className="cursor-pointer gap-2 self-start"
-            onClick={handleSignOut}
+            onClick={logout.requestLogout}
           >
             <LogOut className="size-4" />
             Sign out
@@ -45,6 +41,13 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      <LogoutDialog
+        open={logout.open}
+        onOpenChange={logout.onOpenChange}
+        pending={logout.pending}
+        onConfirm={() => void logout.confirmLogout()}
+      />
     </main>
   );
 }

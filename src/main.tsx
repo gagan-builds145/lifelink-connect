@@ -6,7 +6,7 @@ import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexReactClient } from "convex/react";
 import { useAuth } from "@/hooks/use-auth";
-import { dashboardPathForRole, hasDashboardRole } from "@/lib/roles";
+import { resolveHomeRoute } from "@/lib/home-routing";
 import React, { StrictMode, createContext, useContext, useEffect, lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router";
@@ -52,15 +52,15 @@ const NotFound = lazy(() => import("./pages/NotFound.tsx"));
  */
 function HomeRoute() {
   const { isLoading, isAuthenticated, user } = useAuth();
+  const decision = resolveHomeRoute({
+    isLoading,
+    isAuthenticated,
+    role: user?.role,
+  });
 
-  if (isLoading) return <RouteLoading />;
-  if (!isAuthenticated) return <Landing />;
-
-  if (hasDashboardRole(user?.role)) {
-    return <Navigate to={dashboardPathForRole(user?.role)} replace />;
-  }
-
-  return <Navigate to="/signup" replace />;
+  if (decision.type === "loading") return <RouteLoading />;
+  if (decision.type === "landing") return <Landing />;
+  return <Navigate to={decision.to} replace />;
 }
 
 function RouteLoading() {

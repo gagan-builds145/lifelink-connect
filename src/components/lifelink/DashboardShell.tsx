@@ -28,8 +28,8 @@ import {
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router";
-import { toast } from "sonner";
 import { LifeLinkLogo } from "./Logo";
+import { LogoutDialog, useLogoutConfirmation } from "./LogoutConfirmation";
 import { formatRelative } from "@/lib/blood";
 
 export type DashNavItem = {
@@ -182,20 +182,10 @@ export function DashboardShell({
   demoData?: boolean;
   accentIcon?: LucideIcon;
 }) {
-  const { user, signOut } = useAuth();
-  const navigate = useNavigate();
+  const { user } = useAuth();
+  const logout = useLogoutConfirmation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
-
-  const handleSignOut = async () => {
-    try {
-      await signOut();
-      toast("Signed out", { description: "Your session has ended securely." });
-      navigate("/login", { replace: true });
-    } catch {
-      toast.error("Could not sign out. Please try again.");
-    }
-  };
 
   const select = (key: string) => {
     onSelect(key);
@@ -297,7 +287,7 @@ export function DashboardShell({
           </div>
           <button
             type="button"
-            onClick={() => void handleSignOut()}
+            onClick={logout.requestLogout}
             aria-label="Sign out"
             className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-background hover:text-primary"
           >
@@ -403,7 +393,7 @@ export function DashboardShell({
                     type="button"
                     onClick={() => {
                       setAccountOpen(false);
-                      void handleSignOut();
+                      logout.requestLogout();
                     }}
                     className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[12.5px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                   >
@@ -420,6 +410,13 @@ export function DashboardShell({
           {children}
         </main>
       </div>
+
+      <LogoutDialog
+        open={logout.open}
+        onOpenChange={logout.onOpenChange}
+        pending={logout.pending}
+        onConfirm={() => void logout.confirmLogout()}
+      />
     </div>
   );
 }

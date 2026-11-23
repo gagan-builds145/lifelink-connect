@@ -3,7 +3,10 @@ import type { FunctionReturnType } from "convex/server";
 import { SectionHeading } from "@/components/lifelink/community/shared";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { useAuth } from "@/hooks/use-auth";
+import {
+  LogoutDialog,
+  useLogoutConfirmation,
+} from "@/components/lifelink/LogoutConfirmation";
 import { formatDateTime } from "@/lib/blood";
 import { friendlyError } from "@/lib/utils";
 import { useMutation, useQuery } from "convex/react";
@@ -20,15 +23,14 @@ import {
   UserRound,
 } from "lucide-react";
 import { useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link } from "react-router";
 import { toast } from "sonner";
 import type { SectionKey } from "../CommunityDashboard";
 
 type Me = NonNullable<FunctionReturnType<typeof api.profiles.me>>;
 
 export function SettingsSection({ me, onNavigate }: { me: Me; onNavigate: (section: SectionKey) => void }) {
-  const { signOut } = useAuth();
-  const navigate = useNavigate();
+  const logout = useLogoutConfirmation();
   const donor = me.donor;
   const consent = useQuery(api.donorFallback.myConsent);
   const updateDonor = useMutation(api.profiles.updateDonorProfile);
@@ -76,18 +78,6 @@ export function SettingsSection({ me, onNavigate }: { me: Me; onNavigate: (secti
     }
   };
 
-  const handleSignOut = async () => {
-    setBusy("signout");
-    try {
-      await signOut();
-      navigate("/login", { replace: true });
-    } catch {
-      toast.error("Could not sign out. Please try again.");
-    } finally {
-      setBusy(null);
-    }
-  };
-
   return (
     <div className="space-y-5">
       <SectionHeading
@@ -130,10 +120,10 @@ export function SettingsSection({ me, onNavigate }: { me: Me; onNavigate: (secti
             variant="outline"
             size="sm"
             className="mt-3 h-9 gap-1.5 text-[11px]"
-            disabled={busy === "signout"}
-            onClick={() => void handleSignOut()}
+            disabled={logout.pending}
+            onClick={logout.requestLogout}
           >
-            {busy === "signout" ? (
+            {logout.pending ? (
               <Loader2 className="size-3.5 animate-spin" />
             ) : (
               <LogOut className="size-3.5" />
@@ -273,6 +263,13 @@ export function SettingsSection({ me, onNavigate }: { me: Me; onNavigate: (secti
           </div>
         </section>
       </div>
+
+      <LogoutDialog
+        open={logout.open}
+        onOpenChange={logout.onOpenChange}
+        pending={logout.pending}
+        onConfirm={() => void logout.confirmLogout()}
+      />
     </div>
   );
 }

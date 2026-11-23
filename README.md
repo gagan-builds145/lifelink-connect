@@ -42,7 +42,7 @@ Read [docs/phase4-report.md](docs/phase4-report.md) for actual metrics, commands
 
 ### Phase 5 verification
 
-Phase 5 adds bounded automatic ambulance re-matching for `searching` bookings (one-minute server cron, 30-minute window, 20-attempt cap, target reservation, honest expiry) with nine new tests. The deep-training pipeline is now leakage-safe, records provenance/environment/history, and has a reproducible Colab notebook plus a fail-closed artifact verifier and deep inference endpoints. **ANN, LSTM and Autoencoder are still NOT TRAINED on this host** because TensorFlow is absent and the disk cannot hold it; no artifacts or metrics were fabricated. Browser verification is also still blocked: the Playwright browser cache is empty and only ~44 MB free disk remains. `bun test` reports **160 passing tests**, `pytest` **64 passed**, lint has 0 errors and the production build succeeds.
+Phase 5 adds bounded automatic ambulance re-matching for `searching` bookings (one-minute server cron, 30-minute window, 20-attempt cap, target reservation, honest expiry) with nine new tests. The deep-training pipeline is now leakage-safe, records provenance/environment/history, and has a reproducible Colab notebook plus a fail-closed artifact verifier and deep inference endpoints. **ANN, LSTM and Autoencoder are still NOT TRAINED on this host** because TensorFlow is absent and the disk cannot hold it; no artifacts or metrics were fabricated. Browser verification is also still blocked: the Playwright browser cache is empty and only ~44 MB free disk remains. `bun test` reports **172 passing tests**, `pytest` **64 passed**, lint has 0 errors and the production build succeeds.
 
 Read [docs/phase5-report.md](docs/phase5-report.md) and [docs/deep-training-cloud.md](docs/deep-training-cloud.md).
 
@@ -80,7 +80,8 @@ Read [docs/phase5-report.md](docs/phase5-report.md) and [docs/deep-training-clou
 | **Simulated mission lifecycle** | ✅ 15 states, telemetry, failure drills, handoff code, return-to-base |
 | **Admin control room** (`/admin/dashboard`) | ✅ network health, policy, agreements, sync, ML, safety, audit |
 | **Automatic ambulance re-matching** | ✅ bounded retries, reservation, conflict prevention, honest expiry |
-| **Automated tests** | ✅ 160 TypeScript tests across 12 suites; ✅ 64 Python tests |
+| **Authenticated root routing** | ✅ `/` redirects signed-in users to their role dashboard; logo follows role |
+| **Automated tests** | ✅ 172 TypeScript tests across 13 suites; ✅ 64 Python tests |
 | Real HMS/blood-bank production connector | ❌ framework + mock only |
 | PX4/ArduPilot SITL / MAVLink | ⚠️ SITL export + MAVSDK bridge present; **not executed** because no SITL runtime is installed |
 | Live API/E2E/load/security/live-SITL suites | ❌ not included |

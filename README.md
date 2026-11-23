@@ -28,6 +28,12 @@ FastAPI now exposes `/ai/demand/predict`, `/ai/donor-response/predict`, `/ai/inv
 
 Read [docs/phase2-report.md](docs/phase2-report.md) for actual metrics, repairs, test counts and unresolved limitations, and [docs/deep-training-cloud.md](docs/deep-training-cloud.md) for external TensorFlow training.
 
+### Phase 3 verification
+
+Phase 3 adds production hardening without rebuilding the project: provider-independent Aadhaar identity verification with an explicitly labelled sandbox (live verification remains disabled), donor-declared blood-group provenance and audit history, full Guardian onboarding with driver/vehicle/document review, Donor→Guardian upgrade on the same account with workspace switching, and a hardened ambulance lifecycle. `bun test` reports **146 passing tests across 10 suites** (13 new Phase 3 tests), TypeScript is clean and lint has 0 errors. Browser E2E, live Aadhaar, TensorFlow training and cloud S3/Parquet still cannot be executed on this host and are reported as limitations.
+
+Read [docs/phase3-audit-report.md](docs/phase3-audit-report.md), [docs/phase3-report.md](docs/phase3-report.md) and [docs/identity-verification.md](docs/identity-verification.md).
+
 ---
 
 ## 1. What is implemented
@@ -36,6 +42,10 @@ Read [docs/phase2-report.md](docs/phase2-report.md) for actual metrics, repairs,
 | --- | --- |
 | Public landing, verified blood search, camps, privacy, terms | ✅ |
 | Passwordless email OTP auth, Donor/Hospital/Blood Bank/Guardian signup | ✅ |
+| **Donor identity verification** (provider adapter, signed callbacks, consent) | ✅ sandbox only; live verification disabled |
+| **Donor-declared blood group** with change history and medical lock | ✅ never derived from Aadhaar |
+| **Guardian onboarding** — personal, driver, service, payout, vehicles, documents | ✅ admin review + immutable events |
+| **Multi-role account** — Donor + Guardian without a second login | ✅ server-granted roles, workspace switcher |
 | **Unified community dashboard** — donor + requestor in one sidebar | ✅ |
 | Donor capability: availability, invitations, offers, camps, history, consent | ✅ |
 | Requestor capability: create/edit/cancel, timeline, allocation, receipts | ✅ |
@@ -55,7 +65,7 @@ Read [docs/phase2-report.md](docs/phase2-report.md) for actual metrics, repairs,
 | **Drone operations** (`/drones`) | ✅ bases, fleet, airspace, route proxy, 12 preflight checks |
 | **Simulated mission lifecycle** | ✅ 15 states, telemetry, failure drills, handoff code, return-to-base |
 | **Admin control room** (`/admin/dashboard`) | ✅ network health, policy, agreements, sync, ML, safety, audit |
-| **Automated tests** | ✅ 133 TypeScript tests across 9 suites, including AI registry, map, Guardian and ambulance coverage; ✅ 45 Python tests in this environment |
+| **Automated tests** | ✅ 146 TypeScript tests across 10 suites, including Phase 3 identity/Guardian/booking coverage; ✅ 45 Python tests in this environment |
 | Real HMS/blood-bank production connector | ❌ framework + mock only |
 | PX4/ArduPilot SITL / MAVLink | ⚠️ SITL export + MAVSDK bridge present; **not executed** because no SITL runtime is installed |
 | Live API/E2E/load/security/live-SITL suites | ❌ not included |

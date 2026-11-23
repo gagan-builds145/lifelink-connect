@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 import {
   audit,
@@ -9,6 +9,7 @@ import {
   requireText,
   requireUser,
   roleOf,
+  rolesOf,
 } from "./lib/helpers";
 import {
   ambulanceBookingStatusValidator,
@@ -16,6 +17,7 @@ import {
 } from "./validators";
 import {
   ACTIVE_AMBULANCE_STATUSES,
+  AMBULANCE_REQUEST_TTL_MS,
   estimateAmbulanceFare,
   estimateEtaMinutes,
   haversineKm,
@@ -23,6 +25,11 @@ import {
   nextGuardianStatuses,
   type AmbulanceBookingStatus,
 } from "../lib/ambulance";
+import {
+  guardianComplianceIssues,
+  isGuardianApproved,
+  statusOf,
+} from "../lib/guardian";
 
 const BOOKING_ROLES = [
   "community",
@@ -104,10 +111,8 @@ export const registerGuardian = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
-    if (user.role && user.role !== "user") {
-      throw new Error(
-        "This account already has a different LifeLink role. Register the ambulance service with a separate account.",
-      );
+    if (["admin", "red_cross", "hospital", "drone_ops"].includes(user.role ?? "user")) {
+      throw new Error("Staff accounts cannot register as ambulance Guardians.");
     }
     const existing = await ctx.db
       .query("guardianProfiles")
@@ -125,10 +130,19 @@ export const registerGuardian = mutation({
       address: requireText(args.address, "Address", 5, 300),
       online: false,
       documentsStatus: "pending",
+      status: "DRAFT",
       createdAt: now,
       updatedAt: now,
     });
-    await ctx.db.patch(user._id, { role: "guardian", profileCompleted: true });
+    const roles = rolesOf(user);
+    if (!roles.includes("guardian")) roles.push("guardian");
+    await ctx.db.patch(user._id, {
+      // Existing donor/requestor workspaces stay usable; Guardian is added.
+      roles,
+      role:
+        user.role === "user" || user.role === "member" || !user.role ? "guardian" : user.role,
+      profileCompleted: true,
+    });
     await audit(ctx, {
       actor: user,
       action: "guardian.registered",
@@ -149,6 +163,45 @@ export const setGuardianOnline = mutation({
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .unique();
     if (!profile) throw new Error("Guardian profile not found.");
+    if (args.online && !profile.status) {
+      // Legacy profile: keep the Phase 2 contract (administrator verified the
+      // documents). It is not forced through the new Phase 3 checklist, but a
+      // rejected legacy profile still cannot go online.
+      if (profile.documentsStatus !== "verified") {
+        throw new Error("Your Guardian documents are not verified yet.");
+      }
+    }
+    if (args.online && profile.status) {
+      const vehicles = await ctx.db
+        .query("ambulances")
+        .withIndex("by_guardian", (q) => q.eq("guardianUserId", user._id))
+        .collect();
+      const documents = await ctx.db
+        .query("documentMetadata")
+        .withIndex("by_guardian", (q) => q.eq("guardianUserId", user._id))
+        .collect();
+      const issues = guardianComplianceIssues({
+        profile,
+        vehicles: vehicles.map((vehicle) => ({
+          id: String(vehicle._id),
+          type: vehicle.type,
+          insuranceExpiryDate: vehicle.insuranceExpiryDate,
+          fitnessExpiryDate: vehicle.fitnessExpiryDate,
+          pucExpiryDate: vehicle.pucExpiryDate,
+          permitExpiryDate: vehicle.permitExpiryDate,
+          ambulanceAuthorizationExpiryDate: vehicle.ambulanceAuthorizationExpiryDate,
+        })),
+        documents: documents.map((doc) => ({
+          documentKind: doc.documentKind,
+          expiryDate: doc.expiryDate,
+          status: doc.status,
+          ambulanceId: doc.ambulanceId ? String(doc.ambulanceId) : null,
+        })),
+      });
+      if (issues.length > 0) {
+        throw new Error(`Cannot go online yet: ${issues.slice(0, 3).join(" ")}`);
+      }
+    }
     await ctx.db.patch(profile._id, {
       online: args.online,
       updatedAt: Date.now(),
@@ -169,6 +222,18 @@ export const upsertAmbulance = mutation({
     driverLicenseRef: v.optional(v.string()),
     documentRef: v.optional(v.string()),
     documentId: v.optional(v.id("documentMetadata")),
+    make: v.optional(v.string()),
+    manufacturingYear: v.optional(v.number()),
+    colour: v.optional(v.string()),
+    vehicleType: v.optional(v.string()),
+    frontPhotoDocumentId: v.optional(v.id("documentMetadata")),
+    rearPhotoDocumentId: v.optional(v.id("documentMetadata")),
+    sidePhotoDocumentId: v.optional(v.id("documentMetadata")),
+    insuranceExpiryDate: v.optional(v.string()),
+    fitnessExpiryDate: v.optional(v.string()),
+    pucExpiryDate: v.optional(v.string()),
+    permitExpiryDate: v.optional(v.string()),
+    ambulanceAuthorizationExpiryDate: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const user = await requireRole(ctx, ["guardian"]);
@@ -195,11 +260,28 @@ export const upsertAmbulance = mutation({
     );
     if (duplicate) throw new Error("That ambulance registration number is already registered.");
 
-    if (args.documentId) {
-      const document = await ctx.db.get(args.documentId);
+    const documentIds = [
+      args.documentId,
+      args.frontPhotoDocumentId,
+      args.rearPhotoDocumentId,
+      args.sidePhotoDocumentId,
+    ];
+    for (const documentId of documentIds) {
+      if (!documentId) continue;
+      const document = await ctx.db.get(documentId);
       if (!document || document.uploadedByUserId !== user._id) {
         throw new Error("That vehicle document does not belong to your account.");
       }
+    }
+    const normalizedExpiry = (value: string | undefined, label: string) => {
+      if (!value) return undefined;
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) throw new Error(`${label} is not a valid date.`);
+      return date.toISOString().slice(0, 10);
+    };
+    const year = args.manufacturingYear != null ? Math.round(args.manufacturingYear) : undefined;
+    if (year != null && (year < 1980 || year > new Date().getFullYear() + 1)) {
+      throw new Error("Enter a valid manufacturing year.");
     }
 
     const now = Date.now();
@@ -217,6 +299,23 @@ export const upsertAmbulance = mutation({
         ? requireText(args.documentRef, "Document reference", 2, 200)
         : undefined,
       documentId: args.documentId,
+      make: args.make ? requireText(args.make, "Vehicle make", 2, 80) : undefined,
+      manufacturingYear: year,
+      colour: args.colour ? requireText(args.colour, "Vehicle colour", 2, 40) : undefined,
+      vehicleType: args.vehicleType
+        ? requireText(args.vehicleType, "Vehicle type", 2, 60)
+        : undefined,
+      frontPhotoDocumentId: args.frontPhotoDocumentId,
+      rearPhotoDocumentId: args.rearPhotoDocumentId,
+      sidePhotoDocumentId: args.sidePhotoDocumentId,
+      insuranceExpiryDate: normalizedExpiry(args.insuranceExpiryDate, "Insurance expiry"),
+      fitnessExpiryDate: normalizedExpiry(args.fitnessExpiryDate, "Fitness certificate expiry"),
+      pucExpiryDate: normalizedExpiry(args.pucExpiryDate, "PUC expiry"),
+      permitExpiryDate: normalizedExpiry(args.permitExpiryDate, "Permit expiry"),
+      ambulanceAuthorizationExpiryDate: normalizedExpiry(
+        args.ambulanceAuthorizationExpiryDate,
+        "Ambulance authorization expiry",
+      ),
       updatedAt: now,
     };
 
@@ -279,7 +378,7 @@ export const nearby = query({
     const onlineGuardians = await ctx.db.query("guardianProfiles").collect();
     const onlineIds = new Set(
       onlineGuardians
-        .filter((profile) => profile.online && profile.documentsStatus === "verified")
+        .filter((profile) => profile.online && isGuardianApproved(profile))
         .map((profile) => String(profile.userId)),
     );
 
@@ -397,6 +496,14 @@ export const createBooking = mutation({
     }
     const guardian = await ctx.db.get(ambulance.guardianUserId);
     if (!guardian) throw new Error("The ambulance provider account is unavailable.");
+    const guardianProfile = await ctx.db
+      .query("guardianProfiles")
+      .withIndex("by_user", (q) => q.eq("userId", ambulance.guardianUserId))
+      .unique();
+    if (!guardianProfile || !isGuardianApproved(guardianProfile)) {
+      throw new Error("That ambulance provider is not approved for bookings yet.");
+    }
+    if (!guardianProfile.online) throw new Error("That ambulance provider is currently offline.");
 
     const pickupToAmbulance = haversineKm(
       { lat: args.pickupLat, lng: args.pickupLng },
@@ -462,6 +569,13 @@ export const acceptBooking = mutation({
       throw new Error("This request is not assigned to your ambulance.");
     }
     if (!ambulance.available) throw new Error("That ambulance is currently unavailable.");
+    const guardianProfile = await ctx.db
+      .query("guardianProfiles")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .unique();
+    if (!guardianProfile || !isGuardianApproved(guardianProfile)) {
+      throw new Error("Your Guardian application must be approved before accepting bookings.");
+    }
 
     const all = await ctx.db.query("ambulanceBookings").collect();
     const conflict = all.find(
@@ -553,12 +667,12 @@ export const rejectBooking = mutation({
     const now = Date.now();
     const reason = args.reason?.trim().slice(0, 300) || "Declined by the ambulance provider.";
     await ctx.db.patch(booking._id, {
-      status: "cancelled",
+      status: "rejected",
       cancellationReason: reason,
       cancelledAt: now,
       updatedAt: now,
     });
-    await addEvent(ctx, (await ctx.db.get(booking._id))!, "cancelled", user, reason);
+    await addEvent(ctx, (await ctx.db.get(booking._id))!, "rejected", user, reason);
     await notifyUser(ctx, booking.requesterUserId, {
       title: "Ambulance request declined",
       body: `${booking.bookingRef}: ${reason}`,
@@ -843,6 +957,30 @@ export const guardianOverview = query({
       .query("ambulances")
       .withIndex("by_guardian", (q) => q.eq("guardianUserId", user._id))
       .collect();
+    const documents = await ctx.db
+      .query("documentMetadata")
+      .withIndex("by_guardian", (q) => q.eq("guardianUserId", user._id))
+      .collect();
+    const issues = profile?.status
+      ? guardianComplianceIssues({
+          profile,
+          vehicles: ambulances.map((vehicle) => ({
+            id: String(vehicle._id),
+            type: vehicle.type,
+            insuranceExpiryDate: vehicle.insuranceExpiryDate,
+            fitnessExpiryDate: vehicle.fitnessExpiryDate,
+            pucExpiryDate: vehicle.pucExpiryDate,
+            permitExpiryDate: vehicle.permitExpiryDate,
+            ambulanceAuthorizationExpiryDate: vehicle.ambulanceAuthorizationExpiryDate,
+          })),
+          documents: documents.map((doc) => ({
+            documentKind: doc.documentKind,
+            expiryDate: doc.expiryDate,
+            status: doc.status,
+            ambulanceId: doc.ambulanceId ? String(doc.ambulanceId) : null,
+          })),
+        })
+      : [];
     const ownIds = new Set(ambulances.map((ambulance) => String(ambulance._id)));
     const all = await ctx.db.query("ambulanceBookings").collect();
     const incoming = all.filter(
@@ -861,12 +999,31 @@ export const guardianOverview = query({
             companyName: profile.companyName,
             contactPerson: profile.contactPerson,
             phone: profile.phone,
+            email: profile.email ?? null,
             city: profile.city,
             address: profile.address,
             online: profile.online,
             documentsStatus: profile.documentsStatus,
+            status: statusOf(profile),
+            approved: isGuardianApproved(profile),
+            linkedDonorId: profile.linkedDonorId ?? null,
+            submittedAt: profile.submittedAt ?? null,
+            reviewedAt: profile.reviewedAt ?? null,
+            reviewNote: profile.reviewNote ?? null,
+            driver: profile.driver ?? null,
+            service: profile.service ?? null,
           }
         : null,
+      issues,
+      documents: documents.map((doc) => ({
+        id: doc._id,
+        kind: doc.documentKind ?? null,
+        fileName: doc.fileName,
+        expiryDate: doc.expiryDate ?? null,
+        status: doc.status ?? "pending",
+        reviewNote: doc.reviewNote ?? null,
+        ambulanceId: doc.ambulanceId ?? null,
+      })),
       ambulances: ambulances.map((ambulance) => ({
         id: ambulance._id,
         registrationNumber: ambulance.registrationNumber,
@@ -878,6 +1035,15 @@ export const guardianOverview = query({
         driverLicenseRef: ambulance.driverLicenseRef ?? null,
         documentRef: ambulance.documentRef ?? null,
         documentId: ambulance.documentId ?? null,
+        make: ambulance.make ?? null,
+        manufacturingYear: ambulance.manufacturingYear ?? null,
+        colour: ambulance.colour ?? null,
+        vehicleType: ambulance.vehicleType ?? null,
+        insuranceExpiryDate: ambulance.insuranceExpiryDate ?? null,
+        fitnessExpiryDate: ambulance.fitnessExpiryDate ?? null,
+        pucExpiryDate: ambulance.pucExpiryDate ?? null,
+        permitExpiryDate: ambulance.permitExpiryDate ?? null,
+        ambulanceAuthorizationExpiryDate: ambulance.ambulanceAuthorizationExpiryDate ?? null,
         available: ambulance.available,
         latitude: ambulance.latitude ?? null,
         longitude: ambulance.longitude ?? null,
@@ -970,4 +1136,50 @@ export const adminGuardians = query({
 export const ambulanceTypes = query({
   args: {},
   handler: async () => ["bls", "als", "icu", "neonatal"] as const,
+});
+
+/**
+ * Release requests that no Guardian accepted. Runs from the cron and is safe to
+ * run repeatedly: each booking is cancelled exactly once and the target vehicle
+ * is never held by an expired request.
+ */
+export const expireStaleBookings = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const bookings = await ctx.db.query("ambulanceBookings").collect();
+    let expired = 0;
+    for (const booking of bookings) {
+      if (
+        !["requested", "searching"].includes(booking.status) ||
+        booking.assignedAmbulanceId != null
+      ) {
+        continue;
+      }
+      if (now - booking.requestedAt < AMBULANCE_REQUEST_TTL_MS) continue;
+      await ctx.db.patch(booking._id, {
+        status: "expired",
+        cancellationReason:
+          "No ambulance provider accepted the request within the response window.",
+        cancelledAt: now,
+        updatedAt: now,
+      });
+      await ctx.db.insert("ambulanceBookingEvents", {
+        bookingId: booking._id,
+        status: "expired",
+        actorUserId: booking.requesterUserId,
+        actorRole: "system",
+        note: "Request expired with no provider acceptance.",
+        createdAt: now,
+      });
+      await notifyUser(ctx, booking.requesterUserId, {
+        title: "Ambulance request expired",
+        body: `${booking.bookingRef}: no provider accepted in time. You can book another ambulance.`,
+        kind: "ambulance",
+        link: "/ambulance",
+      });
+      expired += 1;
+    }
+    return { expired };
+  },
 });

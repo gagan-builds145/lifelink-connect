@@ -161,7 +161,7 @@ describe("Guardian registration and fleet authorization", () => {
           city: "Pune",
           address: "4 Depot Road",
         }),
-    ).rejects.toThrow(/different LifeLink role/i);
+    ).rejects.toThrow(/staff accounts cannot register/i);
   });
 
   test("guardian can add an ambulance but cannot edit another guardian's vehicle", async () => {
@@ -325,7 +325,7 @@ describe("ambulance booking lifecycle", () => {
     ).rejects.toThrow(/unavailable|already assigned|no longer open/i);
   });
 
-  test("a guardian can decline a request and the requester sees cancellation", async () => {
+  test("a guardian can decline a request and the requester sees rejection", async () => {
     const t = convexTest(schema, modules);
     const seeded = await seed(t);
     const created = await book(t, seeded.hospital, seeded.ambulance, "client-hosp-0002");
@@ -336,7 +336,7 @@ describe("ambulance booking lifecycle", () => {
         reason: "Vehicle already committed.",
       });
     const booking = await t.run(async (ctx) => ctx.db.get(created.bookingId));
-    expect(booking?.status).toBe("cancelled");
+    expect(booking?.status).toBe("rejected");
     expect(booking?.cancellationReason).toBe("Vehicle already committed.");
   });
 

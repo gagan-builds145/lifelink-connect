@@ -15,6 +15,7 @@ import {
   requireText,
   requireUser,
   roleOf,
+  rolesOf,
 } from "./lib/helpers";
 import {
   bloodGroupValidator,
@@ -45,12 +46,57 @@ export const me = query({
         phone: user.phone ?? null,
         city: user.city ?? null,
         role: roleOf(user),
+        roles: rolesOf(user),
         isAnonymous: user.isAnonymous ?? false,
       },
       donor,
       requestor,
       organization,
     };
+  },
+});
+
+/**
+ * Switch the active workspace without signing out. Only roles already granted
+ * server-side can be selected, so this can never escalate privileges.
+ */
+export const switchRole = mutation({
+  args: {
+    role: v.union(
+      v.literal("community"),
+      v.literal("donor"),
+      v.literal("requestor"),
+      v.literal("guardian"),
+      v.literal("hospital"),
+      v.literal("red_cross"),
+      v.literal("drone_ops"),
+      v.literal("admin"),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireUser(ctx);
+    const granted = rolesOf(user);
+    if (!granted.includes(args.role)) {
+      throw new Error("That role has not been granted to this account.");
+    }
+    if (user.role === args.role) return { role: args.role, roles: granted };
+    await ctx.db.patch(user._id, { role: args.role });
+    await audit(ctx, {
+      actor: user,
+      action: "account.role_switched",
+      entityType: "user",
+      entityId: String(user._id),
+      detail: `Active workspace switched from ${roleOf(user)} to ${args.role}. No role was granted.`,
+    });
+    return { role: args.role, roles: granted };
+  },
+});
+
+export const myRoles = query({
+  args: {},
+  handler: async (ctx) => {
+    const user = await requireUser(ctx);
+    return { active: roleOf(user), roles: rolesOf(user) };
   },
 });
 
@@ -112,6 +158,8 @@ export const registerDonor = mutation({
       lastDonationDate,
       available: args.available,
       shareContact: args.shareContact,
+      bloodGroupSource: "self_declared",
+      bloodGroupUpdatedAt: now,
       createdAt: now,
       updatedAt: now,
     });

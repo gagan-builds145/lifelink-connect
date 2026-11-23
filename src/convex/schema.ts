@@ -3,6 +3,12 @@ import { defineSchema, defineTable } from "convex/server";
 import { Infer, v } from "convex/values";
 import {
   aiDatasetStageValidator,
+  bloodGroupSourceValidator,
+  guardianApplicationStatusValidator,
+  guardianDocumentKindValidator,
+  guardianDocumentStatusValidator,
+  identityVerificationStatusValidator,
+  userRolesValidator,
   aiDatasetStatusValidator,
   aiModelKindValidator,
   aiModelStatusValidator,
@@ -67,7 +73,10 @@ const schema = defineSchema(
       emailVerificationTime: v.optional(v.number()), // email verification time. do not remove
       isAnonymous: v.optional(v.boolean()), // is the user anonymous. do not remove
 
-      role: v.optional(roleValidator), // server-assigned application role
+      role: v.optional(roleValidator), // server-assigned active/primary role
+      // Every role granted to the account. `role` remains the active workspace
+      // so existing accounts and queries keep working unchanged.
+      roles: v.optional(userRolesValidator),
       organizationId: v.optional(v.id("organizations")),
       city: v.optional(v.string()),
       phone: v.optional(v.string()),
@@ -95,6 +104,10 @@ const schema = defineSchema(
       lastDonationDate: v.optional(v.string()),
       available: v.boolean(),
       shareContact: v.boolean(),
+      // Blood group is always donor-declared unless a clinical verification
+      // status is introduced separately. It is never derived from Aadhaar.
+      bloodGroupSource: v.optional(bloodGroupSourceValidator),
+      bloodGroupUpdatedAt: v.optional(v.number()),
       isDemo: v.optional(v.boolean()),
       createdAt: v.number(),
       updatedAt: v.number(),
@@ -371,10 +384,24 @@ const schema = defineSchema(
       fileName: v.string(),
       contentType: v.string(),
       size: v.number(),
+      // Guardian onboarding documents. Files stay in Convex storage; only the
+      // metadata below is queryable, and admin-only reads go through
+      // documents.getUrl.
+      purpose: v.optional(
+        v.union(v.literal("blood_request"), v.literal("guardian_onboarding")),
+      ),
+      guardianUserId: v.optional(v.id("users")),
+      ambulanceId: v.optional(v.id("ambulances")),
+      documentKind: v.optional(guardianDocumentKindValidator),
+      expiryDate: v.optional(v.string()),
+      status: v.optional(guardianDocumentStatusValidator),
+      reviewNote: v.optional(v.string()),
       createdAt: v.number(),
     })
       .index("by_uploader", ["uploadedByUserId"])
-      .index("by_request", ["requestId"]),
+      .index("by_request", ["requestId"])
+      .index("by_guardian", ["guardianUserId"])
+      .index("by_ambulance", ["ambulanceId"]),
 
     notifications: defineTable({
       userId: v.id("users"),
@@ -982,14 +1009,129 @@ const schema = defineSchema(
       city: v.string(),
       address: v.string(),
       online: v.boolean(),
+      /** Legacy review flag kept in sync for existing queries. */
       documentsStatus: v.union(
         v.literal("pending"),
         v.literal("verified"),
         v.literal("rejected"),
       ),
+      /** Full Phase 3 onboarding lifecycle. Absent on legacy profiles. */
+      status: v.optional(guardianApplicationStatusValidator),
+      email: v.optional(v.string()),
+      dateOfBirth: v.optional(v.string()),
+      preferredLanguage: v.optional(v.string()),
+      residentialAddress: v.optional(v.string()),
+      emergencyContactName: v.optional(v.string()),
+      emergencyContactPhone: v.optional(v.string()),
+      profilePhotoDocumentId: v.optional(v.id("documentMetadata")),
+      identityType: v.optional(v.string()),
+      identityLast4: v.optional(v.string()),
+      driver: v.optional(
+        v.object({
+          fullName: v.string(),
+          phone: v.string(),
+          licenceNumber: v.string(),
+          licenceCategory: v.string(),
+          licenceIssueDate: v.optional(v.string()),
+          licenceExpiryDate: v.string(),
+          issuingAuthority: v.optional(v.string()),
+          experienceYears: v.optional(v.number()),
+          available: v.boolean(),
+          licenceFrontDocumentId: v.optional(v.id("documentMetadata")),
+          licenceBackDocumentId: v.optional(v.id("documentMetadata")),
+          photoDocumentId: v.optional(v.id("documentMetadata")),
+        }),
+      ),
+      service: v.optional(
+        v.object({
+          bls: v.boolean(),
+          als: v.boolean(),
+          oxygen: v.boolean(),
+          stretcher: v.boolean(),
+          wheelchairAccessible: v.boolean(),
+          firstAid: v.boolean(),
+          emergencyEquipment: v.string(),
+          operatingArea: v.string(),
+          operatingHours: v.string(),
+          emergencyContact: v.string(),
+          notes: v.optional(v.string()),
+        }),
+      ),
+      /** Bank details are deliberately limited to a masked reference. */
+      payout: v.optional(
+        v.object({
+          accountHolderName: v.string(),
+          bankName: v.string(),
+          accountNumberLast4: v.string(),
+          ifsc: v.string(),
+          verificationNote: v.optional(v.string()),
+        }),
+      ),
+      linkedDonorId: v.optional(v.string()),
+      submittedAt: v.optional(v.number()),
+      reviewedAt: v.optional(v.number()),
+      reviewedByUserId: v.optional(v.id("users")),
+      reviewNote: v.optional(v.string()),
       createdAt: v.number(),
       updatedAt: v.number(),
-    }).index("by_user", ["userId"]),
+    })
+      .index("by_user", ["userId"])
+      .index("by_status", ["status"]),
+
+    /** Aadhaar/identity verification sessions. Never stores Aadhaar numbers,
+     * OTPs, biometrics or raw provider payloads. */
+    donorIdentityVerifications: defineTable({
+      donorUserId: v.id("users"),
+      donorProfileId: v.id("donorProfiles"),
+      provider: v.string(),
+      verificationReference: v.string(),
+      status: identityVerificationStatusValidator,
+      /** True only for the explicitly-labelled sandbox provider. */
+      sandbox: v.boolean(),
+      consentVersion: v.string(),
+      consentTimestamp: v.number(),
+      consentWithdrawnAt: v.optional(v.number()),
+      verificationTimestamp: v.optional(v.number()),
+      expiryTimestamp: v.number(),
+      permittedMaskedReference: v.optional(v.string()),
+      providerTransactionReference: v.optional(v.string()),
+      verifiedName: v.optional(v.string()),
+      verifiedAddress: v.optional(v.string()),
+      failureReason: v.optional(v.string()),
+      reviewNote: v.optional(v.string()),
+      reviewedByUserId: v.optional(v.id("users")),
+      reviewedAt: v.optional(v.number()),
+      callbackReceivedAt: v.optional(v.number()),
+      createdAt: v.number(),
+      updatedAt: v.number(),
+    })
+      .index("by_donor", ["donorUserId"])
+      .index("by_reference", ["verificationReference"])
+      .index("by_status", ["status"]),
+
+    donorBloodGroupHistory: defineTable({
+      donorProfileId: v.id("donorProfiles"),
+      donorUserId: v.id("users"),
+      previousGroup: v.optional(bloodGroupValidator),
+      newGroup: bloodGroupValidator,
+      source: bloodGroupSourceValidator,
+      changedByUserId: v.id("users"),
+      note: v.optional(v.string()),
+      createdAt: v.number(),
+    })
+      .index("by_profile", ["donorProfileId"])
+      .index("by_donor", ["donorUserId"]),
+
+    /** Immutable administrator decisions on Guardian applications. */
+    guardianReviewEvents: defineTable({
+      guardianProfileId: v.id("guardianProfiles"),
+      guardianUserId: v.id("users"),
+      adminUserId: v.id("users"),
+      previousStatus: v.optional(guardianApplicationStatusValidator),
+      newStatus: guardianApplicationStatusValidator,
+      reason: v.string(),
+      createdAt: v.number(),
+    }).index("by_guardian", ["guardianUserId"]),
 
     ambulances: defineTable({
       guardianUserId: v.id("users"),
@@ -1002,6 +1144,20 @@ const schema = defineSchema(
       driverLicenseRef: v.optional(v.string()),
       documentRef: v.optional(v.string()),
       documentId: v.optional(v.id("documentMetadata")),
+      // Phase 3 onboarding details (all optional for legacy vehicles).
+      make: v.optional(v.string()),
+      manufacturingYear: v.optional(v.number()),
+      colour: v.optional(v.string()),
+      vehicleType: v.optional(v.string()),
+      frontPhotoDocumentId: v.optional(v.id("documentMetadata")),
+      rearPhotoDocumentId: v.optional(v.id("documentMetadata")),
+      sidePhotoDocumentId: v.optional(v.id("documentMetadata")),
+      insuranceExpiryDate: v.optional(v.string()),
+      fitnessExpiryDate: v.optional(v.string()),
+      pucExpiryDate: v.optional(v.string()),
+      permitExpiryDate: v.optional(v.string()),
+      ambulanceAuthorizationExpiryDate: v.optional(v.string()),
+      availability: v.optional(v.boolean()),
       available: v.boolean(),
       latitude: v.optional(v.number()),
       longitude: v.optional(v.number()),

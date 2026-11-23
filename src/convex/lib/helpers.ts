@@ -27,6 +27,30 @@ export function roleOf(user: AppUser | null | undefined): AppRole {
   return (user?.role ?? "user") as AppRole;
 }
 
+/**
+ * Every role granted to an account. `role` is the active/primary workspace;
+ * `roles` holds additional granted roles (for example Donor + Guardian on one
+ * account). Legacy accounts without `roles` behave exactly as before.
+ */
+export function rolesOf(user: AppUser | null | undefined): AppRole[] {
+  const granted = new Set<AppRole>();
+  for (const role of user?.roles ?? []) granted.add(role as AppRole);
+  granted.add(roleOf(user));
+  return Array.from(granted);
+}
+
+export function hasRole(user: AppUser | null | undefined, role: AppRole): boolean {
+  return rolesOf(user).includes(role);
+}
+
+export function hasAnyRole(
+  user: AppUser | null | undefined,
+  roles: readonly AppRole[],
+): boolean {
+  const granted = rolesOf(user);
+  return roles.some((role) => granted.includes(role));
+}
+
 export async function requireUser(ctx: Ctx): Promise<AppUser> {
   const userId = await getAuthUserId(ctx);
   if (!userId) throw new Error("You must be signed in to do that.");
@@ -50,7 +74,7 @@ export async function optionalUser(ctx: Ctx): Promise<AppUser | null> {
 
 export async function requireRole(ctx: Ctx, roles: AppRole[]): Promise<AppUser> {
   const user = await requireUser(ctx);
-  if (!roles.includes(roleOf(user))) {
+  if (!hasAnyRole(user, roles)) {
     throw new Error("Your account is not authorized for this action.");
   }
   return user;

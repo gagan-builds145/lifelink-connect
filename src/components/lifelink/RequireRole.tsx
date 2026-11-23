@@ -23,7 +23,12 @@ export function RequireRole({
   }
 
   const role = (user?.role ?? "user") as AppRole;
-  if (!roles.includes(role)) {
+  // An account may hold more than one role (for example Donor + Guardian).
+  // The backend grants these server-side; the UI only reflects them.
+  const granted = Array.from(
+    new Set<AppRole>([role, ...(((user as { roles?: AppRole[] } | null)?.roles ?? []) as AppRole[])]),
+  );
+  if (!roles.some((allowed) => granted.includes(allowed))) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center p-6">
         <div className="w-full max-w-md rounded-3xl border border-border bg-card p-8 text-center">

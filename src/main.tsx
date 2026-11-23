@@ -22,6 +22,7 @@ const SignupRedCross = lazy(() => import("./pages/signup/SignupRedCross.tsx"));
 const SignupHospital = lazy(() => import("./pages/signup/SignupHospital.tsx"));
 const SignupGuardian = lazy(() => import("./pages/signup/SignupGuardian.tsx"));
 const GuardianDashboard = lazy(() => import("./pages/GuardianDashboard.tsx"));
+const GuardianOnboarding = lazy(() => import("./pages/GuardianOnboarding.tsx"));
 const AmbulanceBooking = lazy(() => import("./pages/AmbulanceBooking.tsx"));
 const DashboardRedirect = lazy(() => import("./pages/DashboardRedirect.tsx"));
 const CommunityDashboard = lazy(() => import("./pages/dashboards/CommunityDashboard.tsx"));
@@ -365,6 +366,7 @@ createRoot(document.getElementById("root")!).render(
                   </RequireAuth>
                 }
               />
+              <Route path="/guardian/onboarding" element={<GuardianOnboarding />} />
               <Route
                 path="/guardian/dashboard"
                 element={

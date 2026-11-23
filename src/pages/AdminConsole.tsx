@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
 import { COMPONENT_LABELS, formatDateTime, formatRelative } from "@/lib/blood";
+import { GUARDIAN_STATUS_LABELS, type GuardianStatus } from "@/lib/guardian";
 import { cn, friendlyError } from "@/lib/utils";
 import { useAction, useMutation, useQuery } from "convex/react";
 import {
@@ -147,7 +148,8 @@ export default function AdminConsole() {
   const anomalies = useQuery(api.forecasting.anomalyReport, {});
   const securityCounts = useQuery(api.security.securityEventCounts, {});
   const securityTimeline = useQuery(api.security.recentSecurityEvents, { limit: 60 });
-  const guardians = useQuery(api.ambulances.adminGuardians);
+  const guardianApplications = useQuery(api.guardian.listApplications);
+  const identityVerifications = useQuery(api.aadhaar.adminVerifications);
 
   const [tab, setTab] = useState("overview");
   const [busy, setBusy] = useState<string | null>(null);
@@ -170,7 +172,10 @@ export default function AdminConsole() {
   const trainDemandModel = useAction(api.ml.trainDemandModel);
   const checkMlService = useAction(api.ml.mlServiceStatus);
   const loadAiCatalog = useAction(api.ml.aiModelCatalog);
-  const reviewGuardian = useMutation(api.ambulances.reviewGuardian);
+  const reviewApplication = useMutation(api.guardian.reviewApplication);
+  const reviewDocument = useMutation(api.documents.reviewDocument);
+  const reviewIdentity = useMutation(api.aadhaar.reviewVerification);
+  const [reviewReasons, setReviewReasons] = useState<Record<string, string>>({});
   const promoteAiModel = useMutation(api.aiRegistry.promoteModel);
   const disableAiModel = useMutation(api.aiRegistry.disableModel);
   const [aiCatalog, setAiCatalog] = useState<{
@@ -241,7 +246,8 @@ export default function AdminConsole() {
     { key: "network", label: "Institutions & policy", icon: Building2 },
     { key: "integrations", label: "Integrations & sync", icon: Database, badge: overview?.integrations.failing },
     { key: "safety", label: "Safety & notifications", icon: Siren, badge: overview?.anomalies.critical },
-    { key: "ambulance", label: "Ambulance network", icon: Ambulance, badge: overview?.ambulance.pendingGuardians },
+    { key: "ambulance", label: "Guardian applications", icon: Ambulance, badge: overview?.ambulance.pendingGuardians },
+    { key: "identity", label: "Identity verification", icon: ShieldCheck, badge: identityVerifications?.filter((row) => row.status === "REQUIRES_REVIEW").length },
     { key: "ml", label: "AI / ML registry", icon: BrainCircuit },
     { key: "security", label: "Security monitoring", icon: ShieldAlert, badge: securityCounts?.unresolved },
     { key: "audit", label: "Audit trail", icon: ScrollText },
@@ -979,46 +985,192 @@ export default function AdminConsole() {
                 <StatCard label="Completed bookings" value={overview?.ambulance.completedBookings ?? 0} hint={`${overview?.ambulance.cancelledBookings ?? 0} cancelled`} icon={CheckCircle2} />
               </div>
 
-              <Panel eyebrow="Guardian verification" title="Ambulance service providers">
-                {(guardians ?? []).length === 0 ? (
+              <Panel eyebrow="Guardian verification" title="Ambulance partner applications">
+                {(guardianApplications ?? []).length === 0 ? (
                   <p className="rounded-xl border border-dashed border-border p-4 text-[11.5px] text-muted-foreground">
                     No Guardian ambulance providers have registered yet.
                   </p>
                 ) : (
+                  <div className="space-y-3">
+                    {(guardianApplications ?? []).map((application) => {
+                      const reason = reviewReasons[String(application.userId)] ?? "";
+                      const decide = (status: "UNDER_REVIEW" | "APPROVED" | "REJECTED" | "RESUBMISSION_REQUIRED" | "SUSPENDED") =>
+                        void run(
+                          `app-${application.userId}-${status}`,
+                          () =>
+                            reviewApplication({
+                              guardianUserId: application.userId,
+                              status,
+                              reason: reason.trim() || undefined,
+                            }),
+                          `Guardian application moved to ${status}.`,
+                        );
+                      return (
+                        <div key={String(application.userId)} className="rounded-xl border border-border p-3">
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                              <p className="text-[12.5px] font-bold">{application.companyName}</p>
+                              <p className="text-[10.5px] text-muted-foreground">
+                                {application.contactPerson} · {application.phone} · {application.city}
+                              </p>
+                              <p className="mt-0.5 text-[10px] text-muted-foreground">
+                                {application.email ?? "No email"} · {application.online ? "Online" : "Offline"}
+                                {application.linkedDonorId ? ` · donor ${application.linkedDonorId}` : ""}
+                              </p>
+                            </div>
+                            <span className="rounded-full border border-border px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-[0.08em]">
+                              {GUARDIAN_STATUS_LABELS[application.status as GuardianStatus] ?? application.status}
+                            </span>
+                          </div>
+
+                          {application.driver && (
+                            <p className="mt-2 text-[10px] text-muted-foreground">
+                              Driver {application.driver.fullName} · licence {application.driver.licenceNumber}{" "}
+                              ({application.driver.licenceCategory}) · expires {application.driver.licenceExpiryDate}
+                            </p>
+                          )}
+                          {application.vehicles.length > 0 && (
+                            <ul className="mt-1.5 space-y-0.5 text-[10px] text-muted-foreground">
+                              {application.vehicles.map((vehicle) => (
+                                <li key={String(vehicle.id)}>
+                                  {vehicle.registrationNumber} · {vehicle.type.toUpperCase()} · insurance {vehicle.insuranceExpiryDate ?? "missing"} · fitness {vehicle.fitnessExpiryDate ?? "missing"}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                          {application.documents.length > 0 && (
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {application.documents.map((doc) => (
+                                <span key={String(doc.id)} className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[9px]">
+                                  {doc.kindLabel ?? doc.fileName}
+                                  <span className="font-bold uppercase">{doc.status}</span>
+                                  {doc.status !== "approved" && (
+                                    <button
+                                      type="button"
+                                      className="text-teal-700 hover:underline"
+                                      disabled={busy === `doc-${doc.id}`}
+                                      onClick={() =>
+                                        void run(
+                                          `doc-${doc.id}`,
+                                          () => reviewDocument({ documentId: doc.id, status: "approved" }),
+                                          "Document approved.",
+                                        )
+                                      }
+                                    >
+                                      approve
+                                    </button>
+                                  )}
+                                  {doc.status !== "rejected" && (
+                                    <button
+                                      type="button"
+                                      className="text-rose-700 hover:underline"
+                                      disabled={busy === `doc-${doc.id}`}
+                                      onClick={() =>
+                                        void run(
+                                          `doc-${doc.id}`,
+                                          () => reviewDocument({ documentId: doc.id, status: "rejected", note: "Rejected during review." }),
+                                          "Document rejected.",
+                                        )
+                                      }
+                                    >
+                                      reject
+                                    </button>
+                                  )}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
+                          <Input
+                            className="mt-2 h-8 text-[11px]"
+                            placeholder="Reason / note (required to reject, resubmit or suspend)"
+                            value={reason}
+                            onChange={(event) =>
+                              setReviewReasons((prev) => ({
+                                ...prev,
+                                [String(application.userId)]: event.target.value,
+                              }))
+                            }
+                          />
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            <Button size="sm" variant="outline" className="h-7 text-[10px]" disabled={busy != null} onClick={() => decide("UNDER_REVIEW")}>
+                              Under review
+                            </Button>
+                            <Button size="sm" className="h-7 text-[10px]" disabled={busy != null} onClick={() => decide("APPROVED")}>
+                              Approve
+                            </Button>
+                            <Button size="sm" variant="outline" className="h-7 text-[10px]" disabled={busy != null} onClick={() => decide("RESUBMISSION_REQUIRED")}>
+                              Request resubmission
+                            </Button>
+                            <Button size="sm" variant="outline" className="h-7 text-[10px] text-rose-700" disabled={busy != null} onClick={() => decide("REJECTED")}>
+                              Reject
+                            </Button>
+                            <Button size="sm" variant="outline" className="h-7 text-[10px] text-amber-800" disabled={busy != null} onClick={() => decide("SUSPENDED")}>
+                              Suspend
+                            </Button>
+                          </div>
+                          {application.reviewNote && (
+                            <p className="mt-1.5 text-[9.5px] text-muted-foreground">Last note: {application.reviewNote}</p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                <p className="mt-2 text-[9px] leading-4 text-muted-foreground">
+                  Only approved, online Guardians with valid documents and an available ambulance appear in nearby searches. Approval is an administrative check, not a medical endorsement.
+                </p>
+              </Panel>
+            </div>
+          )}
+
+          {tab === "identity" && (
+            <div className="space-y-4">
+              <Panel eyebrow="Identity" title="Aadhaar verification records">
+                {(identityVerifications ?? []).length === 0 ? (
+                  <p className="rounded-xl border border-dashed border-border p-4 text-[11.5px] text-muted-foreground">
+                    No donor identity-verification sessions yet.
+                  </p>
+                ) : (
                   <div className="space-y-2">
-                    {(guardians ?? []).map((guardian) => (
-                      <div key={String(guardian.userId)} className="rounded-xl border border-border p-3">
+                    {(identityVerifications ?? []).map((row) => (
+                      <div key={String(row.id)} className="rounded-xl border border-border p-3">
                         <div className="flex flex-wrap items-start justify-between gap-2">
                           <div>
-                            <p className="text-[12.5px] font-bold">{guardian.companyName}</p>
-                            <p className="text-[10.5px] text-muted-foreground">
-                              {guardian.contactPerson} · {guardian.phone} · {guardian.city}
+                            <p className="text-[12px] font-bold">
+                              {row.donorId} · {row.donorCity ?? "Unknown city"}
                             </p>
-                            <p className="mt-0.5 text-[10px] text-muted-foreground">
-                              {guardian.email ?? "No email"} · {guardian.online ? "Online" : "Offline"}
+                            <p className="text-[10px] text-muted-foreground">
+                              Provider {row.provider} · {formatRelative(row.createdAt)}
+                              {row.maskedReference ? ` · ref ${row.maskedReference}` : ""}
                             </p>
                           </div>
                           <span className="rounded-full border border-border px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-[0.08em]">
-                            {guardian.documentsStatus}
+                            {row.status}
+                            {row.sandbox ? " · sandbox" : ""}
                           </span>
                         </div>
+                        <p className="mt-1 text-[9.5px] text-muted-foreground">
+                          Consent {row.consentVersion} · {formatRelative(row.consentTimestamp)}
+                          {row.consentWithdrawnAt ? " · withdrawn" : ""} · No Aadhaar number stored
+                        </p>
                         <div className="mt-2 flex flex-wrap gap-1.5">
-                          {(["verified", "rejected", "pending"] as const).map((status) => (
+                          {(["REQUIRES_REVIEW", "FAILED", "REVOKED"] as const).map((status) => (
                             <Button
                               key={status}
                               size="sm"
-                              variant={guardian.documentsStatus === status ? "default" : "outline"}
-                              className="h-7 text-[10px] capitalize"
-                              disabled={busy === `guardian-${guardian.userId}-${status}`}
+                              variant="outline"
+                              className="h-7 text-[9.5px]"
+                              disabled={busy === `identity-${row.id}-${status}`}
                               onClick={() =>
                                 void run(
-                                  `guardian-${guardian.userId}-${status}`,
-                                  () => reviewGuardian({ guardianUserId: guardian.userId, status }),
-                                  `Guardian marked ${status}.`,
+                                  `identity-${row.id}-${status}`,
+                                  () => reviewIdentity({ verificationId: row.id, status, reason: "Administrator review from the identity dashboard." }),
+                                  `Verification marked ${status}.`,
                                 )
                               }
                             >
-                              {status}
+                              {status.replace(/_/g, " ")}
                             </Button>
                           ))}
                         </div>
@@ -1027,8 +1179,7 @@ export default function AdminConsole() {
                   </div>
                 )}
                 <p className="mt-2 text-[9px] leading-4 text-muted-foreground">
-                  Only verified, online Guardians with an available ambulance appear in nearby searches.
-                  Document review is an administrative check, not a medical endorsement.
+                  Administrators can never set a verification to VERIFIED. Only a signed provider callback can do that. Sandbox rows are not UIDAI verifications.
                 </p>
               </Panel>
             </div>

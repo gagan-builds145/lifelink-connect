@@ -5,6 +5,7 @@ import {
   ActivateRequestorPanel,
 } from "@/components/lifelink/community/Activations";
 import { SectionHeading } from "@/components/lifelink/community/shared";
+import { RoleSwitcher } from "@/components/lifelink/RoleSwitcher";
 import { BloodGroupChip } from "@/components/lifelink/ui-bits";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,7 @@ import {
 import { friendlyError } from "@/lib/utils";
 import { useMutation } from "convex/react";
 import {
+  Ambulance,
   BadgeCheck,
   CalendarHeart,
   Droplets,
@@ -434,7 +436,13 @@ export function ProfileSection({
               </div>
             ))}
           </dl>
+          <RoleSwitcher className="mt-4 border-t border-border pt-3" />
           <div className="mt-3 flex flex-wrap gap-2">
+            <Button asChild variant="outline" size="sm" className="h-8 gap-1.5 text-[10.5px]">
+              <Link to="/guardian/onboarding">
+                <Ambulance className="size-3" /> Register as Guardian
+              </Link>
+            </Button>
             <Button asChild variant="outline" size="sm" className="h-8 gap-1.5 text-[10.5px]">
               <Link to="/privacy">
                 <Lock className="size-3" /> Privacy

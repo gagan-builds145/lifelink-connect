@@ -98,7 +98,70 @@ export const ambulanceBookingStatusValidator = v.union(
   v.literal("patient_picked_up"),
   v.literal("in_transit"),
   v.literal("completed"),
+  v.literal("rejected"),
   v.literal("cancelled"),
+  v.literal("expired"),
+  v.literal("failed"),
+);
+
+/* ------------------------------------------------------------------ *
+ * Identity verification and Guardian onboarding
+ * ------------------------------------------------------------------ */
+
+/**
+ * Aadhaar verification lifecycle. `VERIFIED` is only ever written by the
+ * provider callback path (or the explicitly-labelled sandbox path). No admin
+ * or donor action can set it directly.
+ */
+export const identityVerificationStatusValidator = v.union(
+  v.literal("NOT_STARTED"),
+  v.literal("PENDING"),
+  v.literal("VERIFIED"),
+  v.literal("FAILED"),
+  v.literal("EXPIRED"),
+  v.literal("REVOKED"),
+  v.literal("REQUIRES_REVIEW"),
+);
+
+export const bloodGroupSourceValidator = v.union(
+  v.literal("self_declared"),
+  v.literal("medical_verified"),
+);
+
+export const guardianApplicationStatusValidator = v.union(
+  v.literal("DRAFT"),
+  v.literal("SUBMITTED"),
+  v.literal("UNDER_REVIEW"),
+  v.literal("APPROVED"),
+  v.literal("REJECTED"),
+  v.literal("RESUBMISSION_REQUIRED"),
+  v.literal("SUSPENDED"),
+  v.literal("EXPIRED"),
+);
+
+export const guardianDocumentKindValidator = v.union(
+  v.literal("profile_photo"),
+  v.literal("identity_proof"),
+  v.literal("driving_licence_front"),
+  v.literal("driving_licence_back"),
+  v.literal("driver_photo"),
+  v.literal("vehicle_front"),
+  v.literal("vehicle_rear"),
+  v.literal("vehicle_side"),
+  v.literal("registration_certificate"),
+  v.literal("insurance"),
+  v.literal("fitness_certificate"),
+  v.literal("puc_certificate"),
+  v.literal("commercial_permit"),
+  v.literal("ambulance_authorization"),
+  v.literal("bank_proof"),
+  v.literal("other"),
+);
+
+export const guardianDocumentStatusValidator = v.union(
+  v.literal("pending"),
+  v.literal("approved"),
+  v.literal("rejected"),
 );
 
 export const userRoleValidator = v.union(
@@ -113,6 +176,10 @@ export const userRoleValidator = v.union(
   v.literal("user"),
   v.literal("member"),
 );
+
+/** Roles actually granted to an account. The legacy single `role` field stays
+ * as the active/primary role for backward compatibility. */
+export const userRolesValidator = v.array(userRoleValidator);
 
 /* ------------------------------------------------------------------ *
  * Autonomous supply-chain validators

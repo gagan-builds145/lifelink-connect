@@ -18,7 +18,10 @@ export const AMBULANCE_BOOKING_STATUSES = [
   "patient_picked_up",
   "in_transit",
   "completed",
+  "rejected",
   "cancelled",
+  "expired",
+  "failed",
 ] as const;
 export type AmbulanceBookingStatus =
   (typeof AMBULANCE_BOOKING_STATUSES)[number];
@@ -36,7 +39,10 @@ export const AMBULANCE_STATUS_LABELS: Record<
   patient_picked_up: "Patient picked up",
   in_transit: "In transit",
   completed: "Completed",
+  rejected: "Rejected by provider",
   cancelled: "Cancelled",
+  expired: "Expired — no provider accepted",
+  failed: "Failed",
 };
 
 export const ACTIVE_AMBULANCE_STATUSES: AmbulanceBookingStatus[] = [
@@ -72,11 +78,14 @@ export function nextGuardianStatuses(
     case "patient_picked_up":
       return ["in_transit", "cancelled"];
     case "in_transit":
-      return ["completed"];
+      return ["completed", "failed"];
     default:
       return [];
   }
 }
+
+/** Open requests may be released by the system after this window. */
+export const AMBULANCE_REQUEST_TTL_MS = 15 * 60 * 1000;
 
 export const AMBULANCE_BASE_FARE = 250;
 export const AMBULANCE_PER_KM_FARE = 28;

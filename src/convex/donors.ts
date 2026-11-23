@@ -111,6 +111,86 @@ export const recordDonation = mutation({
   },
 });
 
+/**
+ * Blood group is always a donor declaration and is never derived from Aadhaar
+ * or any identity document. Every change is written to an immutable history
+ * row and audited. A clinically verified group can only be changed by staff
+ * through a separate medical workflow (not implemented here).
+ */
+export const setBloodGroup = mutation({
+  args: {
+    bloodGroup: bloodGroupValidator,
+    note: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireRole(ctx, ["community", "donor", "requestor"]);
+    const donor = await getDonorProfile(ctx, user._id);
+    if (!donor) throw new Error("Activate your donor profile before selecting a blood group.");
+    if (donor.bloodGroupSource === "medical_verified") {
+      throw new Error(
+        "This blood group was medically verified. Contact the donation centre to change it.",
+      );
+    }
+    if (donor.bloodGroup === args.bloodGroup) {
+      return { ok: true, changed: false, bloodGroup: donor.bloodGroup };
+    }
+    const now = Date.now();
+    const note = args.note?.trim().slice(0, 200);
+    await ctx.db.patch(donor._id, {
+      bloodGroup: args.bloodGroup,
+      bloodGroupSource: "self_declared",
+      bloodGroupUpdatedAt: now,
+      updatedAt: now,
+    });
+    await ctx.db.insert("donorBloodGroupHistory", {
+      donorProfileId: donor._id,
+      donorUserId: user._id,
+      previousGroup: donor.bloodGroup,
+      newGroup: args.bloodGroup,
+      source: "self_declared",
+      changedByUserId: user._id,
+      note,
+      createdAt: now,
+    });
+    await audit(ctx, {
+      actor: user,
+      action: "donor.blood_group_changed",
+      entityType: "donorProfile",
+      entityId: donor.donorId,
+      detail: `Donor-declared blood group changed from ${donor.bloodGroup} to ${args.bloodGroup}. Not medically verified.`,
+    });
+    return {
+      ok: true,
+      changed: true,
+      bloodGroup: args.bloodGroup,
+      disclaimer: "Donor-Declared Blood Group — Not Medically Verified",
+    };
+  },
+});
+
+export const bloodGroupHistory = query({
+  args: {},
+  handler: async (ctx) => {
+    const user = await requireRole(ctx, ["community", "donor", "requestor"]);
+    const donor = await getDonorProfile(ctx, user._id);
+    if (!donor) return [];
+    const rows = await ctx.db
+      .query("donorBloodGroupHistory")
+      .withIndex("by_profile", (q) => q.eq("donorProfileId", donor._id))
+      .collect();
+    return rows
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .map((row) => ({
+        id: row._id,
+        previousGroup: row.previousGroup ?? null,
+        newGroup: row.newGroup,
+        source: row.source,
+        note: row.note ?? null,
+        createdAt: row.createdAt,
+      }));
+  },
+});
+
 export const myDonations = query({
   args: {},
   handler: async (ctx) => {

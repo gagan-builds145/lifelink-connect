@@ -52,4 +52,18 @@ crons.daily(
   internal.forecasting.anomalySweep,
 );
 
+// Identity-verification sessions expire even if the donor never returns.
+crons.interval(
+  "expire pending identity verifications",
+  { minutes: 15 },
+  internal.aadhaar.expirePendingSessions,
+);
+
+// Ambulance requests that nobody accepts must not stay open forever.
+crons.interval(
+  "expire stale ambulance requests",
+  { minutes: 10 },
+  internal.ambulances.expireStaleBookings,
+);
+
 export default crons;

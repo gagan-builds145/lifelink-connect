@@ -16,6 +16,7 @@ import {
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { DashboardShell } from "@/components/lifelink/DashboardShell";
+import { RoleSwitcher } from "@/components/lifelink/RoleSwitcher";
 import { EmptyState, StatusBadge } from "@/components/lifelink/ui-bits";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,6 +31,7 @@ import {
   type AmbulanceType,
 } from "@/lib/ambulance";
 import { formatRelative } from "@/lib/blood";
+import { GUARDIAN_STATUS_LABELS, type GuardianStatus } from "@/lib/guardian";
 
 type Tab = "overview" | "fleet" | "requests" | "active" | "history";
 
@@ -180,7 +182,10 @@ export default function GuardianDashboard() {
       onSelect={(key) => setTab(key as Tab)}
       onProfile={() => setTab("overview")}
       accentIcon={Ambulance}
-      quickLinks={[{ label: "Public blood search", href: "/blood-search" }]}
+      quickLinks={[
+        { label: "Onboarding & documents", href: "/guardian/onboarding", icon: ShieldCheck },
+        { label: "Public blood search", href: "/blood-search" },
+      ]}
     >
       {overview === undefined ? (
         <div className="mt-4 space-y-3">
@@ -201,13 +206,33 @@ export default function GuardianDashboard() {
         </div>
       ) : (
         <div className="mt-4 space-y-4">
-          {profile.documentsStatus !== "verified" && (
+          {!profile.approved && (
             <div className="rounded-2xl border border-amber-300/70 bg-amber-50/70 p-4 text-[11.5px] leading-5 text-amber-950">
-              <p className="font-bold">Document verification is pending</p>
-              <p className="mt-1">
-                Your fleet stays hidden from nearby searches until an administrator
-                verifies the service documents. You can still add vehicles and drivers now.
+              <p className="font-bold">
+                {GUARDIAN_STATUS_LABELS[(profile.status ?? "DRAFT") as GuardianStatus] ??
+                  "Application in progress"}
               </p>
+              <p className="mt-1">
+                Your fleet stays hidden from nearby searches and you cannot accept bookings
+                until an administrator approves the application and every required document
+                is valid. You can still add vehicles, drivers and documents now.
+              </p>
+              <a
+                href="/guardian/onboarding"
+                className="mt-2 inline-flex font-bold text-amber-950 underline underline-offset-2"
+              >
+                Open onboarding and document checklist
+              </a>
+            </div>
+          )}
+          {profile.approved && overview.issues.length > 0 && (
+            <div className="rounded-2xl border border-rose-300/70 bg-rose-50/70 p-4 text-[11.5px] leading-5 text-rose-950">
+              <p className="font-bold">Documents need attention</p>
+              <ul className="mt-1 list-disc pl-4">
+                {overview.issues.slice(0, 4).map((issue) => (
+                  <li key={issue}>{issue}</li>
+                ))}
+              </ul>
             </div>
           )}
 
@@ -226,10 +251,14 @@ export default function GuardianDashboard() {
                       {profile.contactPerson} · {profile.phone} · {profile.city}
                     </p>
                   </div>
+                  <div className="flex flex-col items-stretch gap-2 sm:items-end">
                   <Button
                     variant={profile.online ? "outline" : "default"}
                     className="gap-2"
-                    disabled={busy === "online"}
+                    disabled={
+                      busy === "online" ||
+                      (!profile.online && (!profile.approved || overview.issues.length > 0))
+                    }
                     onClick={() =>
                       void run(
                         "online",
@@ -241,6 +270,13 @@ export default function GuardianDashboard() {
                     <ShieldCheck className="size-4" />
                     {profile.online ? "Go offline" : "Go online"}
                   </Button>
+                  {!profile.online && (!profile.approved || overview.issues.length > 0) && (
+                    <p className="max-w-[220px] text-[9.5px] leading-4 text-muted-foreground">
+                      Going online requires an approved application and valid documents.
+                    </p>
+                  )}
+                  <RoleSwitcher />
+                  </div>
                 </div>
                 <div className="mt-5 grid gap-3 sm:grid-cols-3">
                   {[

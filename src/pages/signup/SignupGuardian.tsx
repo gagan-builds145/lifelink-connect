@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useMutation } from "convex/react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { toast } from "sonner";
 import { Ambulance, ArrowRight, Loader2, ShieldCheck } from "lucide-react";
 import { api } from "@/convex/_generated/api";
@@ -49,6 +49,13 @@ export default function SignupGuardian() {
       asideBody="Receive nearby requests, accept or decline them, share live location during an active journey and keep a complete status history."
       asideNote="Vehicle and driver details are required before accepting bookings."
     >
+      <div className="rounded-xl border border-primary/20 bg-primary/[0.04] p-3 text-[10.5px] leading-5 text-foreground">
+        Already a LifeLink donor? Use the same account — enter your Donor ID on the
+        Guardian onboarding page. No second account is created.{" "}
+        <Link to="/guardian/onboarding" className="font-bold text-primary underline underline-offset-2">
+          Register as Guardian from my donor account
+        </Link>
+      </div>
       <form className="space-y-4" onSubmit={submit}>
         <div className="space-y-1.5">
           <Label htmlFor="guardian-company">Ambulance service name</Label>

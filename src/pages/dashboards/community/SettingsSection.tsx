@@ -80,7 +80,7 @@ export function SettingsSection({ me, onNavigate }: { me: Me; onNavigate: (secti
     setBusy("signout");
     try {
       await signOut();
-      navigate("/", { replace: true });
+      navigate("/login", { replace: true });
     } catch {
       toast.error("Could not sign out. Please try again.");
     } finally {

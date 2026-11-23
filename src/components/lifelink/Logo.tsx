@@ -1,5 +1,7 @@
-import { Link } from "react-router";
+import { useAuth } from "@/hooks/use-auth";
+import { dashboardPathForRole, hasDashboardRole } from "@/lib/roles";
 import { cn } from "@/lib/utils";
+import { Link } from "react-router";
 
 export function LifeLinkMark({ className }: { className?: string }) {
   return (
@@ -41,10 +43,14 @@ export function LifeLinkLogo({
   compact?: boolean;
   onDark?: boolean;
 }) {
+  const { isAuthenticated, user } = useAuth();
+  const role = user?.role;
+  const signedInWithWorkspace = isAuthenticated && hasDashboardRole(role);
+
   return (
     <Link
-      to="/"
-      aria-label="LifeLink home"
+      to={signedInWithWorkspace ? dashboardPathForRole(role) : "/"}
+      aria-label={signedInWithWorkspace ? "LifeLink dashboard" : "LifeLink home"}
       className={cn(
         "group inline-flex items-center gap-2.5 outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 rounded-lg",
         className,

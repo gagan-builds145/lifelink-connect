@@ -191,7 +191,7 @@ export function DashboardShell({
     try {
       await signOut();
       toast("Signed out", { description: "Your session has ended securely." });
-      navigate("/", { replace: true });
+      navigate("/login", { replace: true });
     } catch {
       toast.error("Could not sign out. Please try again.");
     }

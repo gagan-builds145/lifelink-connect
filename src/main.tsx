@@ -5,9 +5,11 @@ import { RequireRole } from "@/components/lifelink/RequireRole";
 import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexReactClient } from "convex/react";
+import { useAuth } from "@/hooks/use-auth";
+import { dashboardPathForRole, hasDashboardRole } from "@/lib/roles";
 import React, { StrictMode, createContext, useContext, useEffect, lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Route, Routes, useLocation } from "react-router";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router";
 import "./index.css";
 
 // Lazy load route components for better code splitting
@@ -39,6 +41,27 @@ const DonationCamps = lazy(() => import("./pages/DonationCamps.tsx"));
 const Privacy = lazy(() => import("./pages/Privacy.tsx"));
 const Terms = lazy(() => import("./pages/Terms.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
+
+/**
+ * The public homepage is signed-out only.
+ *
+ * While Convex Auth restores the session, render the loading screen — never
+ * the landing page, so an authenticated user does not see a flash of public
+ * content before being redirected. Signed-in accounts with a finished role go
+ * to their role-specific dashboard; an unfinished account goes to role setup.
+ */
+function HomeRoute() {
+  const { isLoading, isAuthenticated, user } = useAuth();
+
+  if (isLoading) return <RouteLoading />;
+  if (!isAuthenticated) return <Landing />;
+
+  if (hasDashboardRole(user?.role)) {
+    return <Navigate to={dashboardPathForRole(user?.role)} replace />;
+  }
+
+  return <Navigate to="/signup" replace />;
+}
 
 function RouteLoading() {
   return (
@@ -252,7 +275,7 @@ createRoot(document.getElementById("root")!).render(
           <BoundaryRouteWatcher />
           <Suspense fallback={<RouteLoading />}>
             <Routes>
-              <Route path="/" element={<Landing />} />
+              <Route path="/" element={<HomeRoute />} />
 
               {/* Authentication */}
               <Route path="/auth" element={<AuthPage redirectAfterAuth="/dashboard" />} />

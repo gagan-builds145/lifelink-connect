@@ -20,7 +20,7 @@ export function LogoDropdown() {
   const handleSignOut = async () => {
     try {
       await signOut();
-      navigate("/");
+      navigate("/login", { replace: true });
     } catch (error) {
       console.error("Sign out error:", error);
     }

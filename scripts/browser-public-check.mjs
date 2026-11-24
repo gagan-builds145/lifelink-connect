@@ -2,7 +2,7 @@ import { chromium } from "playwright";
 import { mkdir } from "node:fs/promises";
 
 const base = process.env.LIFELINK_BASE_URL ?? "http://127.0.0.1:5173";
-const outDir = "browser-screenshots/phase5-final";
+const outDir = process.env.LIFELINK_SCREENSHOT_DIR ?? "browser-screenshots/phase4-final";
 await mkdir(outDir, { recursive: true });
 
 const browser = await chromium.launch({ headless: true });
@@ -64,10 +64,11 @@ await inspect(
   { width: 1440, height: 900 },
   "/",
   {
-    isLanding: (_page, text) => /LifeLink/i.test(text) && /Sign in/i.test(text),
+    isLanding: (_page, text) => /LifeLink/i.test(text) && /Log in/i.test(text),
     noHorizontalOverflow: (page) =>
       page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 2),
-    hasMainLandmark: (page) => page.locator("main").count().then((n) => n > 0),
+    hasVisibleHero: (page) =>
+      page.locator("h1").first().isVisible().catch(() => false),
   },
 );
 

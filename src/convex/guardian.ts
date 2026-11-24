@@ -83,6 +83,9 @@ async function assertDocumentOwner(
   if (!doc || doc.uploadedByUserId !== userId) {
     throw new Error("One of the selected documents does not belong to your account.");
   }
+  if (doc.scanStatus !== "clean") {
+    throw new Error("One of the selected documents is quarantined until malware scanning succeeds.");
+  }
 }
 
 function futureDate(value: string, label: string) {
@@ -136,6 +139,8 @@ export const myGuardianApplication = query({
       ambulanceId: doc.ambulanceId ?? null,
       expiryDate: doc.expiryDate ?? null,
       status: doc.status ?? "pending",
+      scanStatus: doc.scanStatus ?? "pending",
+      scanError: doc.scanError ?? null,
       reviewNote: doc.reviewNote ?? null,
       createdAt: doc.createdAt,
     }));
@@ -182,8 +187,6 @@ export const myGuardianApplication = query({
         emergencyContactName: profile.emergencyContactName ?? null,
         emergencyContactPhone: profile.emergencyContactPhone ?? null,
         profilePhotoDocumentId: profile.profilePhotoDocumentId ?? null,
-        identityType: profile.identityType ?? null,
-        identityLast4: profile.identityLast4 ?? null,
         driver: profile.driver ?? null,
         service: profile.service ?? null,
         payout: profile.payout ?? null,
@@ -223,8 +226,6 @@ export const saveApplication = mutation({
     residentialAddress: v.optional(v.string()),
     emergencyContactName: v.optional(v.string()),
     emergencyContactPhone: v.optional(v.string()),
-    identityType: v.optional(v.string()),
-    identityLast4: v.optional(v.string()),
     profilePhotoDocumentId: v.optional(v.id("documentMetadata")),
     driver: v.optional(driverValidator),
     service: v.optional(serviceValidator),
@@ -279,15 +280,6 @@ export const saveApplication = mutation({
     }
     if (args.emergencyContactPhone !== undefined) {
       patch.emergencyContactPhone = requirePhone(args.emergencyContactPhone);
-    }
-    if (args.identityType !== undefined) {
-      patch.identityType = requireText(args.identityType, "Identification type", 2, 60);
-    }
-    if (args.identityLast4 !== undefined) {
-      if (!/^[A-Za-z0-9]{4}$/.test(args.identityLast4)) {
-        throw new Error("Store only the last four characters of the identification number.");
-      }
-      patch.identityLast4 = args.identityLast4.toUpperCase();
     }
     if (args.profilePhotoDocumentId !== undefined) {
       patch.profilePhotoDocumentId = args.profilePhotoDocumentId;
@@ -432,6 +424,8 @@ export const submitApplication = mutation({
           (doc) =>
             doc.documentKind === kind &&
             doc.status !== "rejected" &&
+            doc.status !== "expired" &&
+            !(doc.expiryDate && doc.expiryDate < today) &&
             (doc.ambulanceId == null || doc.ambulanceId === vehicle._id),
         );
         if (!present) {
@@ -516,6 +510,52 @@ export const reviewApplication = mutation({
     if (["REJECTED", "RESUBMISSION_REQUIRED", "SUSPENDED", "EXPIRED"].includes(args.status)) {
       if (!reason || reason.length < 5) {
         throw new Error("A reason is required for this decision.");
+      }
+    }
+
+    if (args.status === "APPROVED") {
+      const [vehicles, documents] = await Promise.all([
+        ctx.db
+          .query("ambulances")
+          .withIndex("by_guardian", (q) => q.eq("guardianUserId", args.guardianUserId))
+          .collect(),
+        ctx.db
+          .query("documentMetadata")
+          .withIndex("by_guardian", (q) => q.eq("guardianUserId", args.guardianUserId))
+          .collect(),
+      ]);
+      const issues = guardianComplianceIssues({
+        profile: { ...profile, status: "APPROVED" },
+        vehicles: vehicles.map((vehicle) => ({
+          id: String(vehicle._id),
+          type: vehicle.type,
+          insuranceExpiryDate: vehicle.insuranceExpiryDate,
+          fitnessExpiryDate: vehicle.fitnessExpiryDate,
+          pucExpiryDate: vehicle.pucExpiryDate,
+          permitExpiryDate: vehicle.permitExpiryDate,
+          ambulanceAuthorizationExpiryDate: vehicle.ambulanceAuthorizationExpiryDate,
+        })),
+        documents: documents.map((doc) => ({
+          documentKind: doc.documentKind,
+          expiryDate: doc.expiryDate,
+          status: doc.status,
+          ambulanceId: doc.ambulanceId ? String(doc.ambulanceId) : null,
+        })),
+      });
+      const unreviewed = documents.filter(
+        (doc) =>
+          doc.purpose === "guardian_onboarding" &&
+          doc.documentKind &&
+          doc.status !== "approved" &&
+          doc.status !== "rejected",
+      );
+      if (unreviewed.length > 0) {
+        issues.push(`${unreviewed.length} document(s) still need individual approval.`);
+      }
+      if (issues.length > 0) {
+        throw new Error(
+          `Cannot approve this Guardian yet: ${issues.slice(0, 3).join(" ")}`,
+        );
       }
     }
 
@@ -642,6 +682,8 @@ export const listApplications = query({
             fileName: doc.fileName,
             expiryDate: doc.expiryDate ?? null,
             status: doc.status ?? "pending",
+            scanStatus: doc.scanStatus ?? "pending",
+            scanError: doc.scanError ?? null,
             reviewNote: doc.reviewNote ?? null,
             ambulanceId: doc.ambulanceId ?? null,
           })),

@@ -1,4 +1,6 @@
-# LifeLink Connect 2.0 — Phase 3 independent audit
+# LifeLink Connect 2.0 — Phase 3 independent audit (historical)
+
+> **Superseded:** The Aadhaar adapter and sandbox described below were removed permanently in the final Phase 4 release. See [identity-verification.md](identity-verification.md).
 
 Date: 2026-11-23
 Auditor: Phase 3 implementation pass

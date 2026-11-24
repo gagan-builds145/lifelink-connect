@@ -6,7 +6,6 @@ import { api, internal } from "../src/convex/_generated/api";
 const modules = {
   "./_generated/api.js": () => import("../src/convex/_generated/api"),
   "./_generated/server.js": () => import("../src/convex/_generated/server"),
-  "./aadhaar.ts": () => import("../src/convex/aadhaar"),
   "./ambulances.ts": () => import("../src/convex/ambulances"),
   "./documents.ts": () => import("../src/convex/documents"),
   "./donors.ts": () => import("../src/convex/donors"),
@@ -86,90 +85,6 @@ async function seed(t: TestApp) {
     return { admin, donor, otherDonor };
   });
 }
-
-async function startSession(asDonor: ReturnType<TestApp["withIdentity"]>) {
-  const started = await asDonor.mutation(api.aadhaar.startVerification, {
-    consent: true,
-    consentVersion: "2026-11-donor-identity-v1",
-  });
-  return started;
-}
-
-describe("Phase 3 — Aadhaar identity verification (sandbox only)", () => {
-  test("explicit consent and the current consent version are mandatory", async () => {
-    const t = convexTest(schema, modules);
-    const { donor } = await seed(t);
-    const asDonor = t.withIdentity({ subject: donor });
-    await expect(
-      asDonor.mutation(api.aadhaar.startVerification, {
-        consent: false,
-        consentVersion: "2026-11-donor-identity-v1",
-      }),
-    ).rejects.toThrow(/consent/i);
-    await expect(
-      asDonor.mutation(api.aadhaar.startVerification, {
-        consent: true,
-        consentVersion: "old-version",
-      }),
-    ).rejects.toThrow(/consent notice/i);
-    await expect(asDonor.mutation(api.aadhaar.startVerification, {
-      consent: true,
-      consentVersion: "2026-11-donor-identity-v1",
-    })).resolves.toBeTruthy();
-  });
-
-  test("sandbox verification is labelled, never claims UIDAI, and consent can erase the copy", async () => {
-    const t = convexTest(schema, modules);
-    const { donor } = await seed(t);
-    const asDonor = t.withIdentity({ subject: donor });
-    const started = await startSession(asDonor);
-    expect(started.sandbox).toBe(true);
-
-    const pending = await asDonor.query(api.aadhaar.myVerification, {});
-    expect(pending?.latest?.status).toBe("PENDING");
-    expect(pending?.liveEnabled).toBe(false);
-
-    await asDonor.mutation(api.aadhaar.completeSandboxVerification, {
-      verificationId: started.verificationId,
-    });
-    const verified = await asDonor.query(api.aadhaar.myVerification, {});
-    expect(verified?.latest?.status).toBe("VERIFIED");
-    expect(verified?.latest?.sandbox).toBe(true);
-    expect(verified?.latest?.verifiedName).toBe("Asha Donor");
-
-    await asDonor.mutation(api.aadhaar.withdrawConsent, {
-      verificationId: started.verificationId,
-    });
-    const withdrawn = await asDonor.query(api.aadhaar.myVerification, {});
-    expect(withdrawn?.latest?.status).toBe("REVOKED");
-    expect(withdrawn?.latest?.verifiedName).toBeNull();
-  });
-
-  test("administrators cannot mark a verification VERIFIED and donors cannot review", async () => {
-    const t = convexTest(schema, modules);
-    const { donor, admin } = await seed(t);
-    const asDonor = t.withIdentity({ subject: donor });
-    const asAdmin = t.withIdentity({ subject: admin });
-    const started = await startSession(asDonor);
-
-    await expect(
-      asDonor.mutation(api.aadhaar.reviewVerification, {
-        verificationId: started.verificationId,
-        status: "FAILED",
-        reason: "Donor should not review",
-      } as never),
-    ).rejects.toThrow(/authorized/i);
-
-    await asAdmin.mutation(api.aadhaar.reviewVerification, {
-      verificationId: started.verificationId,
-      status: "REQUIRES_REVIEW",
-      reason: "Provider metadata needs a manual check.",
-    });
-    const rows = await asAdmin.query(api.aadhaar.adminVerifications, {});
-    expect(rows[0]?.status).toBe("REQUIRES_REVIEW");
-    expect(rows[0]?.status).not.toBe("VERIFIED");
-  });
-});
 
 describe("Phase 3 — donor-declared blood group", () => {
   test("changes are audited and a medically verified group is locked", async () => {
@@ -318,7 +233,8 @@ describe("Phase 3 — Guardian onboarding, documents and approval", () => {
           ambulanceId: vehicle.ambulanceId,
           documentKind: kind,
           expiryDate: FUTURE,
-          status: "pending",
+          status: "approved",
+          scanStatus: "clean",
           createdAt: Date.now(),
         });
         ids.push(docId);

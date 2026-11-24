@@ -1,0 +1,114 @@
+[
+  {
+    "name": "landing-desktop",
+    "path": "/",
+    "viewport": "1440x900",
+    "status": 200,
+    "finalUrl": "http://127.0.0.1:5173/",
+    "title": "LifeLink — Smart Blood Donation & Emergency Matching",
+    "heading": "LifeLinkAutonomous Blood Supply & Drone Logistics",
+    "checks": {
+      "isLanding": true,
+      "noHorizontalOverflow": true,
+      "hasVisibleHero": true
+    },
+    "consoleErrors": [
+      "Loading the script 'https://cdn.jsdelivr.net/npm/html2canvas-pro@2.0.4/dist/html2canvas-pro.min.js' violates the following Content Security Policy directive: \"script-src 'self' 'unsafe-inline' https://*.convex.cloud https://*.convex.site\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The action has been blocked."
+    ],
+    "pageErrors": [],
+    "networkFailures": [
+      "GET https://cdn.jsdelivr.net/npm/html2canvas-pro@2.0.4/dist/html2canvas-pro.min.js: csp"
+    ],
+    "screenshot": "browser-screenshots/phase4-final/landing-desktop.png"
+  },
+  {
+    "name": "landing-mobile",
+    "path": "/",
+    "viewport": "390x844",
+    "status": 200,
+    "finalUrl": "http://127.0.0.1:5173/",
+    "title": "LifeLink — Smart Blood Donation & Emergency Matching",
+    "heading": "LifeLinkAutonomous Blood Supply & Drone Logistics",
+    "checks": {
+      "noHorizontalOverflow": true,
+      "hasVisibleHeading": true
+    },
+    "consoleErrors": [
+      "Loading the script 'https://cdn.jsdelivr.net/npm/html2canvas-pro@2.0.4/dist/html2canvas-pro.min.js' violates the following Content Security Policy directive: \"script-src 'self' 'unsafe-inline' https://*.convex.cloud https://*.convex.site\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The action has been blocked."
+    ],
+    "pageErrors": [],
+    "networkFailures": [
+      "GET https://cdn.jsdelivr.net/npm/html2canvas-pro@2.0.4/dist/html2canvas-pro.min.js: csp"
+    ],
+    "screenshot": "browser-screenshots/phase4-final/landing-mobile.png"
+  },
+  {
+    "name": "protected-community-redirect",
+    "path": "/community/dashboard",
+    "viewport": "1440x900",
+    "status": 200,
+    "finalUrl": "http://127.0.0.1:5173/auth?returnTo=%2Fcommunity%2Fdashboard",
+    "title": "LifeLink — Smart Blood Donation & Emergency Matching",
+    "heading": "Sign in to LifeLink",
+    "checks": {
+      "redirectedToAuth": true,
+      "keepsReturnPath": true,
+      "authFormVisible": true
+    },
+    "consoleErrors": [
+      "Loading the script 'https://cdn.jsdelivr.net/npm/html2canvas-pro@2.0.4/dist/html2canvas-pro.min.js' violates the following Content Security Policy directive: \"script-src 'self' 'unsafe-inline' https://*.convex.cloud https://*.convex.site\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The action has been blocked."
+    ],
+    "pageErrors": [],
+    "networkFailures": [
+      "GET https://cdn.jsdelivr.net/npm/html2canvas-pro@2.0.4/dist/html2canvas-pro.min.js: csp"
+    ],
+    "screenshot": "browser-screenshots/phase4-final/protected-community-redirect.png"
+  },
+  {
+    "name": "protected-ambulance-redirect-mobile",
+    "path": "/ambulance",
+    "viewport": "390x844",
+    "status": 200,
+    "finalUrl": "http://127.0.0.1:5173/auth?returnTo=%2Fambulance",
+    "title": "LifeLink — Smart Blood Donation & Emergency Matching",
+    "heading": "Sign in to LifeLink",
+    "checks": {
+      "redirectedToAuth": true,
+      "keepsReturnPath": true,
+      "noHorizontalOverflow": true
+    },
+    "consoleErrors": [
+      "Loading the script 'https://cdn.jsdelivr.net/npm/html2canvas-pro@2.0.4/dist/html2canvas-pro.min.js' violates the following Content Security Policy directive: \"script-src 'self' 'unsafe-inline' https://*.convex.cloud https://*.convex.site\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The action has been blocked."
+    ],
+    "pageErrors": [],
+    "networkFailures": [
+      "GET https://cdn.jsdelivr.net/npm/html2canvas-pro@2.0.4/dist/html2canvas-pro.min.js: csp"
+    ],
+    "screenshot": "browser-screenshots/phase4-final/protected-ambulance-redirect-mobile.png"
+  },
+  {
+    "name": "public-blood-search-mobile",
+    "path": "/blood-search",
+    "viewport": "390x844",
+    "status": 200,
+    "finalUrl": "http://127.0.0.1:5173/blood-search",
+    "title": "LifeLink — Smart Blood Donation & Emergency Matching",
+    "heading": "Find reported blood availability, without false promises.",
+    "checks": {
+      "pageRendered": true,
+      "noHorizontalOverflow": true
+    },
+    "consoleErrors": [
+      "Loading the script 'https://cdn.jsdelivr.net/npm/html2canvas-pro@2.0.4/dist/html2canvas-pro.min.js' violates the following Content Security Policy directive: \"script-src 'self' 'unsafe-inline' https://*.convex.cloud https://*.convex.site\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The action has been blocked."
+    ],
+    "pageErrors": [],
+    "networkFailures": [
+      "GET https://cdn.jsdelivr.net/npm/html2canvas-pro@2.0.4/dist/html2canvas-pro.min.js: csp",
+      "GET https://d.basemaps.cartocdn.com/rastertiles/light_all/11/1443/916.png?key=cb1_56pr_1_0d6927bbac27756dd238db82: net::ERR_ABORTED",
+      "GET https://a.basemaps.cartocdn.com/rastertiles/light_all/11/1444/916.png?key=cb1_56pr_1_0d6927bbac27756dd238db82: net::ERR_ABORTED",
+      "GET https://a.basemaps.cartocdn.com/rastertiles/light_all/11/1443/917.png?key=cb1_56pr_1_0d6927bbac27756dd238db82: net::ERR_ABORTED",
+      "GET https://b.basemaps.cartocdn.com/rastertiles/light_all/11/1444/917.png?key=cb1_56pr_1_0d6927bbac27756dd238db82: net::ERR_ABORTED"
+    ],
+    "screenshot": "browser-screenshots/phase4-final/public-blood-search-mobile.png"
+  }
+]

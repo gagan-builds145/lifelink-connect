@@ -29,7 +29,7 @@ import {
   type GuardianStatus,
 } from "@/lib/guardian";
 import { friendlyError } from "@/lib/utils";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import {
   AlertTriangle,
   Ambulance,
@@ -343,8 +343,6 @@ function PersonalSection({ app, run, busy, editable }: SectionProps) {
     emergencyContactName: p.emergencyContactName ?? "",
     emergencyContactPhone: p.emergencyContactPhone ?? "",
     preferredLanguage: p.preferredLanguage ?? "English",
-    identityType: p.identityType ?? "Aadhaar (last 4 only)",
-    identityLast4: p.identityLast4 ?? "",
   });
   const set = (key: keyof typeof form, value: string) =>
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -379,16 +377,11 @@ function PersonalSection({ app, run, busy, editable }: SectionProps) {
         <Field label="Emergency contact number">
           <Input value={form.emergencyContactPhone} onChange={(e) => set("emergencyContactPhone", e.target.value)} disabled={!editable} />
         </Field>
-        <Field label="Identification type">
-          <Input value={form.identityType} onChange={(e) => set("identityType", e.target.value)} disabled={!editable} />
-        </Field>
-        <Field label="Identification last 4 characters">
-          <Input maxLength={4} value={form.identityLast4} onChange={(e) => set("identityLast4", e.target.value)} disabled={!editable} />
-        </Field>
       </div>
       <p className="mt-2 text-[10px] leading-4 text-muted-foreground">
-        Never enter a full identity number here. Only the last four characters are stored;
-        scan copies belong in the document section.
+        LifeLink does not perform Aadhaar verification and does not accept Aadhaar numbers
+        or Aadhaar documents. Upload only the ordinary licence and vehicle records required
+        below.
       </p>
       {editable && (
         <Button
@@ -750,11 +743,13 @@ function VehicleSection({ app, run, busy }: Omit<SectionProps, "editable">) {
 function DocumentSection({ app, busy }: { app: AppData; busy: string | null }) {
   const generateUploadUrl = useMutation(api.documents.generateUploadUrl);
   const attach = useMutation(api.documents.attachDocument);
+  const scanDocument = useAction(api.scan.scanDocument);
   const inputRef = useRef<HTMLInputElement>(null);
   const [kind, setKind] = useState<GuardianDocumentKind>("registration_certificate");
   const [vehicleId, setVehicleId] = useState<string>("");
   const [expiryDate, setExpiryDate] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [scanningId, setScanningId] = useState<string | null>(null);
 
   const upload = async (file: File) => {
     setUploading(true);
@@ -767,7 +762,7 @@ function DocumentSection({ app, busy }: { app: AppData; busy: string | null }) {
       });
       if (!response.ok) throw new Error("The file upload was rejected.");
       const { storageId } = (await response.json()) as { storageId: Id<"_storage"> };
-      await attach({
+      const attached = await attach({
         storageId,
         fileName: file.name,
         contentType: file.type,
@@ -777,9 +772,13 @@ function DocumentSection({ app, busy }: { app: AppData; busy: string | null }) {
         expiryDate: expiryDate || undefined,
         ambulanceId: vehicleId ? (vehicleId as Id<"ambulances">) : undefined,
       });
-      toast.success("Document uploaded for review");
+      const result = await scanDocument({ documentId: attached.documentId });
+      if (result.status !== "clean") {
+        throw new Error("The file was quarantined. It cannot be reviewed or downloaded.");
+      }
+      toast.success("Document uploaded and scanned clean");
     } catch (error) {
-      toast.error(friendlyError(error, "Could not upload the document."));
+      toast.error(friendlyError(error, "Could not upload or scan the document."));
     } finally {
       setUploading(false);
       if (inputRef.current) inputRef.current.value = "";
@@ -857,10 +856,40 @@ function DocumentSection({ app, busy }: { app: AppData; busy: string | null }) {
                   {doc.expiryDate ? ` · expires ${formatDate(doc.expiryDate)}` : ""}
                   {doc.reviewNote ? ` · ${doc.reviewNote}` : ""}
                 </p>
+                <p className="mt-0.5 text-[9.5px] text-muted-foreground">
+                  Malware scan: {doc.scanStatus}
+                  {doc.scanError ? ` — ${doc.scanError}` : ""}
+                </p>
               </div>
-              <Badge variant={doc.status === "approved" ? "default" : doc.status === "rejected" ? "destructive" : "outline"} className="text-[9px]">
-                {doc.status}
-              </Badge>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Badge variant={doc.status === "approved" ? "default" : doc.status === "rejected" ? "destructive" : "outline"} className="text-[9px]">
+                  {doc.status}
+                </Badge>
+                {doc.scanStatus !== "clean" && doc.scanStatus !== "infected" && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-6 text-[9.5px]"
+                    disabled={scanningId === doc.id}
+                    onClick={async () => {
+                      setScanningId(doc.id);
+                      try {
+                        const result = await scanDocument({
+                          documentId: doc.id as Id<"documentMetadata">,
+                        });
+                        if (result.status === "clean") toast.success("Document scanned clean");
+                        else toast.error("Malware detected. Remove and replace this file.");
+                      } catch (scanError) {
+                        toast.error(friendlyError(scanError, "Scan failed; the file stays quarantined."));
+                      } finally {
+                        setScanningId(null);
+                      }
+                    }}
+                  >
+                    {scanningId === doc.id ? <Loader2 className="size-3 animate-spin" /> : "Retry scan"}
+                  </Button>
+                )}
+              </div>
             </li>
           ))
         )}

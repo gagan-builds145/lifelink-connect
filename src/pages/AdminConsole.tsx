@@ -149,7 +149,6 @@ export default function AdminConsole() {
   const securityCounts = useQuery(api.security.securityEventCounts, {});
   const securityTimeline = useQuery(api.security.recentSecurityEvents, { limit: 60 });
   const guardianApplications = useQuery(api.guardian.listApplications);
-  const identityVerifications = useQuery(api.aadhaar.adminVerifications);
 
   const [tab, setTab] = useState("overview");
   const [busy, setBusy] = useState<string | null>(null);
@@ -174,7 +173,6 @@ export default function AdminConsole() {
   const loadAiCatalog = useAction(api.ml.aiModelCatalog);
   const reviewApplication = useMutation(api.guardian.reviewApplication);
   const reviewDocument = useMutation(api.documents.reviewDocument);
-  const reviewIdentity = useMutation(api.aadhaar.reviewVerification);
   const [reviewReasons, setReviewReasons] = useState<Record<string, string>>({});
   const promoteAiModel = useMutation(api.aiRegistry.promoteModel);
   const disableAiModel = useMutation(api.aiRegistry.disableModel);
@@ -247,7 +245,6 @@ export default function AdminConsole() {
     { key: "integrations", label: "Integrations & sync", icon: Database, badge: overview?.integrations.failing },
     { key: "safety", label: "Safety & notifications", icon: Siren, badge: overview?.anomalies.critical },
     { key: "ambulance", label: "Guardian applications", icon: Ambulance, badge: overview?.ambulance.pendingGuardians },
-    { key: "identity", label: "Identity verification", icon: ShieldCheck, badge: identityVerifications?.filter((row) => row.status === "REQUIRES_REVIEW").length },
     { key: "ml", label: "AI / ML registry", icon: BrainCircuit },
     { key: "security", label: "Security monitoring", icon: ShieldAlert, badge: securityCounts?.unresolved },
     { key: "audit", label: "Audit trail", icon: ScrollText },
@@ -1043,11 +1040,14 @@ export default function AdminConsole() {
                                 <span key={String(doc.id)} className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[9px]">
                                   {doc.kindLabel ?? doc.fileName}
                                   <span className="font-bold uppercase">{doc.status}</span>
+                                  <span className={doc.scanStatus === "clean" ? "text-teal-700" : "text-rose-700"}>
+                                    scan {doc.scanStatus}
+                                  </span>
                                   {doc.status !== "approved" && (
                                     <button
                                       type="button"
-                                      className="text-teal-700 hover:underline"
-                                      disabled={busy === `doc-${doc.id}`}
+                                      className="text-teal-700 hover:underline disabled:opacity-40"
+                                      disabled={busy === `doc-${doc.id}` || doc.scanStatus !== "clean"}
                                       onClick={() =>
                                         void run(
                                           `doc-${doc.id}`,
@@ -1118,67 +1118,6 @@ export default function AdminConsole() {
                 )}
                 <p className="mt-2 text-[9px] leading-4 text-muted-foreground">
                   Only approved, online Guardians with valid documents and an available ambulance appear in nearby searches. Approval is an administrative check, not a medical endorsement.
-                </p>
-              </Panel>
-            </div>
-          )}
-
-          {tab === "identity" && (
-            <div className="space-y-4">
-              <Panel eyebrow="Identity" title="Aadhaar verification records">
-                {(identityVerifications ?? []).length === 0 ? (
-                  <p className="rounded-xl border border-dashed border-border p-4 text-[11.5px] text-muted-foreground">
-                    No donor identity-verification sessions yet.
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    {(identityVerifications ?? []).map((row) => (
-                      <div key={String(row.id)} className="rounded-xl border border-border p-3">
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                          <div>
-                            <p className="text-[12px] font-bold">
-                              {row.donorId} · {row.donorCity ?? "Unknown city"}
-                            </p>
-                            <p className="text-[10px] text-muted-foreground">
-                              Provider {row.provider} · {formatRelative(row.createdAt)}
-                              {row.maskedReference ? ` · ref ${row.maskedReference}` : ""}
-                            </p>
-                          </div>
-                          <span className="rounded-full border border-border px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-[0.08em]">
-                            {row.status}
-                            {row.sandbox ? " · sandbox" : ""}
-                          </span>
-                        </div>
-                        <p className="mt-1 text-[9.5px] text-muted-foreground">
-                          Consent {row.consentVersion} · {formatRelative(row.consentTimestamp)}
-                          {row.consentWithdrawnAt ? " · withdrawn" : ""} · No Aadhaar number stored
-                        </p>
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          {(["REQUIRES_REVIEW", "FAILED", "REVOKED"] as const).map((status) => (
-                            <Button
-                              key={status}
-                              size="sm"
-                              variant="outline"
-                              className="h-7 text-[9.5px]"
-                              disabled={busy === `identity-${row.id}-${status}`}
-                              onClick={() =>
-                                void run(
-                                  `identity-${row.id}-${status}`,
-                                  () => reviewIdentity({ verificationId: row.id, status, reason: "Administrator review from the identity dashboard." }),
-                                  `Verification marked ${status}.`,
-                                )
-                              }
-                            >
-                              {status.replace(/_/g, " ")}
-                            </Button>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <p className="mt-2 text-[9px] leading-4 text-muted-foreground">
-                  Administrators can never set a verification to VERIFIED. Only a signed provider callback can do that. Sandbox rows are not UIDAI verifications.
                 </p>
               </Panel>
             </div>

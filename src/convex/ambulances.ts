@@ -378,6 +378,9 @@ export const upsertAmbulance = mutation({
       if (!document || document.uploadedByUserId !== user._id) {
         throw new Error("That vehicle document does not belong to your account.");
       }
+      if (document.scanStatus !== "clean") {
+        throw new Error("That vehicle document is quarantined until malware scanning succeeds.");
+      }
     }
     const normalizedExpiry = (value: string | undefined, label: string) => {
       if (!value) return undefined;
@@ -1301,6 +1304,8 @@ export const guardianOverview = query({
         fileName: doc.fileName,
         expiryDate: doc.expiryDate ?? null,
         status: doc.status ?? "pending",
+        scanStatus: doc.scanStatus ?? "pending",
+        scanError: doc.scanError ?? null,
         reviewNote: doc.reviewNote ?? null,
         ambulanceId: doc.ambulanceId ?? null,
       })),

@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import {
   audit,
   enforceRateLimit,
@@ -11,6 +11,7 @@ import {
   guardianDocumentKindValidator,
   guardianDocumentStatusValidator,
 } from "./validators";
+import { guardianComplianceIssues } from "../lib/guardian";
 
 const ALLOWED = ["application/pdf", "image/jpeg", "image/png"];
 const MAX_BYTES = 5 * 1024 * 1024;
@@ -123,6 +124,8 @@ export const attachDocument = mutation({
       documentKind: args.documentKind,
       expiryDate,
       status: args.purpose === "guardian_onboarding" ? "pending" : undefined,
+      scanStatus: "pending",
+      scanAttempts: 0,
       createdAt: Date.now(),
     });
     return { documentId };
@@ -143,6 +146,16 @@ export const reviewDocument = mutation({
     if (document.purpose !== "guardian_onboarding") {
       throw new Error("Only Guardian onboarding documents can be reviewed here.");
     }
+    if (document.scanStatus !== "clean") {
+      throw new Error("This document is quarantined until malware scanning succeeds.");
+    }
+    if (
+      args.status === "approved" &&
+      document.expiryDate &&
+      document.expiryDate < new Date().toISOString().slice(0, 10)
+    ) {
+      throw new Error("An expired document cannot be approved. Upload a valid replacement.");
+    }
     await ctx.db.patch(document._id, {
       status: args.status,
       reviewNote: args.note?.trim().slice(0, 300),
@@ -156,6 +169,63 @@ export const reviewDocument = mutation({
         args.note ? `: ${args.note.slice(0, 200)}` : ""
       }`,
     });
+
+    // A Guardian suspended for expiry becomes eligible again only after an
+    // administrator approves a valid replacement and every mandatory record
+    // passes the same compliance checks used for going online.
+    if (args.status === "approved" && document.guardianUserId) {
+      const profile = await ctx.db
+        .query("guardianProfiles")
+        .withIndex("by_user", (q) => q.eq("userId", document.guardianUserId!))
+        .unique();
+      if (profile?.status === "EXPIRED") {
+        const [vehicles, documents] = await Promise.all([
+          ctx.db
+            .query("ambulances")
+            .withIndex("by_guardian", (q) => q.eq("guardianUserId", document.guardianUserId!))
+            .collect(),
+          ctx.db
+            .query("documentMetadata")
+            .withIndex("by_guardian", (q) => q.eq("guardianUserId", document.guardianUserId!))
+            .collect(),
+        ]);
+        const issues = guardianComplianceIssues({
+          profile: { ...profile, status: "APPROVED" },
+          vehicles: vehicles.map((vehicle) => ({
+            id: String(vehicle._id),
+            type: vehicle.type,
+            insuranceExpiryDate: vehicle.insuranceExpiryDate,
+            fitnessExpiryDate: vehicle.fitnessExpiryDate,
+            pucExpiryDate: vehicle.pucExpiryDate,
+            permitExpiryDate: vehicle.permitExpiryDate,
+            ambulanceAuthorizationExpiryDate: vehicle.ambulanceAuthorizationExpiryDate,
+          })),
+          documents: documents.map((doc) => ({
+            documentKind: doc.documentKind,
+            expiryDate: doc.expiryDate,
+            status: doc.status,
+            ambulanceId: doc.ambulanceId ? String(doc.ambulanceId) : null,
+          })),
+        });
+        if (issues.length === 0) {
+          await ctx.db.patch(profile._id, {
+            status: "APPROVED",
+            documentsStatus: "verified",
+            online: false,
+            reviewNote: "Eligibility restored after an approved replacement document.",
+            updatedAt: Date.now(),
+          });
+          await audit(ctx, {
+            actor: admin,
+            action: "guardian.eligibility_restored",
+            entityType: "guardianProfile",
+            entityId: String(profile._id),
+            detail:
+              "Guardian eligibility restored after an approved replacement document. The account remains offline until it explicitly goes online.",
+          });
+        }
+      }
+    }
     return { ok: true };
   },
 });
@@ -167,7 +237,11 @@ export const getUrl = query({
     const meta = await ctx.db.get(args.documentId);
     if (!meta) throw new Error("Document not found.");
     const role = roleOf(user);
-    let allowed = meta.uploadedByUserId === user._id || role === "admin" || role === "red_cross";
+    // Quarantined or failed documents are never available, even to an admin.
+    if (meta.scanStatus !== "clean") {
+      throw new Error("This document is quarantined until malware scanning succeeds.");
+    }
+    let allowed = meta.uploadedByUserId === user._id || role === "admin";
     if (!allowed && meta.requestId) {
       const request = await ctx.db.get(meta.requestId);
       if (
@@ -197,8 +271,76 @@ export const remove = mutation({
     if (meta.requestId) {
       throw new Error("Documents attached to a request cannot be removed.");
     }
+    if (
+      meta.purpose === "guardian_onboarding" &&
+      meta.status &&
+      meta.status !== "pending"
+    ) {
+      throw new Error("Reviewed onboarding documents cannot be deleted; upload a replacement instead.");
+    }
     await ctx.storage.delete(meta.storageId);
     await ctx.db.delete(meta._id);
+    return { ok: true };
+  },
+});
+
+/** Server-only scan context. File bytes are never returned by a public query. */
+export const getScanContext = internalQuery({
+  args: { documentId: v.id("documentMetadata") },
+  handler: async (ctx, args) => {
+    const meta = await ctx.db.get(args.documentId);
+    if (!meta) return null;
+    const uploader = await ctx.db.get(meta.uploadedByUserId);
+    return {
+      id: meta._id,
+      uploadedByUserId: meta.uploadedByUserId,
+      uploaderRole: uploader?.role ?? "user",
+      storageId: meta.storageId,
+      fileName: meta.fileName,
+      contentType: meta.contentType,
+      size: meta.size,
+      scanStatus: meta.scanStatus ?? "pending",
+      scanAttempts: meta.scanAttempts ?? 0,
+    };
+  },
+});
+
+export const beginScan = internalMutation({
+  args: { documentId: v.id("documentMetadata") },
+  handler: async (ctx, args) => {
+    const meta = await ctx.db.get(args.documentId);
+    if (!meta) throw new Error("Document not found.");
+    await ctx.db.patch(meta._id, {
+      scanStatus: "scanning",
+      scanError: undefined,
+      scanAttempts: (meta.scanAttempts ?? 0) + 1,
+    });
+    return { ok: true };
+  },
+});
+
+export const recordScanResult = internalMutation({
+  args: {
+    documentId: v.id("documentMetadata"),
+    status: v.union(
+      v.literal("clean"),
+      v.literal("infected"),
+      v.literal("error"),
+    ),
+    engine: v.optional(v.string()),
+    signature: v.optional(v.string()),
+    error: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const meta = await ctx.db.get(args.documentId);
+    if (!meta) throw new Error("Document not found.");
+    await ctx.db.patch(meta._id, {
+      scanStatus: args.status,
+      scanEngine: args.engine?.slice(0, 80),
+      scanSignature: args.signature?.slice(0, 120),
+      scanError: args.error?.slice(0, 240),
+      scannedAt: Date.now(),
+    });
     return { ok: true };
   },
 });

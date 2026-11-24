@@ -140,9 +140,11 @@ checks, inventory ownership, drone command/mission authority, size guards).
 - **Server-side identity**: every mutation resolves the caller from context;
   never trusts a client-supplied user id.
 - **Ownership checks**: `requests.getDetail` returns `null` for non-owners and
-  logs a cross-user denial; `documents.getUrl` permits uploader, admin,
-  Red Cross, or the linked hospital; `inventory.updateStock` and
-  `recordMovement` call `authorizeInventoryOwnershipOrStaff`.
+  logs a cross-user denial; `documents.getUrl` permits uploader, admin or the
+  linked hospital **and requires a clean malware scan** (the former Red Cross
+  blanket access and the request-detail direct storage URL were removed);
+  `inventory.updateStock` and `recordMovement` call
+  `authorizeInventoryOwnershipOrStaff`.
 - **Transaction protection**: reservations use serializable Convex mutations
   with re-reads before decrementing `unitsAvailable`/`unitsReserved`; dispatch
   refuses inconsistent batches; receipt is idempotent per transfer.
@@ -206,7 +208,24 @@ Files: `src/convex/drones.ts`, `drone_bridge/sitl_bridge.py`.
 - Simulation only: no real aircraft path is enabled; the bridge requires
   `--confirm SITL` and loopback UDP.
 
-### 2.7 Frontend security
+### 2.7 Document quarantine and Guardian eligibility
+
+- New documents are `scanStatus: pending` and cannot be reviewed, downloaded or
+  referenced until the server-side scanner returns `clean`.
+- Scanner absence, timeout or a non-2xx response leaves the document
+  `scanStatus: error`; it never becomes clean by default.
+- Infected documents store only the scanner signature, never contents.
+- Reviewed Guardian documents cannot be deleted, preserving review history.
+- Required documents must be individually approved before an application can be
+  approved. An expired document cannot be approved.
+- The daily expiry sweep marks expired documents and profiles, forces the
+  Guardian offline, suspends vehicle availability and sends deduplicated
+  Guardian/admin reminders. Eligibility is restored only after a clean,
+  approved replacement and a passing compliance check.
+- The scan action is uploader/admin authorized and rejects oversized or
+  unsupported files before contacting the scanner.
+
+### 2.8 Frontend security
 
 - Baseline CSP + referrer policy in `index.html`; production CSP/HSTS headers in
   `deploy/nginx/lifelink.conf`.
@@ -324,7 +343,11 @@ Do not record a scan as passed unless it actually ran against the lockfile.
 5. **No SIEM/alerting**: events are queryable in the admin dashboard but are not
    shipped to an external monitoring system or paged on.
 6. **Convex storage URLs** are signed but time-limited; document expiry and avoid
-   sharing them outside authorized staff.
+   sharing them outside authorized staff. Every app-level URL path now enforces
+   `scanStatus: clean`.
+7. **Real ClamAV was not installed here.** The scanner protocol and fail-closed
+   behavior passed against a stub, but an end-to-end EICAR scan through genuine
+   `clamd` must be run in deployment before claiming live antivirus coverage.
 7. **Clinical free-text false positives**: WAF exclusions must be re-tuned
    against real traffic in DetectionOnly mode before enabling blocking.
 8. **`bun audit` still reports 32 advisories**, including one critical in

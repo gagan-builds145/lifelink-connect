@@ -92,6 +92,22 @@ Upload `dist/` to the static host. Configure SPA fallback:
 
 The app uses `BrowserRouter`; without fallback, deep links such as `/supply` return 404.
 
+### Malware scanner container
+
+```powershell
+cd services/malware-scanner
+$env:SCANNER_TOKEN="a-long-random-secret"
+docker compose up -d --build
+curl http://127.0.0.1:8088/health
+```
+
+Set the same token as `MALWARE_SCANNER_TOKEN` on the Convex deployment and set
+`MALWARE_SCANNER_URL` to a URL Convex can reach. The stack includes a maintained
+ClamAV daemon and signature database volume. The scanner requires a token to
+start; `GET /health` reports 503 until ClamAV responds. If it is unavailable,
+uploads remain quarantined and are never silently approved. See
+[malware-scanning.md](malware-scanning.md).
+
 ### ML service container
 
 ```powershell
@@ -121,6 +137,7 @@ Container probes should call public `/livez`. Convex calls authenticated `/healt
 11. Force an ML outage (wrong URL/token) and confirm automatic allocation still reserves stock, donor invitations use distance-only fallback, and no probability is stored.
 12. Backup/restore drill and alerting test from [backup-recovery.md](backup-recovery.md).
 13. Security checklist from [security.md](security.md), including secret scanning and RBAC checks.
+14. Upload a test document and confirm it stays quarantined until the scanner is healthy, then becomes clean. Test an EICAR file through the real scanner and confirm it is rejected. Trigger the Guardian reminder sweep and confirm deduplicated notifications.
 14. Deploy and verify the edge WAF using [waf-deployment.md](waf-deployment.md); record the probe outputs. Until then the WAF is not active.
 15. Walk [production-security-checklist.md](production-security-checklist.md) item by item in the target environment.
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
 import {
   Ambulance,
@@ -59,6 +59,7 @@ export default function GuardianDashboard() {
   const cancel = useMutation(api.ambulances.cancelBooking);
   const generateUploadUrl = useMutation(api.documents.generateUploadUrl);
   const attachDocument = useMutation(api.documents.attachDocument);
+  const scanDocument = useAction(api.scan.scanDocument);
   const [documentFile, setDocumentFile] = useState<File | null>(null);
   const [documentId, setDocumentId] = useState<Id<"documentMetadata"> | null>(null);
 
@@ -123,6 +124,10 @@ export default function GuardianDashboard() {
           contentType: documentFile.type,
           size: documentFile.size,
         });
+        const scanResult = await scanDocument({ documentId: attached.documentId });
+        if (scanResult.status !== "clean") {
+          throw new Error("The vehicle document was quarantined and cannot be attached.");
+        }
         uploadedDocumentId = attached.documentId;
         setDocumentId(attached.documentId);
       }

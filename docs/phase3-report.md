@@ -1,6 +1,6 @@
 # LifeLink Connect 2.0 — Phase 3 implementation report
 
-> **Later change (Phase 4):** the donor-facing Identity & Blood Group dashboard section described below was removed at the user's request. The backend tables, consent/callback logic, blood-group data and admin audit view were retained. See `docs/phase4-report.md`.
+> **Superseded:** Live Aadhaar Verification and its sandbox were removed permanently in the final Phase 4 release. Aadhaar sections below are historical and no longer match the code. See [identity-verification.md](identity-verification.md) and [phase4-final-report.md](phase4-final-report.md).
 
 Date: 2026-11-23
 Scope: production-readiness hardening, identity verification, Guardian onboarding, multi-role accounts, ambulance lifecycle and regression testing — built on the existing Phase 2 project without rebuilding it.

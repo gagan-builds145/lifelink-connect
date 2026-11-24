@@ -179,10 +179,12 @@ export function guardianComplianceIssues(input: {
         (candidate) =>
           candidate.documentKind === kind &&
           candidate.status !== "rejected" &&
+          candidate.status !== "expired" &&
+          !isPast(candidate.expiryDate, today) &&
           (candidate.ambulanceId == null || candidate.ambulanceId === vehicle.id),
       );
       if (!doc) {
-        issues.push(`${GUARDIAN_DOCUMENT_LABELS[kind]} is missing for vehicle ${vehicle.id.slice(-6)}.`);
+        issues.push(`${GUARDIAN_DOCUMENT_LABELS[kind]} is missing, expired or invalid for vehicle ${vehicle.id.slice(-6)}.`);
       }
     }
     if (isPast(vehicle.insuranceExpiryDate, today)) issues.push("Vehicle insurance has expired.");

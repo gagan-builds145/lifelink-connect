@@ -28,23 +28,11 @@ FastAPI now exposes `/ai/demand/predict`, `/ai/donor-response/predict`, `/ai/inv
 
 Read [docs/phase2-report.md](docs/phase2-report.md) for actual metrics, repairs, test counts and unresolved limitations, and [docs/deep-training-cloud.md](docs/deep-training-cloud.md) for external TensorFlow training.
 
-### Phase 3 verification
+### Phase 4 — final hardening
 
-Phase 3 adds production hardening without rebuilding the project: provider-independent Aadhaar identity verification with an explicitly labelled sandbox (live verification remains disabled), donor-declared blood-group provenance and audit history, full Guardian onboarding with driver/vehicle/document review, Donor→Guardian upgrade on the same account with workspace switching, and a hardened ambulance lifecycle. `bun test` reports **146 passing tests across 10 suites** (13 new Phase 3 tests), TypeScript is clean and lint has 0 errors. Browser E2E, live Aadhaar, TensorFlow training and cloud S3/Parquet still cannot be executed on this host and are reported as limitations.
+Phase 4 removes Live Aadhaar Verification **permanently**. There is no UIDAI connection, provider adapter, callback endpoint, Aadhaar credential, Aadhaar number/OTP/biometric storage or sandbox verification path. Email OTP remains the only sign-in method. See [docs/identity-verification.md](docs/identity-verification.md).
 
-Read [docs/phase3-audit-report.md](docs/phase3-audit-report.md), [docs/phase3-report.md](docs/phase3-report.md) and [docs/identity-verification.md](docs/identity-verification.md).
-
-### Phase 4 verification
-
-Phase 4 adds a donor one-tap GPS ambulance request (no destination or patient questions), heading-only dashboards, and removes the donor Identity & Blood Group dashboard section while keeping all blood-group data and backend verification records. The three lightweight models were retrained; ANN, LSTM and Autoencoder remain untrained because TensorFlow is unavailable and cannot be installed with the free disk on this host. `bun test` now reports **151 passing tests**, `pytest` **57 passed**, TypeScript is clean and the production build succeeds. Browser/GPS behaviour and deep-model training are still unverified in this environment.
-
-Read [docs/phase4-report.md](docs/phase4-report.md) for actual metrics, commands and limitations.
-
-### Phase 5 verification
-
-Phase 5 adds bounded automatic ambulance re-matching for `searching` bookings (one-minute server cron, 30-minute window, 20-attempt cap, target reservation, honest expiry) with nine new tests. The deep-training pipeline is now leakage-safe, records provenance/environment/history, and has a reproducible Colab notebook plus a fail-closed artifact verifier and deep inference endpoints. **ANN, LSTM and Autoencoder are still NOT TRAINED on this host** because TensorFlow is absent and the disk cannot hold it; no artifacts or metrics were fabricated. Browser verification is also still blocked: the Playwright browser cache is empty and only ~44 MB free disk remains. `bun test` reports **172 passing tests**, `pytest` **64 passed**, lint has 0 errors and the production build succeeds.
-
-Read [docs/phase5-report.md](docs/phase5-report.md) and [docs/deep-training-cloud.md](docs/deep-training-cloud.md).
+It also adds server-side ClamAV-compatible malware scanning with quarantine before review/download, configurable Guardian document-expiry reminders with idempotent notifications, and fixes found by an independent authorization review. **ANN, LSTM and Autoencoder remain NOT TRAINED** because TensorFlow is absent and the host has insufficient free disk; no artifacts or metrics are fabricated. See [docs/phase4-final-report.md](docs/phase4-final-report.md), [docs/malware-scanning.md](docs/malware-scanning.md), [docs/guardian-onboarding.md](docs/guardian-onboarding.md), [docs/phase4-browser-report.md](docs/phase4-browser-report.md) and [docs/phase4-performance-report.md](docs/phase4-performance-report.md).
 
 ---
 
@@ -56,8 +44,10 @@ Read [docs/phase5-report.md](docs/phase5-report.md) and [docs/deep-training-clou
 | Passwordless email OTP auth, Donor/Hospital/Blood Bank/Guardian signup | ✅ |
 | **One-tap ambulance request** from live GPS | ✅ auto-booking, real assignment, no destination questions |
 | **Heading-only UI** across dashboards and public pages | ✅ descriptions under main headings removed |
-| **Identity verification backend** (provider adapter, signed callbacks, consent) | ✅ sandbox only; donor dashboard section removed |
+| **Live Aadhaar verification** | ❌ permanently removed; no UIDAI/provider connection or Aadhaar data |
 | **Donor-declared blood group** with change history and medical lock | ✅ preserved in profiles/matching; no dedicated dashboard page |
+| **Malware scanning and quarantine** | ✅ ClamAV-compatible server-side scan; fail closed |
+| **Guardian document-expiry reminders** | ✅ configurable cron, deduplicated Guardian/admin notices, eligibility gate |
 | **Guardian onboarding** — personal, driver, service, payout, vehicles, documents | ✅ admin review + immutable events |
 | **Multi-role account** — Donor + Guardian without a second login | ✅ server-granted roles, workspace switcher |
 | **Unified community dashboard** — donor + requestor in one sidebar | ✅ |
@@ -81,10 +71,11 @@ Read [docs/phase5-report.md](docs/phase5-report.md) and [docs/deep-training-clou
 | **Admin control room** (`/admin/dashboard`) | ✅ network health, policy, agreements, sync, ML, safety, audit |
 | **Automatic ambulance re-matching** | ✅ bounded retries, reservation, conflict prevention, honest expiry |
 | **Authenticated root routing** | ✅ `/` redirects signed-in users to their role dashboard; logo follows role |
-| **Automated tests** | ✅ 172 TypeScript tests across 13 suites; ✅ 64 Python tests |
+| **Automated tests** | ✅ 202 Bun/scanner tests across 20 files; ✅ 52 Python tests |
 | Real HMS/blood-bank production connector | ❌ framework + mock only |
 | PX4/ArduPilot SITL / MAVLink | ⚠️ SITL export + MAVSDK bridge present; **not executed** because no SITL runtime is installed |
-| Live API/E2E/load/security/live-SITL suites | ❌ not included |
+| Authenticated browser E2E / live-SITL suites | ❌ blocked; only public browser checks were executed |
+| ANN / LSTM / Autoencoder deep models | ❌ NOT TRAINED; TensorFlow unavailable and insufficient disk |
 | Push notifications | ❌ not implemented |
 
 Test evidence: [docs/test-report.md](docs/test-report.md), [docs/test-results.xml](docs/test-results.xml), [Python 3.13 JUnit](docs/python-3.13-test-results.xml) and [Python 3.10 JUnit](docs/python-test-results.xml).

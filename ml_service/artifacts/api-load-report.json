@@ -1,18 +1,18 @@
 {
-  "generated_at": "2026-11-23T07:00:19.871135+00:00",
+  "generated_at": "2026-11-24T14:44:41.063547+00:00",
   "scope": "Bounded in-process FastAPI/model test. No network, Convex, S3, multi-region latency or million-user concurrency.",
   "parameters": {
-    "requests": 40,
-    "concurrency": 4,
+    "requests": 100,
+    "concurrency": 8,
     "endpoint": "/ai/demand/predict"
   },
   "results": {
-    "total_seconds": 0.265,
-    "throughput_requests_per_second": 150.83,
+    "total_seconds": 0.688,
+    "throughput_requests_per_second": 145.31,
     "errors": 0,
-    "p50_ms": 26.16,
-    "p95_ms": 32.85,
-    "max_ms": 36.17,
+    "p50_ms": 53.66,
+    "p95_ms": 66.99,
+    "max_ms": 79.69,
     "mean_response_bytes": 876
   },
   "limitations": [

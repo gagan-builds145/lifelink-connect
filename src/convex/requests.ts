@@ -264,6 +264,9 @@ export const create = mutation({
       if (!doc || doc.uploadedByUserId !== user._id) {
         throw new Error("The attached document is not available to this account.");
       }
+      if (doc.scanStatus !== "clean") {
+        throw new Error("The attached document is quarantined until malware scanning succeeds.");
+      }
       if (doc.requestId) throw new Error("That document is already attached to another request.");
       if (!ALLOWED_DOC_TYPES.includes(doc.contentType) || doc.size > MAX_DOC_BYTES) {
         throw new Error("Documents must be PDF, JPEG or PNG and under 5 MB.");
@@ -441,7 +444,8 @@ export const getDetail = query({
       null;
     if (full && request.documentId) {
       const meta = await ctx.db.get(request.documentId);
-      if (meta) {
+      // Avoid a second document-download path that bypasses quarantine.
+      if (meta && meta.scanStatus === "clean") {
         document = {
           fileName: meta.fileName,
           contentType: meta.contentType,

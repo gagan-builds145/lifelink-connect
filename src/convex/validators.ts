@@ -105,23 +105,8 @@ export const ambulanceBookingStatusValidator = v.union(
 );
 
 /* ------------------------------------------------------------------ *
- * Identity verification and Guardian onboarding
+ * Guardian onboarding
  * ------------------------------------------------------------------ */
-
-/**
- * Aadhaar verification lifecycle. `VERIFIED` is only ever written by the
- * provider callback path (or the explicitly-labelled sandbox path). No admin
- * or donor action can set it directly.
- */
-export const identityVerificationStatusValidator = v.union(
-  v.literal("NOT_STARTED"),
-  v.literal("PENDING"),
-  v.literal("VERIFIED"),
-  v.literal("FAILED"),
-  v.literal("EXPIRED"),
-  v.literal("REVOKED"),
-  v.literal("REQUIRES_REVIEW"),
-);
 
 export const bloodGroupSourceValidator = v.union(
   v.literal("self_declared"),
@@ -162,6 +147,7 @@ export const guardianDocumentStatusValidator = v.union(
   v.literal("pending"),
   v.literal("approved"),
   v.literal("rejected"),
+  v.literal("expired"),
 );
 
 export const userRoleValidator = v.union(

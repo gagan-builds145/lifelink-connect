@@ -1,4 +1,6 @@
-# LifeLink — Phase 4 implementation report
+# LifeLink — earlier Phase 4 implementation report (historical)
+
+> **Superseded:** The Aadhaar backend retained by this earlier report was removed permanently in the final Phase 4 hardening release. See [phase4-final-report.md](phase4-final-report.md) and [identity-verification.md](identity-verification.md).
 
 Date: 2026-11-23
 Scope: one-tap GPS ambulance booking, global heading-only UI cleanup, removal of the donor Identity & Blood Group dashboard section, and a full attempt at all six ML models.

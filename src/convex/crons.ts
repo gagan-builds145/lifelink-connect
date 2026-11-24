@@ -52,12 +52,14 @@ crons.daily(
   internal.forecasting.anomalySweep,
 );
 
-// Identity-verification sessions expire even if the donor never returns.
-crons.interval(
-  "expire pending identity verifications",
-  { minutes: 15 },
-  internal.aadhaar.expirePendingSessions,
+// Reminds Guardians and administrators before document expiry, marks expired
+// documents and removes operational eligibility. Notifications are deduped.
+crons.daily(
+  "guardian document expiry sweep",
+  { hourUTC: 3, minuteUTC: 0 },
+  internal.guardianDocuments.expirySweep,
 );
+
 
 // Searching emergency bookings re-check the live network on a bounded schedule.
 // Each booking carries its own next-attempt time and attempt cap, so this job is

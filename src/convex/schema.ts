@@ -7,7 +7,6 @@ import {
   guardianApplicationStatusValidator,
   guardianDocumentKindValidator,
   guardianDocumentStatusValidator,
-  identityVerificationStatusValidator,
   userRolesValidator,
   aiDatasetStatusValidator,
   aiModelKindValidator,
@@ -396,6 +395,21 @@ const schema = defineSchema(
       expiryDate: v.optional(v.string()),
       status: v.optional(guardianDocumentStatusValidator),
       reviewNote: v.optional(v.string()),
+      /** Quarantine state. Only a clean scan may be opened or reviewed. */
+      scanStatus: v.optional(
+        v.union(
+          v.literal("pending"),
+          v.literal("scanning"),
+          v.literal("clean"),
+          v.literal("infected"),
+          v.literal("error"),
+        ),
+      ),
+      scanEngine: v.optional(v.string()),
+      scannedAt: v.optional(v.number()),
+      scanSignature: v.optional(v.string()),
+      scanError: v.optional(v.string()),
+      scanAttempts: v.optional(v.number()),
       createdAt: v.number(),
     })
       .index("by_uploader", ["uploadedByUserId"])
@@ -1024,8 +1038,6 @@ const schema = defineSchema(
       emergencyContactName: v.optional(v.string()),
       emergencyContactPhone: v.optional(v.string()),
       profilePhotoDocumentId: v.optional(v.id("documentMetadata")),
-      identityType: v.optional(v.string()),
-      identityLast4: v.optional(v.string()),
       driver: v.optional(
         v.object({
           fullName: v.string(),
@@ -1076,37 +1088,6 @@ const schema = defineSchema(
       updatedAt: v.number(),
     })
       .index("by_user", ["userId"])
-      .index("by_status", ["status"]),
-
-    /** Aadhaar/identity verification sessions. Never stores Aadhaar numbers,
-     * OTPs, biometrics or raw provider payloads. */
-    donorIdentityVerifications: defineTable({
-      donorUserId: v.id("users"),
-      donorProfileId: v.id("donorProfiles"),
-      provider: v.string(),
-      verificationReference: v.string(),
-      status: identityVerificationStatusValidator,
-      /** True only for the explicitly-labelled sandbox provider. */
-      sandbox: v.boolean(),
-      consentVersion: v.string(),
-      consentTimestamp: v.number(),
-      consentWithdrawnAt: v.optional(v.number()),
-      verificationTimestamp: v.optional(v.number()),
-      expiryTimestamp: v.number(),
-      permittedMaskedReference: v.optional(v.string()),
-      providerTransactionReference: v.optional(v.string()),
-      verifiedName: v.optional(v.string()),
-      verifiedAddress: v.optional(v.string()),
-      failureReason: v.optional(v.string()),
-      reviewNote: v.optional(v.string()),
-      reviewedByUserId: v.optional(v.id("users")),
-      reviewedAt: v.optional(v.number()),
-      callbackReceivedAt: v.optional(v.number()),
-      createdAt: v.number(),
-      updatedAt: v.number(),
-    })
-      .index("by_donor", ["donorUserId"])
-      .index("by_reference", ["verificationReference"])
       .index("by_status", ["status"]),
 
     donorBloodGroupHistory: defineTable({

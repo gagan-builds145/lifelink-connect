@@ -1,7 +1,7 @@
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
-import { useMutation } from "convex/react";
+import { useAction, useMutation } from "convex/react";
 import { FileText, Loader2, Paperclip, ShieldCheck, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
@@ -30,6 +30,7 @@ export function DocumentUpload({
 }) {
   const generateUploadUrl = useMutation(api.documents.generateUploadUrl);
   const attachDocument = useMutation(api.documents.attachDocument);
+  const scanDocument = useAction(api.scan.scanDocument);
   const removeDocument = useMutation(api.documents.remove);
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -61,14 +62,18 @@ export function DocumentUpload({
         contentType: file.type,
         size: file.size,
       });
+      const scanResult = await scanDocument({ documentId: attached.documentId });
+      if (scanResult.status !== "clean") {
+        throw new Error("The file was quarantined because malware was detected.");
+      }
       onChange({
         documentId: attached.documentId,
         fileName: file.name,
         size: file.size,
         contentType: file.type,
       });
-      toast.success("Document attached", {
-        description: "Metadata is validated by the backend before the request is saved.",
+      toast.success("Document attached and scanned clean", {
+        description: "The backend keeps it private and re-checks its format.",
       });
     } catch (err) {
       toast.error("Could not attach document", {
@@ -108,7 +113,7 @@ export function DocumentUpload({
           <div className="min-w-0 flex-1">
             <p className="truncate text-[12px] font-semibold">{value.fileName}</p>
             <p className="text-[10.5px] text-muted-foreground">
-              {prettySize(value.size)} · stored privately
+              {prettySize(value.size)} · scanned clean · stored privately
             </p>
           </div>
           <button

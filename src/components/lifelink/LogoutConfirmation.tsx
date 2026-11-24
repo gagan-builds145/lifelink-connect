@@ -19,7 +19,6 @@ import {
 import { friendlyError } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
-import { useNavigate } from "react-router";
 import { toast } from "sonner";
 
 /**
@@ -31,7 +30,6 @@ import { toast } from "sonner";
  */
 export function useLogoutConfirmation() {
   const { signOut } = useAuth();
-  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const gate = useRef(createLogoutGate()).current;
@@ -54,14 +52,18 @@ export function useLogoutConfirmation() {
     if (result.status === "success") {
       setOpen(false);
       toast.success("Signed out securely");
-      navigate(LOGOUT_SUCCESS_PATH, { replace: true });
+      // A full document navigation avoids a race where the current protected
+      // route re-renders and sends the signed-out user to /auth?returnTo=…
+      // before the client router reaches the requested /login destination.
+      window.location.replace(LOGOUT_SUCCESS_PATH);
+      return;
     } else if (result.status === "error") {
       toast.error("Could not log out", {
         description: friendlyError(result.error, "Please try again."),
       });
     }
     setPending(false);
-  }, [gate, navigate, signOut]);
+  }, [gate, signOut]);
 
   return { open, onOpenChange, pending, requestLogout, confirmLogout };
 }

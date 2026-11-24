@@ -91,12 +91,35 @@ export default function CommunityDashboard() {
   }));
 
   const loading = me === undefined;
+  const hasDonor = Boolean(me?.donor);
+  const hasRequestor = Boolean(me?.requestor);
+  const roleLabel =
+    hasDonor && hasRequestor
+      ? "Donor & Requestor"
+      : hasDonor
+        ? "Donor"
+        : hasRequestor
+          ? "Requestor"
+          : "Community";
+  const roleKey =
+    hasDonor && hasRequestor
+      ? "Donor & blood requestor"
+      : hasDonor
+        ? "Blood donor"
+        : hasRequestor
+          ? "Blood requestor"
+          : "Community account";
+  const dashboardTitle = hasDonor
+    ? "Donor dashboard"
+    : hasRequestor
+      ? "Requestor dashboard"
+      : "Community dashboard";
 
   return (
     <DashboardShell
-      roleLabel="Donor"
-      roleKey="Donor & blood requestor"
-      title="Donor dashboard"
+      roleLabel={roleLabel}
+      roleKey={roleKey}
+      title={dashboardTitle}
       items={navItems}
       active={section}
       onSelect={(key) => go(key as SectionKey)}

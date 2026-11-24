@@ -1,5 +1,7 @@
 # Phase 4 browser verification report
 
+> **Superseded for authenticated coverage:** the original Phase 4 run below covered public pages only. The final authenticated six-role run, notification/profile/location/logout checks, mobile results and remaining blockers are in [final-verification-report.md](final-verification-report.md) and `browser-screenshots/final-verification/`.
+
 Date: 2026-11-24
 Browser: Playwright Chromium headless shell 1254 (installed on this host)
 Base URL: `http://127.0.0.1:5173`

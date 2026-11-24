@@ -1,0 +1,191 @@
+{
+  "manifest": {
+    "name": "LifeLink — Smart Blood Donation Management",
+    "short_name": "LifeLink",
+    "description": "Donate Blood, Save Lives. Every Second Matters. A verified blood donation and emergency matching network.",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#fbfaf8",
+    "theme_color": "#b21f34",
+    "icons": [
+      {
+        "src": "/icons/icon-192.png",
+        "sizes": "192x192",
+        "type": "image/png",
+        "purpose": "any"
+      },
+      {
+        "src": "/icons/icon-512.png",
+        "sizes": "512x512",
+        "type": "image/png",
+        "purpose": "any"
+      },
+      {
+        "src": "/icons/icon-512.png",
+        "sizes": "512x512",
+        "type": "image/png",
+        "purpose": "maskable"
+      },
+      {
+        "src": "/icons/lifelink-app-icon.svg",
+        "sizes": "any",
+        "type": "image/svg+xml",
+        "purpose": "any"
+      }
+    ]
+  },
+  "manifestIconReferences": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any",
+      "fileExists": true
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any",
+      "fileExists": true
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable",
+      "fileExists": true
+    },
+    {
+      "src": "/icons/lifelink-app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any",
+      "fileExists": true
+    }
+  ],
+  "indexHtmlAppleTouchIcon": true,
+  "iconResults": {
+    "public/icons/icon-192.png": {
+      "width": 192,
+      "height": 192,
+      "cornerTopLeft": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "cornerBottomRight": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "center": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "redPixels": 7416,
+      "whitePixels": 29030,
+      "redPixelPercent": 20.12,
+      "redBounds": {
+        "minX": 50,
+        "minY": 25,
+        "maxX": 141,
+        "maxY": 151
+      },
+      "contentCenter": {
+        "x": 95.5,
+        "y": 88
+      },
+      "canvasCenter": {
+        "x": 96,
+        "y": 96
+      }
+    },
+    "public/icons/icon-512.png": {
+      "width": 512,
+      "height": 512,
+      "cornerTopLeft": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "cornerBottomRight": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "center": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "redPixels": 53005,
+      "whitePixels": 208218,
+      "redPixelPercent": 20.22,
+      "redBounds": {
+        "minX": 134,
+        "minY": 65,
+        "maxX": 377,
+        "maxY": 405
+      },
+      "contentCenter": {
+        "x": 255.5,
+        "y": 235
+      },
+      "canvasCenter": {
+        "x": 256,
+        "y": 256
+      }
+    },
+    "public/icons/apple-touch-icon.png": {
+      "width": 180,
+      "height": 180,
+      "cornerTopLeft": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "cornerBottomRight": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "center": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "redPixels": 6493,
+      "whitePixels": 25546,
+      "redPixelPercent": 20.04,
+      "redBounds": {
+        "minX": 47,
+        "minY": 24,
+        "maxX": 132,
+        "maxY": 142
+      },
+      "contentCenter": {
+        "x": 89.5,
+        "y": 83
+      },
+      "canvasCenter": {
+        "x": 90,
+        "y": 90
+      }
+    }
+  },
+  "logoHashes": {
+    "public/logo.svg": "e1e98eb44529c8811b3baa03aa47155cba31b181e98b6254ab7728104048e0af",
+    "src/assets/logo.svg": "6b97d1f406b048977d636407c1c8cd64e245a5e4560aeda52a99a78b89c34913"
+  }
+}

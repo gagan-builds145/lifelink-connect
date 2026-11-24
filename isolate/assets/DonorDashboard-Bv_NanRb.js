@@ -1,1 +1,0 @@
-import{j as t}from"./framer-motion-i7nd1XFy.js";import{d as r,N as s}from"./react-vendor-CWcBGOK2.js";function c(){const a=r(),o=new URLSearchParams(a.search);return o.set("section","donate"),t.jsx(s,{to:`/community/dashboard?${o.toString()}`,replace:!0})}export{c as default};

@@ -167,6 +167,6 @@ See [security.md](security.md), [backup-recovery.md](backup-recovery.md), [ml-op
 - A real HMS/blood-bank production connector (the framework and mock adapter exist).
 - PostgreSQL/PostGIS, Redis, Firebase, Docker Compose.
 - Push notifications.
-- Automated browser, load or SITL tests.
+- Production load tests, SITL execution or a production browser farm. Local Playwright public and six-role authenticated checks are documented in `docs/final-verification-report.md`; approved-Guardian ambulance booking was blocked by the absence of an approved vehicle and a real ClamAV service.
 
 See [limitations.md](limitations.md) and [production-readiness.md](production-readiness.md) for the full production-readiness classification and gap list.

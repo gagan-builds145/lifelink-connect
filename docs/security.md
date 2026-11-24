@@ -109,8 +109,10 @@ Files: `src/convex/auth/emailOtp.ts`, `src/convex/authGate.ts`,
 - Codes are six digits and expire after 15 minutes; resends are throttled by the
   same 5-per-15-minute window. Verification codes and sessions are never logged.
 - Sessions are issued by Convex Auth (HTTP-only cookies); logout calls
-  `signOut` and the client drops its cached session. Session lifetime is the
-  Convex Auth default and must be tuned at the deployment (see remaining risks).
+  `signOut`, then performs a full-document navigation to `/login` so a protected
+  route cannot race the client router into `/auth?returnTo=…`. Session lifetime
+  is the Convex Auth default and must be tuned at the deployment (see remaining
+  risks).
 - Every security event is identifier-free (`entityId: "redacted"` for users).
 
 ### 2.3 Role-based API security

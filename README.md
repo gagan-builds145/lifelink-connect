@@ -34,6 +34,12 @@ Phase 4 removes Live Aadhaar Verification **permanently**. There is no UIDAI con
 
 It also adds server-side ClamAV-compatible malware scanning with quarantine before review/download, configurable Guardian document-expiry reminders with idempotent notifications, and fixes found by an independent authorization review. **ANN, LSTM and Autoencoder remain NOT TRAINED** because TensorFlow is absent and the host has insufficient free disk; no artifacts or metrics are fabricated. See [docs/phase4-final-report.md](docs/phase4-final-report.md), [docs/malware-scanning.md](docs/malware-scanning.md), [docs/guardian-onboarding.md](docs/guardian-onboarding.md), [docs/phase4-browser-report.md](docs/phase4-browser-report.md) and [docs/phase4-performance-report.md](docs/phase4-performance-report.md).
 
+### Final authenticated verification
+
+All six roles — Donor, Requestor, Guardian, Hospital, Red Cross/Blood Bank and Admin — were exercised in a real browser through genuine email OTP sessions. Root routing, sidebar navigation and independent scroll, notification unread/mark-read behaviour, donor/requestor/hospital profile persistence, location allow/deny, protected routes, logo navigation, logout to `/login`, auth restoration and mobile layouts were checked. Two UI defects were fixed: requestor-only accounts now show the Requestor dashboard, and logout deterministically reaches `/login`.
+
+The installed app icon is now the red drop and white cross on a white rounded-square background; the website logo assets are byte-identical to the Phase 4 archive. The 192 px and Apple touch icons were regenerated after pixel verification caught incorrect cropping. Guardian document upload proved the scanner-unavailable quarantine path end to end, but approved-vehicle booking/tracking remains blocked because the live deployment has no approved Guardian or ambulance and real ClamAV is unavailable. Full evidence and the exact status split are in [docs/final-verification-report.md](docs/final-verification-report.md) and `browser-screenshots/final-verification/`.
+
 ---
 
 ## 1. What is implemented
@@ -71,10 +77,12 @@ It also adds server-side ClamAV-compatible malware scanning with quarantine befo
 | **Admin control room** (`/admin/dashboard`) | ✅ network health, policy, agreements, sync, ML, safety, audit |
 | **Automatic ambulance re-matching** | ✅ bounded retries, reservation, conflict prevention, honest expiry |
 | **Authenticated root routing** | ✅ `/` redirects signed-in users to their role dashboard; logo follows role |
-| **Automated tests** | ✅ 202 Bun/scanner tests across 20 files; ✅ 52 Python tests |
+| **Automated tests** | ✅ 202 Bun/scanner tests across 20 files; ✅ 64 Python tests |
 | Real HMS/blood-bank production connector | ❌ framework + mock only |
 | PX4/ArduPilot SITL / MAVLink | ⚠️ SITL export + MAVSDK bridge present; **not executed** because no SITL runtime is installed |
-| Authenticated browser E2E / live-SITL suites | ❌ blocked; only public browser checks were executed |
+| Authenticated browser walkthrough (six roles) | ✅ genuine OTP sessions; desktop/mobile, notifications, profiles, location, protected routes, logout |
+| Approved-Guardian ambulance booking/live-tracking browser E2E | ❌ blocked: no approved vehicle and no real ClamAV on this host |
+| Live-SITL suite | ❌ blocked: no SITL runtime installed |
 | ANN / LSTM / Autoencoder deep models | ❌ NOT TRAINED; TensorFlow unavailable and insufficient disk |
 | Push notifications | ❌ not implemented |
 

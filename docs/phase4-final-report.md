@@ -1,5 +1,7 @@
 # LifeLink Connect 2.0 — Phase 4 final report
 
+> **Final verification addendum (2026-11-24):** all six roles were subsequently authenticated with real email OTP sessions; browser coverage, mobile results, icon pixel checks and the remaining approved-vehicle/ClamAV/TensorFlow blockers are recorded in [final-verification-report.md](final-verification-report.md). The malware scanner, expiry sweep and Aadhaar exclusions in this report were rechecked against source.
+
 Date: 2026-11-24
 
 ## Implemented

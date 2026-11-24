@@ -9,7 +9,7 @@ export type NetworkMapPoint = {
   lat: number;
   lng: number;
   label: string;
-  kind: "facility" | "pickup" | "dropoff" | "drone" | "base" | "zone";
+  kind: "facility" | "pickup" | "dropoff" | "drone" | "base" | "zone" | "ambulance";
   detail?: string;
   active?: boolean;
   /** Optional override used by the organization map colour system. */
@@ -72,6 +72,7 @@ const TONES: Record<NetworkMapPoint["kind"], string> = {
   drone: "#1d4ed8",
   base: "#111827",
   zone: "#b45309",
+  ambulance: "#dc2626",
 };
 
 function escapeHtml(value: string) {
@@ -97,6 +98,21 @@ function gpsIcon() {
 
 function markerIcon(point: NetworkMapPoint) {
   const color = point.color ?? TONES[point.kind];
+  if (point.kind === "ambulance") {
+    return L.divIcon({
+      html: `<span style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:9px;background:#fff;border:2px solid ${color};box-shadow:0 2px 8px rgba(15,23,42,.35)">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3 16V8h11v8H3Z"/><path d="M14 11h4l3 3v2h-7v-5Z"/>
+          <circle cx="7" cy="18" r="2"/><circle cx="18" cy="18" r="2"/>
+          <path d="M7 10v4M5 12h4"/>
+        </svg>
+      </span>`,
+      className: "lifelink-ambulance-marker",
+      iconSize: [30, 30],
+      iconAnchor: [15, 15],
+      popupAnchor: [0, -15],
+    });
+  }
   const drone = point.kind === "drone";
   const size = drone ? 14 : 10;
   const html = `

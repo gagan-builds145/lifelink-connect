@@ -10,22 +10,18 @@ import { useQuery } from "convex/react";
 import {
   Activity,
   Ambulance,
-  BellRing,
   ClipboardList,
-  Droplets,
   HeartHandshake,
   HeartPulse,
   Search,
   Settings2,
-  UserRound,
   CalendarHeart,
 } from "lucide-react";
 import { useSearchParams } from "react-router";
+import { COMMUNITY_SIDEBAR_KEYS } from "@/lib/communityNavigation";
 import { ActivitySection } from "./community/ActivitySection";
 import { DonateSection } from "./community/DonateSection";
-import { NotificationsSection } from "./community/NotificationsSection";
 import { OverviewSection } from "./community/OverviewSection";
-import { ProfileSection } from "./community/ProfileSection";
 import { RequestSection } from "./community/RequestSection";
 import { SettingsSection } from "./community/SettingsSection";
 
@@ -34,8 +30,6 @@ export type SectionKey =
   | "donate"
   | "request"
   | "activities"
-  | "notifications"
-  | "profile"
   | "settings";
 
 const SECTION_KEYS: SectionKey[] = [
@@ -43,8 +37,6 @@ const SECTION_KEYS: SectionKey[] = [
   "donate",
   "request",
   "activities",
-  "notifications",
-  "profile",
   "settings",
 ];
 
@@ -53,10 +45,14 @@ const SECTION_LABELS: Record<SectionKey, string> = {
   donate: "Donate Blood",
   request: "Request Blood",
   activities: "My Activities",
-  notifications: "Notifications",
-  profile: "My Profile",
   settings: "Settings",
 };
+
+const SIDEBAR_META = {
+  overview: { label: SECTION_LABELS.overview, icon: HeartPulse },
+  activities: { label: SECTION_LABELS.activities, icon: Activity },
+  settings: { label: SECTION_LABELS.settings, icon: Settings2 },
+} as const;
 
 /**
  * LifeLink — Unified Community Dashboard.
@@ -75,7 +71,6 @@ export default function CommunityDashboard() {
   const { user } = useAuth();
   const me = useQuery(api.profiles.me);
   const overview = useQuery(api.community.overview);
-  const unread = useQuery(api.notifications.unreadCount) ?? 0;
 
   const go = (next: SectionKey) => {
     const nextParams = new URLSearchParams(params);
@@ -85,30 +80,15 @@ export default function CommunityDashboard() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const navItems = [
-    { key: "overview", label: SECTION_LABELS.overview, icon: HeartPulse },
-    {
-      key: "donate",
-      label: SECTION_LABELS.donate,
-      icon: HeartHandshake,
-      badge: overview?.invitations.awaiting || undefined,
-    },
-    {
-      key: "request",
-      label: SECTION_LABELS.request,
-      icon: Droplets,
-      badge: overview?.requests.active || undefined,
-    },
-    { key: "activities", label: SECTION_LABELS.activities, icon: Activity },
-    {
-      key: "notifications",
-      label: SECTION_LABELS.notifications,
-      icon: BellRing,
-      badge: unread || undefined,
-    },
-    { key: "profile", label: SECTION_LABELS.profile, icon: UserRound },
-    { key: "settings", label: SECTION_LABELS.settings, icon: Settings2 },
-  ];
+  const navItems = COMMUNITY_SIDEBAR_KEYS.map((key) => ({
+    key,
+    label: SIDEBAR_META[key].label,
+    icon: SIDEBAR_META[key].icon,
+    badge:
+      key === "overview"
+        ? (overview?.invitations.awaiting || undefined)
+        : undefined,
+  }));
 
   const loading = me === undefined;
 
@@ -120,11 +100,11 @@ export default function CommunityDashboard() {
       items={navItems}
       active={section}
       onSelect={(key) => go(key as SectionKey)}
-      onProfile={() => go("profile")}
-      profileLabel="My profile"
+      onProfile={() => go("settings")}
+      profileLabel="Profile & settings"
       accentIcon={HeartHandshake}
       quickLinks={[
-        { label: "Book an ambulance", href: "/ambulance", icon: Ambulance },
+        { label: "Book an ambulance", href: "/ambulance?auto=1", icon: Ambulance },
         { label: "Register as Guardian", href: "/guardian/onboarding", icon: Ambulance },
         { label: "Verified blood search", href: "/blood-search", icon: Search },
         { label: "Public donation camps", href: "/donation-camps", icon: CalendarHeart },
@@ -159,8 +139,6 @@ export default function CommunityDashboard() {
               />
             )}
             {section === "activities" && <ActivitySection onNavigate={go} />}
-            {section === "notifications" && <NotificationsSection onNavigate={go} />}
-            {section === "profile" && me && <ProfileSection me={me} onNavigate={go} />}
             {section === "settings" && me && <SettingsSection me={me} onNavigate={go} />}
           </SectionErrorBoundary>
         </section>

@@ -45,6 +45,7 @@ async function seed(t: TestApp) {
       available: true,
       latitude: 18.52,
       longitude: 73.85,
+      lastLocationAt: now,
       createdAt: now,
       updatedAt: now,
     });
@@ -106,6 +107,7 @@ async function seed(t: TestApp) {
       available: true,
       latitude: 18.53,
       longitude: 73.86,
+      lastLocationAt: now,
       createdAt: now,
       updatedAt: now,
     });
@@ -310,19 +312,15 @@ describe("ambulance booking lifecycle", () => {
     ).rejects.toThrow(/already have an active ambulance booking/i);
   });
 
-  test("a second requester cannot be assigned the same ambulance twice", async () => {
+  test("a second requester cannot target the same ambulance twice", async () => {
     const t = convexTest(schema, modules);
     const seeded = await seed(t);
-    const first = await book(t, seeded.donor, seeded.ambulance, "client-donor-0005");
-    const second = await book(t, seeded.hospital, seeded.ambulance, "client-hosp-0001");
-    await t
-      .withIdentity({ subject: String(seeded.guardian) })
-      .mutation(api.ambulances.acceptBooking, { bookingId: first.bookingId });
+    await book(t, seeded.donor, seeded.ambulance, "client-donor-0005");
+    // The reservation is enforced before a second open request can target the
+    // same real vehicle, rather than only failing later at acceptance.
     await expect(
-      t
-        .withIdentity({ subject: String(seeded.guardian) })
-        .mutation(api.ambulances.acceptBooking, { bookingId: second.bookingId }),
-    ).rejects.toThrow(/unavailable|already assigned|no longer open/i);
+      book(t, seeded.hospital, seeded.ambulance, "client-hosp-0001"),
+    ).rejects.toThrow(/open request/i);
   });
 
   test("a guardian can decline a request and the requester sees rejection", async () => {

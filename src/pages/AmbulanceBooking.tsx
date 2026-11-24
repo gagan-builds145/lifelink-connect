@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { useSearchParams } from "react-router";
 import { toast } from "sonner";
@@ -27,6 +27,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { ROLE_LABELS, type AppRole } from "@/lib/roles";
 import {
   AMBULANCE_BOOKING_STATUSES,
+  AMBULANCE_LOCATION_STALE_MS,
   AMBULANCE_STATUS_LABELS,
   AMBULANCE_TYPE_LABELS,
   AMBULANCE_TYPES,
@@ -51,7 +52,20 @@ function asNumber(value: string): number | null {
  */
 export default function AmbulanceBooking() {
   const [params] = useSearchParams();
-  if (params.get("auto") === "1") return <AmbulanceOneTap />;
+  const { user, isLoading } = useAuth();
+  const auto = params.get("auto") === "1";
+  const manual = params.get("manual") === "1";
+  const communityRole = ["community", "donor", "requestor"].includes(user?.role ?? "");
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center text-[12px] text-muted-foreground">
+        Loading ambulance booking…
+      </div>
+    );
+  }
+  // Community members get the destination-free one-tap flow by default. Staff
+  // retain the detailed manual form, and `?manual=1` is an explicit escape hatch.
+  if (auto || (communityRole && !manual)) return <AmbulanceOneTap />;
   return <ManualAmbulanceBooking />;
 }
 
@@ -72,6 +86,12 @@ function ManualAmbulanceBooking() {
   const [selectedBookingId, setSelectedBookingId] = useState<Id<"ambulanceBookings"> | null>(null);
   const [locating, setLocating] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 15_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const lat = asNumber(pickupLat);
   const lng = asNumber(pickupLng);
@@ -168,7 +188,12 @@ function ManualAmbulanceBooking() {
     }
     const ambulanceLat = detail.ambulance?.latitude;
     const ambulanceLng = detail.ambulance?.longitude;
-    if (ambulanceLat != null && ambulanceLng != null) {
+    const lastLocationAt = detail.ambulance?.lastLocationAt;
+    const fresh =
+      lastLocationAt != null &&
+      now - lastLocationAt <= AMBULANCE_LOCATION_STALE_MS &&
+      lastLocationAt <= now;
+    if (fresh && ambulanceLat != null && ambulanceLng != null) {
       points.push({
         id: "ambulance",
         lat: ambulanceLat,
@@ -184,7 +209,7 @@ function ManualAmbulanceBooking() {
       });
     }
     return points;
-  }, [detail]);
+  }, [detail, now]);
 
   const detectLocation = () => {
     if (!navigator.geolocation) {
@@ -425,10 +450,20 @@ function ManualAmbulanceBooking() {
 
             <section className="space-y-3 rounded-2xl border border-border bg-card p-5">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-[15px] font-bold">Nearby available ambulances</h2>
-                <span className="text-[10px] text-muted-foreground">
-                  {validPickup ? `${nearby?.length ?? 0} found` : "Set pickup location"}
-                </span>
+                <div>
+                  <h2 className="text-[15px] font-bold">
+                    {!validPickup
+                      ? "Set a pickup location"
+                      : nearby === undefined
+                        ? "Checking nearby ambulances…"
+                        : nearby.length === 0
+                          ? "No available ambulances nearby"
+                          : `${nearby.length} ambulance${nearby.length === 1 ? "" : "s"} nearby`}
+                  </h2>
+                  <p className="mt-0.5 text-[10px] text-muted-foreground">
+                    Approved, online, available vehicles with a current GPS fix.
+                  </p>
+                </div>
               </div>
               {validPickup ? (
                 <NetworkMap points={nearbyPoints} height={250} groupDuplicateLocations />
@@ -443,9 +478,8 @@ function ManualAmbulanceBooking() {
                 <Skeleton className="h-24 w-full rounded-xl" />
               ) : nearby?.length === 0 ? (
                 <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 text-[11px] leading-5 text-amber-950">
-                  No verified online ambulance is available in this view. Try another
-                  ambulance type, widen your search by entering a nearby pickup point, or
-                  call emergency services directly.
+                  No available ambulances nearby. We are searching for an eligible provider.
+                  You can adjust the ambulance type or call emergency services directly.
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -575,6 +609,15 @@ function ManualAmbulanceBooking() {
                           className="mt-3"
                           groupDuplicateLocations
                         />
+                        {detail.assignedAmbulanceId &&
+                          (detail.ambulance?.lastLocationAt == null ||
+                            now - detail.ambulance.lastLocationAt >
+                              AMBULANCE_LOCATION_STALE_MS) && (
+                            <p className="mt-2 rounded-xl border border-amber-300/70 bg-amber-50/70 p-3 text-[11px] leading-5 text-amber-950">
+                              Live location temporarily unavailable. The assigned provider has not
+                              sent a current GPS update, so no vehicle position is shown as live.
+                            </p>
+                          )}
                         <div className="mt-3 space-y-1.5">
                           <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
                             Status history

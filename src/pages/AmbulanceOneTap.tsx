@@ -1,13 +1,22 @@
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
+import { NetworkMap, type NetworkMapPoint } from "@/components/lifelink/NetworkMap";
+import { useAuth } from "@/hooks/use-auth";
 import {
   ACTIVE_AMBULANCE_STATUSES,
+  AMBULANCE_LOCATION_STALE_MS,
   AMBULANCE_STATUS_LABELS,
   AMBULANCE_TYPE_LABELS,
   type AmbulanceBookingStatus,
 } from "@/lib/ambulance";
 import { formatRelative } from "@/lib/blood";
+import {
+  LOCATION_CONSENT_MESSAGE,
+  readLocationChoice,
+  writeLocationChoice,
+  type LocationChoice,
+} from "@/lib/location";
 import { friendlyError } from "@/lib/utils";
 import { useMutation, useQuery } from "convex/react";
 import {
@@ -29,12 +38,12 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 
-type Phase = "locating" | "creating" | "tracking" | "error";
-type LocationError = { title: string; message: string };
+type Phase = "consent" | "locating" | "discovery" | "creating" | "tracking" | "error";
+type LocationError = { title: string; message: string; denied?: boolean };
 
 const TRIP_STEPS: { status: AmbulanceBookingStatus; label: string }[] = [
-  { status: "requested", label: "Requested" },
-  { status: "guardian_assigned", label: "Provider assigned" },
+  { status: "requested", label: "Request sent" },
+  { status: "guardian_assigned", label: "Provider accepted" },
   { status: "on_the_way", label: "On the way" },
   { status: "arrived_pickup", label: "Arrived" },
   { status: "patient_picked_up", label: "Patient picked up" },
@@ -44,25 +53,24 @@ const TRIP_STEPS: { status: AmbulanceBookingStatus; label: string }[] = [
 
 function stepIndex(status: AmbulanceBookingStatus): number {
   if (status === "searching" || status === "requested") return 0;
-  if (status === "accepted") return 1;
   return Math.max(0, TRIP_STEPS.findIndex((step) => step.status === status));
 }
 
 function SirenAmbulance({ moving }: { moving: boolean }) {
   return (
-    <div className="relative mx-auto flex h-32 w-full max-w-sm items-center justify-center">
-      <div aria-hidden className="eresp-road absolute inset-x-0 bottom-6 h-px bg-white/20" />
+    <div className="relative mx-auto flex h-28 w-full max-w-sm items-center justify-center">
+      <div aria-hidden className="eresp-road absolute inset-x-0 bottom-5 h-px bg-white/20" />
       <div aria-hidden className="eresp-speed absolute inset-x-8 top-1/2 flex flex-col gap-2">
         <span className="eresp-speed-line h-px w-full" />
         <span className="eresp-speed-line h-px w-2/3" />
         <span className="eresp-speed-line h-px w-1/2" />
       </div>
       <div className={moving ? "eresp-float relative" : "relative"}>
-        <div className="relative flex size-24 items-center justify-center rounded-[2rem] border border-white/15 bg-white/10 shadow-2xl backdrop-blur">
-          <Truck className="size-10 text-white" strokeWidth={1.6} />
-          <span aria-hidden className="eresp-siren-light absolute -top-1 left-4 size-2.5 rounded-full bg-rose-500" />
-          <span aria-hidden className="eresp-siren-light-alt absolute -top-1 right-4 size-2.5 rounded-full bg-sky-400" />
-          <span aria-hidden className="eresp-pulse-ring absolute inset-0 rounded-[2rem] border border-primary/60" />
+        <div className="relative flex size-20 items-center justify-center rounded-[1.75rem] border border-white/15 bg-white/10 shadow-2xl backdrop-blur">
+          <Truck className="size-9 text-white" strokeWidth={1.6} />
+          <span aria-hidden className="eresp-siren-light absolute -top-1 left-3 size-2.5 rounded-full bg-rose-500" />
+          <span aria-hidden className="eresp-siren-light-alt absolute -top-1 right-3 size-2.5 rounded-full bg-sky-400" />
+          <span aria-hidden className="eresp-pulse-ring absolute inset-0 rounded-[1.75rem] border border-primary/60" />
         </div>
       </div>
     </div>
@@ -70,48 +78,82 @@ function SirenAmbulance({ moving }: { moving: boolean }) {
 }
 
 /**
- * One-tap emergency ambulance request.
+ * One-tap emergency request with nearby discovery before booking.
  *
- * The only user action is granting live location. No destination, patient or
- * hospital details are requested. If no ambulance is available, the booking is
- * created in a real "searching" state and the UI says so.
+ * The user supplies no destination, patient or hospital details. After explicit
+ * consent and a fresh GPS fix, the page lists only server-qualified ambulances.
+ * A real booking is created only by the button; acceptance is always separate.
  */
 export function AmbulanceOneTap() {
+  const { user } = useAuth();
   const mine = useQuery(api.ambulances.myBookings);
   const cancelBooking = useMutation(api.ambulances.cancelBooking);
   const createEmergency = useMutation(api.ambulances.createEmergencyBooking);
-  const [phase, setPhase] = useState<Phase>("locating");
+
+  const [choice, setChoice] = useState<LocationChoice>(() =>
+    typeof window === "undefined"
+      ? "unset"
+      : readLocationChoice(window.localStorage, user?._id),
+  );
+  const [phase, setPhase] = useState<Phase>("consent");
   const [error, setError] = useState<LocationError | null>(null);
+  const [coords, setCoords] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
   const [bookingId, setBookingId] = useState<Id<"ambulanceBookings"> | null>(null);
   const [attemptId, setAttemptId] = useState(() => crypto.randomUUID());
   const [note, setNote] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
   const started = useRef(false);
+
   const activeExisting = mine?.find((row) =>
     ACTIVE_AMBULANCE_STATUSES.includes(row.status),
   );
   const effectiveBookingId = bookingId ?? activeExisting?.id ?? null;
-  const view: Phase =
-    activeExisting && phase !== "creating" ? "tracking" : phase;
   const booking = useQuery(
     api.ambulances.bookingDetail,
     effectiveBookingId ? { bookingId: effectiveBookingId } : "skip",
   );
+  const nearby = useQuery(
+    api.ambulances.nearby,
+    coords && !activeExisting
+      ? { pickupLat: coords.lat, pickupLng: coords.lng }
+      : "skip",
+  );
 
-  const locate = useCallback(() => {
+  const view: Phase =
+    activeExisting || booking ? "tracking" : phase;
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 15_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const rememberChoice = useCallback(
+    (next: Exclude<LocationChoice, "unset">) => {
+      setChoice(next);
+      if (typeof window !== "undefined") {
+        writeLocationChoice(window.localStorage, user?._id, next);
+      }
+    },
+    [user?._id],
+  );
+
+  const acquire = useCallback(() => {
     setError(null);
     setNote(null);
-    setPhase("locating");
     if (!("geolocation" in navigator)) {
+      rememberChoice("unavailable");
       setError({
         title: "Location is not available",
-        message: "This browser cannot provide live GPS location. Use a supported browser with location services.",
+        message:
+          "This browser cannot provide a live GPS position. Use a supported browser with location services.",
       });
       setPhase("error");
       return;
     }
+    setPhase("locating");
     navigator.geolocation.getCurrentPosition(
-      async (position) => {
+      (position) => {
         const { latitude, longitude, accuracy } = position.coords;
         if (
           !Number.isFinite(latitude) ||
@@ -131,46 +173,25 @@ export function AmbulanceOneTap() {
         if (accuracy > 2000) {
           setError({
             title: "GPS signal is too weak",
-            message: "Enable precise location and retry. An emergency request needs a reliable live position.",
+            message:
+              "Enable precise location and retry. Nearby ambulances need a reliable live position.",
           });
           setPhase("error");
           return;
         }
-        setPhase("creating");
-        try {
-          const result = await createEmergency({
-            pickupLat: latitude,
-            pickupLng: longitude,
-            clientRequestId: attemptId,
-          });
-          setBookingId(result.bookingId);
-          setNote(
-            result.assigned
-              ? null
-              : "No approved ambulance is available right now. Your request stays open and is being shown to the network.",
-          );
-          setPhase("tracking");
-        } catch (err) {
-          const message = friendlyError(err, "The ambulance request could not be confirmed.");
-          if (/already have an active ambulance/i.test(message)) {
-            setNote("An active ambulance request already exists on this account. Showing it below.");
-            setPhase("tracking");
-            return;
-          }
-          setError({
-            title: "Booking not confirmed",
-            message:
-              "We could not confirm the request. Retry is safe: the same request ID is reused, so a duplicate booking will not be created.",
-          });
-          setPhase("error");
-        }
+        rememberChoice("enabled");
+        setCoords({ lat: latitude, lng: longitude, accuracy });
+        setPhase("discovery");
       },
       (positionError) => {
+        const denied = positionError.code === positionError.PERMISSION_DENIED;
+        if (denied) rememberChoice("denied");
         const messages: Record<number, LocationError> = {
           1: {
-            title: "Location permission is required",
+            title: "Location permission is blocked",
             message:
-              "An ambulance can only be sent to your real position. Allow location access in the browser, then retry.",
+              "Allow location for this site in your browser settings, then try again. You can use the dashboard without location.",
+            denied: true,
           },
           2: {
             title: "Live location unavailable",
@@ -179,8 +200,7 @@ export function AmbulanceOneTap() {
           },
           3: {
             title: "Location request timed out",
-            message:
-              "GPS took too long to respond. Move to an open area, check signal, and retry.",
+            message: "GPS took too long to respond. Move to an open area and retry.",
           },
         };
         setError(
@@ -189,41 +209,143 @@ export function AmbulanceOneTap() {
             message: "Check your browser location settings and retry.",
           },
         );
-        setPhase("error");
+        setPhase(denied ? "consent" : "error");
       },
       { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 },
     );
-  }, [attemptId, createEmergency]);
+  }, [rememberChoice]);
 
-  // Resume an existing active request instead of creating a duplicate.
+  // Only a stored LifeLink consent may reuse an already-granted browser
+  // permission. With no consent, the user must press Enable Location first.
   useEffect(() => {
-    if (mine === undefined || bookingId || activeExisting) return;
-    if (started.current) return;
+    if (started.current || mine === undefined || activeExisting) return;
     started.current = true;
-    locate();
-  }, [mine, bookingId, activeExisting, locate]);
+    if (choice !== "enabled") return;
+    const timer = window.setTimeout(() => acquire(), 0);
+    return () => window.clearTimeout(timer);
+  }, [acquire, activeExisting, choice, mine]);
+
+  const requestAmbulance = async () => {
+    if (!coords) return;
+    setPhase("creating");
+    setError(null);
+    try {
+      const result = await createEmergency({
+        pickupLat: coords.lat,
+        pickupLng: coords.lng,
+        clientRequestId: attemptId,
+      });
+      setBookingId(result.bookingId);
+      setNote(
+        result.assigned
+          ? null
+          : "No approved ambulance is available right now. Your request stays open and is being shown to the network.",
+      );
+      setPhase("tracking");
+    } catch (err) {
+      setError({
+        title: "Booking not confirmed",
+        message: friendlyError(
+          err,
+          "We could not confirm the request. Retry uses the same request ID, so it cannot create a duplicate.",
+        ),
+      });
+      setPhase("discovery");
+    }
+  };
 
   const reset = () => {
     setBookingId(null);
     setAttemptId(crypto.randomUUID());
-    setPhase("locating");
+    setCoords(null);
+    setPhase("consent");
     setError(null);
     setNote(null);
-    locate();
   };
 
   const status = booking?.status as AmbulanceBookingStatus | undefined;
   const terminal = status != null && !ACTIVE_AMBULANCE_STATUSES.includes(status);
+  const assigned = booking?.assignedAmbulanceId != null;
   const assignment = booking?.ambulance;
-  const live =
-    assignment?.latitude != null &&
-    assignment?.longitude != null &&
-    assignment?.lastLocationAt != null;
+  const hasLocation = assignment?.latitude != null && assignment?.longitude != null;
+  const fresh =
+    hasLocation &&
+    assignment?.lastLocationAt != null &&
+    now - assignment.lastLocationAt <= AMBULANCE_LOCATION_STALE_MS &&
+    assignment.lastLocationAt <= now;
   const step = status ? stepIndex(status) : 0;
+  const nearbyCount = nearby?.length;
+  const countLabel =
+    nearbyCount === undefined
+      ? "Checking the live ambulance network"
+      : nearbyCount === 0
+        ? "No ambulances nearby"
+        : `${nearbyCount} ambulance${nearbyCount === 1 ? "" : "s"} nearby`;
+
+  const discoveryPoints: NetworkMapPoint[] = coords
+    ? [
+        {
+          id: "pickup",
+          lat: coords.lat,
+          lng: coords.lng,
+          label: "Your pickup location",
+          kind: "pickup",
+          color: "#0f766e",
+          badge: "Pickup",
+          detail: `GPS accuracy ±${Math.round(coords.accuracy)} m`,
+        },
+        ...(nearby ?? []).map((ambulance) => ({
+          id: String(ambulance.id),
+          lat: ambulance.latitude,
+          lng: ambulance.longitude,
+          label: `${ambulance.registrationNumber} · ${AMBULANCE_TYPE_LABELS[ambulance.type]}`,
+          kind: "ambulance" as const,
+          badge: `Available · ${ambulance.distanceKm} km`,
+          detail: ambulance.model,
+          meta: [
+            `Last GPS update ${formatRelative(ambulance.lastLocationAt)}`,
+            "Driver details are shared after acceptance.",
+          ],
+        })),
+      ]
+    : [];
+
+  const trackingPoints: NetworkMapPoint[] = booking
+    ? [
+        {
+          id: "pickup",
+          lat: booking.pickupLat,
+          lng: booking.pickupLng,
+          label: "Your pickup location",
+          kind: "pickup",
+          color: "#0f766e",
+          badge: "Pickup",
+        },
+        ...(assigned && hasLocation
+          ? [
+              {
+                id: "ambulance",
+                lat: assignment!.latitude as number,
+                lng: assignment!.longitude as number,
+                label: assignment!.registrationNumber,
+                kind: "ambulance" as const,
+                badge: fresh ? "Live ambulance" : "Last known — not live",
+                detail: `${assignment!.model} · ${AMBULANCE_TYPE_LABELS[assignment!.type]}`,
+                meta: [
+                  assignment!.lastLocationAt
+                    ? `Last GPS update ${formatRelative(assignment!.lastLocationAt)}`
+                    : "No timestamp",
+                ],
+                active: fresh,
+              },
+            ]
+          : []),
+      ]
+    : [];
 
   return (
     <main className="min-h-screen bg-background text-foreground">
-      <div className="mx-auto flex min-h-screen max-w-3xl flex-col px-4 py-5 sm:px-6">
+      <div className="mx-auto flex min-h-screen max-w-4xl flex-col px-4 py-5 sm:px-6">
         <header className="flex items-center justify-between gap-3">
           <Button asChild variant="ghost" size="sm" className="h-8 gap-1.5 text-[11px]">
             <Link to="/community/dashboard">
@@ -235,7 +357,7 @@ export function AmbulanceOneTap() {
           </span>
         </header>
 
-        <section className="eresp-hero relative mt-4 overflow-hidden rounded-3xl bg-foreground px-5 py-6 text-background sm:px-8 sm:py-8">
+        <section className="eresp-hero relative mt-4 overflow-hidden rounded-3xl bg-foreground px-5 py-6 text-background sm:px-8">
           <div aria-hidden className="eresp-glow absolute -right-16 -top-20 size-64 rounded-full bg-primary/30 blur-2xl" />
           <div aria-hidden className="absolute inset-0 opacity-[0.06]" style={{ backgroundImage: "radial-gradient(circle at 1px 1px, white 1px, transparent 0)", backgroundSize: "22px 22px" }} />
           <div className="relative">
@@ -243,11 +365,56 @@ export function AmbulanceOneTap() {
               One-tap request
             </p>
             <h1 className="mt-1 font-display text-2xl font-extrabold leading-tight sm:text-3xl">
-              {view === "tracking" ? "Ambulance request live" : "Request an ambulance"}
+              {view === "tracking"
+                ? "Ambulance request live"
+                : view === "discovery"
+                  ? countLabel
+                  : "Request an ambulance"}
             </h1>
-            <SirenAmbulance moving={view === "locating" || view === "creating"} />
+            <SirenAmbulance
+              moving={view === "locating" || view === "creating" || status === "searching"}
+            />
           </div>
         </section>
+
+        {view === "consent" && (
+          <section className="mt-4 rounded-3xl border border-border bg-card p-5 sm:p-6">
+            <div className="flex items-start gap-3">
+              <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                <MapPin className="size-5" />
+              </span>
+              <div>
+                <h2 className="font-display text-lg font-bold">Enable location to continue</h2>
+                <p className="mt-1 text-[12px] leading-6 text-muted-foreground">
+                  {LOCATION_CONSENT_MESSAGE}
+                </p>
+              </div>
+            </div>
+            {error && (
+              <p role="alert" className="mt-4 rounded-xl border border-destructive/25 bg-destructive/5 px-3 py-2.5 text-[11px] leading-5 text-destructive">
+                {error.message}
+              </p>
+            )}
+            <p className="mt-4 rounded-xl border border-border bg-muted/30 p-3 text-[10.5px] leading-5 text-muted-foreground">
+              LifeLink asks the browser for your position only after you choose Enable Location.
+              Ambulance tracking uses a fresh GPS fix and never turns on background tracking.
+            </p>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <Button className="gap-1.5" onClick={acquire} disabled={choice === "denied"}>
+                <LocateFixed className="size-4" />
+                Enable Location
+              </Button>
+              <Button asChild variant="outline">
+                <Link to="/community/dashboard">Not Now</Link>
+              </Button>
+            </div>
+            {choice === "denied" && (
+              <p className="mt-2 text-[10px] leading-4 text-muted-foreground">
+                Location is blocked in this browser. Allow it in site settings, then reload this page.
+              </p>
+            )}
+          </section>
+        )}
 
         {view === "locating" && (
           <section className="mt-4 flex flex-1 flex-col items-center justify-center rounded-3xl border border-border bg-card px-5 py-10 text-center">
@@ -258,11 +425,10 @@ export function AmbulanceOneTap() {
                 <LocateFixed className="size-6" />
               </span>
             </div>
-            <h2 className="mt-5 font-display text-lg font-bold">Acquiring live GPS location</h2>
+            <h2 className="mt-5 font-display text-lg font-bold">Finding your live position</h2>
             <p className="mt-2 max-w-md text-[12px] leading-6 text-muted-foreground">
-              Allow location access when your browser asks. The request is created
-              automatically from your live position — you will not be asked for a
-              destination, patient or hospital.
+              No destination, patient or hospital details are needed. We use this fresh position
+              only to discover eligible nearby ambulances.
             </p>
             <div className="mt-5 flex items-center gap-2 text-[11px] text-muted-foreground">
               <Loader2 className="size-3.5 animate-spin" /> Waiting for a high-accuracy fix…
@@ -275,9 +441,9 @@ export function AmbulanceOneTap() {
             <span className="flex size-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
               <Loader2 className="size-6 animate-spin" />
             </span>
-            <h2 className="mt-4 font-display text-lg font-bold">Creating your request</h2>
+            <h2 className="mt-4 font-display text-lg font-bold">Creating your one-tap request</h2>
             <p className="mt-2 text-[12px] leading-6 text-muted-foreground">
-              Location captured. Saving the request and checking the live ambulance network.
+              Saving the request against your fresh pickup position and checking the live network.
             </p>
           </section>
         )}
@@ -288,17 +454,103 @@ export function AmbulanceOneTap() {
               <AlertTriangle className="size-6" />
             </span>
             <h2 className="mt-4 font-display text-lg font-bold">{error.title}</h2>
-            <p className="mt-2 max-w-md text-[12px] leading-6 text-muted-foreground">
-              {error.message}
-            </p>
+            <p className="mt-2 max-w-md text-[12px] leading-6 text-muted-foreground">{error.message}</p>
             <div className="mt-5 flex flex-wrap justify-center gap-2">
-              <Button className="gap-1.5" onClick={locate}>
+              <Button className="gap-1.5" onClick={acquire}>
                 <RefreshCw className="size-4" /> Retry
               </Button>
               <Button asChild variant="outline">
                 <Link to="/community/dashboard">Back to dashboard</Link>
               </Button>
             </div>
+          </section>
+        )}
+
+        {view === "discovery" && coords && (
+          <section className="mt-4 space-y-3">
+            {error && (
+              <p role="alert" className="rounded-2xl border border-destructive/25 bg-destructive/5 px-4 py-3 text-[11px] leading-5 text-destructive">
+                {error.message}
+              </p>
+            )}
+            <div className="rounded-3xl border border-border bg-card p-4 sm:p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-[9.5px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
+                    Live network
+                  </p>
+                  <p className="mt-1 font-display text-2xl font-extrabold">
+                    {nearbyCount === undefined
+                      ? "Checking nearby ambulances…"
+                      : nearbyCount === 0
+                        ? "No available ambulances nearby."
+                        : `${nearbyCount} ambulance${nearbyCount === 1 ? "" : "s"} nearby`}
+                  </p>
+                  <p className="mt-1 text-[11px] leading-5 text-muted-foreground">
+                    {nearbyCount === 0
+                      ? "We are searching for an eligible provider. You can still open a request so the network can re-match automatically."
+                      : "Approved, online, available vehicles with a current GPS fix within the discovery radius."}
+                  </p>
+                </div>
+                <span className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-[9.5px] font-bold uppercase tracking-[0.1em] text-teal-800">
+                  GPS ±{Math.round(coords.accuracy)} m
+                </span>
+              </div>
+
+              <NetworkMap points={discoveryPoints} height={330} className="mt-4" groupDuplicateLocations legend={[
+                { color: "#0f766e", label: "Your pickup" },
+                { color: "#dc2626", label: "Available ambulance", shape: "dot" },
+              ]} />
+
+              <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+                <Button
+                  className="h-11 flex-1 gap-2 text-[13px]"
+                  onClick={() => void requestAmbulance()}
+                  disabled={nearby === undefined}
+                >
+                  {nearby === undefined ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Siren className="size-4" />
+                  )}
+                  {nearby === undefined
+                    ? "Checking network…"
+                    : nearbyCount === 0
+                      ? "Request ambulance anyway"
+                      : "Book nearest ambulance"}
+                </Button>
+                <Button variant="outline" className="h-11 gap-1.5" onClick={acquire}>
+                  <RefreshCw className="size-4" /> Refresh GPS
+                </Button>
+              </div>
+              <p className="mt-2 text-[10px] leading-4 text-muted-foreground">
+                One action creates the request. No destination, patient, age or blood-group fields.
+                Assignment is confirmed only after the provider accepts.
+              </p>
+            </div>
+
+            {nearby && nearby.length > 0 && (
+              <div className="grid gap-2 sm:grid-cols-2">
+                {nearby.slice(0, 4).map((ambulance) => (
+                  <div key={ambulance.id} className="rounded-2xl border border-border bg-card p-3.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[12.5px] font-bold">
+                        {ambulance.registrationNumber}
+                      </p>
+                      <span className="text-[11px] font-bold text-primary">
+                        {ambulance.distanceKm} km
+                      </span>
+                    </div>
+                    <p className="mt-0.5 text-[10.5px] text-muted-foreground">
+                      {AMBULANCE_TYPE_LABELS[ambulance.type]} · {ambulance.model}
+                    </p>
+                    <p className="mt-1 text-[9.5px] text-muted-foreground">
+                      Live GPS {formatRelative(ambulance.lastLocationAt)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
         )}
 
@@ -338,15 +590,30 @@ export function AmbulanceOneTap() {
                       <Radio className="mt-0.5 size-3.5 shrink-0 animate-pulse text-primary" />
                       {booking.rematchAttempts > 0
                         ? `Continuing to search. The network has been re-checked ${booking.rematchAttempts} time${booking.rematchAttempts === 1 ? "" : "s"}.`
-                        : "Your request is open on the network. No approved ambulance is currently available; the status will update when one is assigned."}
+                        : "Your request is open on the network. No approved ambulance is currently available; the status updates when one is requested."}
+                    </p>
+                  )}
+                  {status === "requested" && assignment && (
+                    <p className="mt-2 rounded-xl border border-primary/25 bg-primary/5 p-2.5 text-[11px] leading-5">
+                      An ambulance has been requested and is awaiting provider acceptance. It is
+                      not assigned or dispatched yet.
                     </p>
                   )}
                   {status === "searching" && assignment && (
                     <p className="mt-2 rounded-xl border border-primary/25 bg-primary/5 p-2.5 text-[11px] leading-5">
-                      An ambulance has been requested and is awaiting provider acceptance.
-                      Assignment is not confirmed yet.
+                      A newly available ambulance has been requested. Waiting for provider
+                      acceptance before tracking begins.
                     </p>
                   )}
+
+                  <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                    <InfoRow icon={MapPin} label="Pickup" value={`${booking.pickupLat.toFixed(5)}, ${booking.pickupLng.toFixed(5)}`} />
+                    <InfoRow icon={Clock3} label="Requested" value={formatRelative(booking.requestedAt)} />
+                    {status === "searching" && booking.searchExpiresAt != null && (
+                      <InfoRow icon={Clock3} label="Searching until" value={new Date(booking.searchExpiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} />
+                    )}
+                  </div>
+
                   {!terminal && (
                     <Button
                       size="sm"
@@ -357,10 +624,7 @@ export function AmbulanceOneTap() {
                         if (!effectiveBookingId) return;
                         setCancelling(true);
                         try {
-                          await cancelBooking({
-                            bookingId: effectiveBookingId,
-                            reason: "Cancelled by the requester from one-tap tracking.",
-                          });
+                          await cancelBooking({ bookingId: effectiveBookingId, reason: "Cancelled by the requester from one-tap tracking." });
                         } catch (err) {
                           setNote(friendlyError(err, "Could not cancel the request."));
                         } finally {
@@ -381,21 +645,48 @@ export function AmbulanceOneTap() {
                       </Button>
                     </div>
                   )}
+                </div>
 
-                  <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                    <InfoRow icon={MapPin} label="Pickup" value={`${booking.pickupLat.toFixed(5)}, ${booking.pickupLng.toFixed(5)}`} />
-                    <InfoRow icon={Clock3} label="Requested" value={formatRelative(booking.requestedAt)} />
-                    {booking.estimatedEtaMinutes != null && !terminal && (
-                      <InfoRow icon={Navigation} label="Estimated arrival" value={`~${booking.estimatedEtaMinutes} min to pickup`} />
-                    )}
-                    {status === "searching" && booking.searchExpiresAt != null && (
-                      <InfoRow icon={Clock3} label="Searching until" value={new Date(booking.searchExpiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} />
-                    )}
-                    {assignment?.lastLocationAt != null && (
-                      <InfoRow icon={Radio} label="Last location update" value={formatRelative(assignment.lastLocationAt)} />
+                {!terminal && (
+                  <div className="rounded-3xl border border-border bg-card p-4 sm:p-5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
+                        Live journey map
+                      </p>
+                      {assigned && (
+                        <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[9.5px] font-bold ${fresh ? "bg-teal-50 text-teal-800" : "bg-amber-50 text-amber-800"}`}>
+                          <span className={`size-1.5 rounded-full ${fresh ? "bg-teal-600" : "bg-amber-500"}`} />
+                          {fresh ? "Live GPS" : "Not live"}
+                        </span>
+                      )}
+                    </div>
+                    <NetworkMap points={trackingPoints} height={300} className="mt-3" groupDuplicateLocations />
+                    {!assigned ? (
+                      <p className="mt-3 rounded-xl border border-border bg-muted/30 p-3 text-[11px] leading-5 text-muted-foreground">
+                        The map will show the ambulance after a provider accepts. No vehicle is
+                        displayed as dispatched before acceptance.
+                      </p>
+                    ) : !hasLocation ? (
+                      <p className="mt-3 rounded-xl border border-amber-300/70 bg-amber-50/70 p-3 text-[11px] leading-5 text-amber-950">
+                        Live location temporarily unavailable. The assigned provider has not sent a
+                        GPS update yet; nothing is simulated.
+                      </p>
+                    ) : !fresh ? (
+                      <p className="mt-3 rounded-xl border border-amber-300/70 bg-amber-50/70 p-3 text-[11px] leading-5 text-amber-950">
+                        Live location temporarily unavailable. The last known position was updated{" "}
+                        {assignment?.lastLocationAt ? formatRelative(assignment.lastLocationAt) : "unknown"} and is no
+                        longer shown as live.
+                      </p>
+                    ) : (
+                      <p className="mt-3 flex items-start gap-2 rounded-xl border border-teal-200 bg-teal-50/70 p-2.5 text-[10.5px] leading-5 text-teal-950">
+                        <Navigation className="mt-0.5 size-3.5 shrink-0" />
+                        Last real provider update{" "}
+                        {assignment?.lastLocationAt ? formatRelative(assignment.lastLocationAt) : "—"}. A road route and
+                        reliable arrival time appear only when the provider's live data supports them.
+                      </p>
                     )}
                   </div>
-                </div>
+                )}
 
                 {!terminal && (
                   <div className="rounded-3xl border border-border bg-card p-5">
@@ -408,15 +699,13 @@ export function AmbulanceOneTap() {
                         const current = index === step && !terminal;
                         return (
                           <li key={stepDef.status} className="flex items-center gap-2.5">
-                            <span
-                              className={`flex size-6 shrink-0 items-center justify-center rounded-full border text-[9px] font-bold ${
-                                done
-                                  ? "border-teal-600 bg-teal-600 text-white"
-                                  : current
-                                    ? "eresp-step-current border-primary bg-primary/10 text-primary"
-                                    : "border-border text-muted-foreground"
-                              }`}
-                            >
+                            <span className={`flex size-6 shrink-0 items-center justify-center rounded-full border text-[9px] font-bold ${
+                              done
+                                ? "border-teal-600 bg-teal-600 text-white"
+                                : current
+                                  ? "eresp-step-current border-primary bg-primary/10 text-primary"
+                                  : "border-border text-muted-foreground"
+                            }`}>
                               {done ? <Check className="size-3" /> : index + 1}
                             </span>
                             <span className={`text-[11.5px] ${done || current ? "font-semibold" : "text-muted-foreground"}`}>
@@ -432,7 +721,7 @@ export function AmbulanceOneTap() {
 
                 <div className="rounded-3xl border border-border bg-card p-5">
                   <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
-                    {assignment && (status === "requested" || status === "searching") ? "Requested provider" : "Assignment"}
+                    {assigned ? "Assigned ambulance" : assignment ? "Requested provider" : "Assignment"}
                   </p>
                   {assignment ? (
                     <div className="mt-3 space-y-2.5">
@@ -447,7 +736,7 @@ export function AmbulanceOneTap() {
                           <p className="text-[10.5px] text-muted-foreground">{assignment.model}</p>
                         </div>
                       </div>
-                      {assignment.driverName ? (
+                      {assigned && assignment.driverName ? (
                         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-muted/25 p-2.5 text-[11px]">
                           <ShieldCheck className="size-3.5 text-teal-600" />
                           <span className="font-semibold">{assignment.driverName}</span>
@@ -459,19 +748,7 @@ export function AmbulanceOneTap() {
                         </div>
                       ) : (
                         <p className="text-[11px] text-muted-foreground">
-                          Vehicle identified. Driver details appear after the provider accepts.
-                        </p>
-                      )}
-                      {live ? (
-                        <p className="rounded-xl border border-teal-200 bg-teal-50/70 p-2.5 text-[10.5px] leading-5 text-teal-950">
-                          Live ambulance coordinates received: {assignment.latitude!.toFixed(5)},{" "}
-                          {assignment.longitude!.toFixed(5)}. Last update{" "}
-                          {assignment.lastLocationAt ? formatRelative(assignment.lastLocationAt) : "—"}. This is
-                          the last actual location reported by the provider.
-                        </p>
-                      ) : (
-                        <p className="text-[10px] leading-5 text-muted-foreground">
-                          No live ambulance coordinates have been shared yet. Nothing is simulated.
+                          Driver details appear only after the provider accepts.
                         </p>
                       )}
                     </div>
@@ -484,8 +761,8 @@ export function AmbulanceOneTap() {
                 </div>
 
                 <p className="px-1 text-[9.5px] leading-5 text-muted-foreground">
-                  Destination coordination is handled by the assigned ambulance provider.
-                  Estimates are only shown when the backend has distance data.
+                  Destination coordination is handled by the assigned ambulance provider. LifeLink
+                  does not simulate vehicle movement or arrival estimates.
                 </p>
               </>
             )}

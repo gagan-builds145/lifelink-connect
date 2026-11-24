@@ -52,9 +52,12 @@ type Me = NonNullable<FunctionReturnType<typeof api.profiles.me>>;
 export function ProfileSection({
   me,
   onNavigate,
+  embedded = false,
 }: {
   me: Me;
   onNavigate: (section: SectionKey) => void;
+  /** Rendered inside Settings rather than as a standalone sidebar section. */
+  embedded?: boolean;
 }) {
   const donor = me.donor;
   const requestor = me.requestor;
@@ -138,11 +141,13 @@ export function ProfileSection({
 
   return (
     <div className="space-y-5">
-      <SectionHeading
-        eyebrow="My profile"
-        title="One identity, two capabilities"
-        description="Both profiles belong to this verified account. Identity-critical fields stay locked and require staff verification to change."
-      />
+      {!embedded && (
+        <SectionHeading
+          eyebrow="My profile"
+          title="One identity, two capabilities"
+          description="Both profiles belong to this verified account. Identity-critical fields stay locked and require staff verification to change."
+        />
+      )}
 
       {(!donor || !requestor) && (
         <div className="grid gap-3 lg:grid-cols-2">

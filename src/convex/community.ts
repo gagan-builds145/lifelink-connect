@@ -294,7 +294,7 @@ async function collectActivity(ctx: QueryCtx, userId: Id<"users">): Promise<Acti
       detail: entry.detail ?? null,
       status: null,
       at: entry.createdAt,
-      href: "/community/dashboard?section=profile",
+      href: "/community/dashboard?section=settings",
       requestCode: null,
     });
   }

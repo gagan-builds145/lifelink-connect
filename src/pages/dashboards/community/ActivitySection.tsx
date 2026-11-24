@@ -22,7 +22,6 @@ import {
   Activity,
   ArrowUpRight,
   CalendarDays,
-  ChevronRight,
   Filter,
   Search,
   Sparkles,
@@ -255,16 +254,8 @@ export function ActivitySection({ onNavigate }: { onNavigate: (section: SectionK
               </div>
             </section>
           ))}
-          <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-muted/25 px-4 py-2.5 text-[10.5px] text-muted-foreground">
-            <span>{items.length} event(s) shown from your own records.</span>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 gap-1 px-2 text-[10.5px]"
-              onClick={() => onNavigate("notifications")}
-            >
-              Notifications <ChevronRight className="size-3" />
-            </Button>
+          <div className="rounded-xl border border-border bg-muted/25 px-4 py-2.5 text-[10.5px] text-muted-foreground">
+            {items.length} event(s) shown from your own records.
           </div>
         </div>
       )}

@@ -782,22 +782,29 @@ describe("unified navigation wiring", () => {
     expect(requestor).toContain("Navigate");
   });
 
-  test("the unified dashboard exposes the seven required sections and keeps mobile navigation", () => {
+  test("the sidebar exposes Overview, Activities and Settings with mobile navigation", () => {
     const dashboard = readFileSync("src/pages/dashboards/CommunityDashboard.tsx", "utf8");
-    for (const label of [
-      "Overview",
-      "Donate Blood",
-      "Request Blood",
-      "My Activities",
-      "Notifications",
-      "My Profile",
-      "Settings",
-    ]) {
-      expect(dashboard).toContain(label);
-    }
+    expect(dashboard).toContain("COMMUNITY_SIDEBAR_KEYS");
+    expect(dashboard).toContain("Overview");
+    expect(dashboard).toContain("My Activities");
+    expect(dashboard).toContain("Settings");
+    // The donate/request/notification/profile entries are deliberately hidden
+    // from the sidebar while their routes and settings tooling remain intact.
+    expect(dashboard).not.toContain('{ key: "donate"');
+    expect(dashboard).not.toContain('{ key: "request"');
+    expect(dashboard).not.toContain('{ key: "notifications"');
+    expect(dashboard).not.toContain('{ key: "profile"');
+    const settings = readFileSync(
+      "src/pages/dashboards/community/SettingsSection.tsx",
+      "utf8",
+    );
+    expect(settings).toContain("ProfileSection");
+    expect(settings).toContain('label: "Profile"');
     const shell = readFileSync("src/components/lifelink/DashboardShell.tsx", "utf8");
     expect(shell).toContain("SheetTrigger");
     expect(shell).toContain("Open dashboard menu");
     expect(shell).toContain("aria-current");
+    expect(shell).toContain("min-h-0 flex-1");
+    expect(shell).toContain("overscroll-contain");
   });
 });

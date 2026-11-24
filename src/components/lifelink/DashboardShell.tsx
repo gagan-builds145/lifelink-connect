@@ -1,4 +1,3 @@
-import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -11,14 +10,10 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
-import { useMutation, useQuery } from "convex/react";
 import {
-  Bell,
-  BellRing,
-  CheckCheck,
   ExternalLink,
   Leaf,
-  Loader2,
+  LocateFixed,
   LogOut,
   Menu,
   Settings2,
@@ -27,10 +22,12 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link } from "react-router";
 import { LifeLinkLogo } from "./Logo";
 import { LogoutDialog, useLogoutConfirmation } from "./LogoutConfirmation";
-import { formatRelative } from "@/lib/blood";
+import { NotificationBell } from "./NotificationBell";
+import { LocationPermissionPrompt } from "./LocationPermissionPrompt";
+import { useLocationPermission } from "@/hooks/use-location-permission";
 
 export type DashNavItem = {
   key: string;
@@ -47,110 +44,6 @@ function initials(name?: string | null) {
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase())
     .join("");
-}
-
-function NotificationCenter() {
-  const notifications = useQuery(api.notifications.listMine);
-  const unread = useQuery(api.notifications.unreadCount) ?? 0;
-  const markRead = useMutation(api.notifications.markRead);
-  const markAllRead = useMutation(api.notifications.markAllRead);
-  const [open, setOpen] = useState(false);
-  const navigate = useNavigate();
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          size="icon"
-          className="relative size-9 rounded-full border-border bg-card"
-          aria-label={`Notifications${unread ? `, ${unread} unread` : ""}`}
-        >
-          <Bell className="size-4" />
-          {unread > 0 && (
-            <span className="absolute -right-1 -top-1 flex min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold leading-4 text-primary-foreground">
-              {unread > 9 ? "9+" : unread}
-            </span>
-          )}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="w-[min(92vw,380px)] p-0">
-        <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
-          <div>
-            <p className="text-[13px] font-semibold">Notifications</p>
-            <p className="text-[10.5px] text-muted-foreground">
-              {unread ? `${unread} unread update${unread === 1 ? "" : "s"}` : "You are up to date"}
-            </p>
-          </div>
-          {unread > 0 && (
-            <button
-              type="button"
-              onClick={() => void markAllRead({})}
-              className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline"
-            >
-              <CheckCheck className="size-3.5" />
-              Mark all read
-            </button>
-          )}
-        </div>
-        <ScrollArea className="max-h-[420px]">
-          {notifications === undefined ? (
-            <div className="flex items-center justify-center gap-2 py-10 text-xs text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" />
-              Loading updates…
-            </div>
-          ) : notifications.length === 0 ? (
-            <div className="px-6 py-10 text-center">
-              <BellRing className="mx-auto size-6 text-muted-foreground/60" />
-              <p className="mt-3 text-[13px] font-medium">No notifications yet</p>
-              <p className="mt-1 text-[11.5px] leading-5 text-muted-foreground">
-                Request updates, verified matches, stock alerts and camp news appear here.
-              </p>
-            </div>
-          ) : (
-            <div className="divide-y divide-border">
-              {notifications.map((n) => (
-                <button
-                  key={n._id}
-                  type="button"
-                  onClick={() => {
-                    if (!n.read) void markRead({ notificationId: n._id });
-                    setOpen(false);
-                    if (n.link) navigate(n.link);
-                  }}
-                  className={cn(
-                    "flex w-full gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/60",
-                    !n.read && "bg-primary/[0.035]",
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "mt-1.5 size-2 shrink-0 rounded-full",
-                      n.read ? "bg-border" : "bg-primary",
-                    )}
-                  />
-                  <span className="min-w-0">
-                    <span className="block text-[12.5px] font-semibold leading-5">
-                      {n.title}
-                    </span>
-                    <span className="mt-0.5 block text-[11.5px] leading-5 text-muted-foreground">
-                      {n.body}
-                    </span>
-                    <span className="mt-1 flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground/70">
-                      {n.kind}
-                      <span className="size-0.5 rounded-full bg-current" />
-                      {formatRelative(n.createdAt)}
-                      {n.link && <ExternalLink className="size-2.5" />}
-                    </span>
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
-        </ScrollArea>
-      </PopoverContent>
-    </Popover>
-  );
 }
 
 export function DashboardShell({
@@ -184,6 +77,7 @@ export function DashboardShell({
 }) {
   const { user } = useAuth();
   const logout = useLogoutConfirmation();
+  const location = useLocationPermission(user?._id);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
 
@@ -194,12 +88,12 @@ export function DashboardShell({
   };
 
   const sidebar = (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-[72px] shrink-0 items-center border-b border-sidebar-border px-5">
         <LifeLinkLogo />
       </div>
 
-      <div className="px-4 pt-5">
+      <div className="shrink-0 px-4 pt-5">
         <div className="flex items-center gap-2.5 rounded-2xl border border-primary/15 bg-primary/[0.055] p-3">
           <span className="flex size-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
             <AccentIcon className="size-5" />
@@ -213,7 +107,7 @@ export function DashboardShell({
         </div>
       </div>
 
-      <ScrollArea className="flex-1 px-3 py-4">
+      <ScrollArea className="min-h-0 flex-1 px-3 py-4 [&_[data-slot=scroll-area-thumb]]:bg-primary/35 [&_[data-slot=scroll-area-viewport]]:overscroll-contain">
         <p className="px-2 pb-2 text-[9.5px] font-bold uppercase tracking-[0.2em] text-muted-foreground/70">
           Workspace
         </p>
@@ -272,7 +166,7 @@ export function DashboardShell({
         )}
       </ScrollArea>
 
-      <div className="border-t border-sidebar-border p-3">
+      <div className="shrink-0 border-t border-sidebar-border p-3">
         <div className="flex items-center gap-2.5 rounded-xl bg-muted/50 p-2.5">
           <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-foreground text-[11px] font-bold text-background">
             {initials(user?.name ?? user?.email)}
@@ -345,7 +239,7 @@ export function DashboardShell({
                 Demo data present
               </span>
             )}
-            <NotificationCenter />
+            <NotificationBell />
 
             {/* Account menu — profile & privacy lives here, next to notifications */}
             <Popover open={accountOpen} onOpenChange={setAccountOpen}>
@@ -393,6 +287,24 @@ export function DashboardShell({
                     type="button"
                     onClick={() => {
                       setAccountOpen(false);
+                      location.openPrompt();
+                    }}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[12.5px] font-medium transition-colors hover:bg-muted"
+                  >
+                    <LocateFixed className="size-4 opacity-70" />
+                    <span className="flex-1">Location services</span>
+                    <span className="text-[9.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                      {location.choice === "enabled"
+                        ? "On"
+                        : location.choice === "denied"
+                          ? "Blocked"
+                          : "Off"}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAccountOpen(false);
                       logout.requestLogout();
                     }}
                     className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[12.5px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
@@ -417,6 +329,7 @@ export function DashboardShell({
         pending={logout.pending}
         onConfirm={() => void logout.confirmLogout()}
       />
+      <LocationPermissionPrompt location={location} />
     </div>
   );
 }

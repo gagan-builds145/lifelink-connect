@@ -10,6 +10,7 @@ import {
 import { formatDateTime } from "@/lib/blood";
 import { friendlyError } from "@/lib/utils";
 import { useMutation, useQuery } from "convex/react";
+import { ProfileSection } from "./ProfileSection";
 import {
   BellRing,
   CheckCheck,
@@ -38,6 +39,7 @@ export function SettingsSection({ me, onNavigate }: { me: Me; onNavigate: (secti
   const markAllRead = useMutation(api.notifications.markAllRead);
   const unread = useQuery(api.notifications.unreadCount) ?? 0;
   const [busy, setBusy] = useState<string | null>(null);
+  const [view, setView] = useState<"profile" | "preferences">("profile");
 
   const toggleContactSharing = async (value: boolean) => {
     if (!donor) return;
@@ -82,10 +84,40 @@ export function SettingsSection({ me, onNavigate }: { me: Me; onNavigate: (secti
     <div className="space-y-5">
       <SectionHeading
         eyebrow="Settings"
-        title="Account, privacy and notifications"
-        description="Shared settings for donor and requestor functionality. Server-side checks still enforce every rule."
+        title="Profile, account and privacy"
+        description="View and edit the profile attached to this verified account. Server-side checks still enforce every field and permission."
       />
 
+      <div
+        role="tablist"
+        aria-label="Settings sections"
+        className="inline-flex rounded-xl border border-border bg-card p-1"
+      >
+        {[
+          { key: "profile" as const, label: "Profile", icon: UserRound },
+          { key: "preferences" as const, label: "Preferences", icon: SlidersHorizontal },
+        ].map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            role="tab"
+            aria-selected={view === tab.key}
+            onClick={() => setView(tab.key)}
+            className={
+              view === tab.key
+                ? "inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[11.5px] font-semibold text-primary-foreground"
+                : "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11.5px] font-semibold text-muted-foreground hover:text-foreground"
+            }
+          >
+            <tab.icon className="size-3.5" />
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {view === "profile" ? (
+        <ProfileSection me={me} onNavigate={onNavigate} embedded />
+      ) : (
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="rounded-2xl border border-border bg-card p-5">
           <h2 className="flex items-center gap-1.5 text-[14px] font-bold">
@@ -166,14 +198,6 @@ export function SettingsSection({ me, onNavigate }: { me: Me; onNavigate: (secti
                 <CheckCheck className="size-3" />
               )}
               Mark all read
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-8 gap-1.5 text-[10.5px]"
-              onClick={() => onNavigate("notifications")}
-            >
-              Open notification centre
             </Button>
           </div>
         </section>
@@ -263,6 +287,7 @@ export function SettingsSection({ me, onNavigate }: { me: Me; onNavigate: (secti
           </div>
         </section>
       </div>
+      )}
 
       <LogoutDialog
         open={logout.open}

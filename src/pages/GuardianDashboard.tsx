@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
 import {
@@ -51,6 +51,7 @@ export default function GuardianDashboard() {
   const setOnline = useMutation(api.ambulances.setGuardianOnline);
   const upsert = useMutation(api.ambulances.upsertAmbulance);
   const setAvailability = useMutation(api.ambulances.setAmbulanceAvailability);
+  const publishLocation = useMutation(api.ambulances.publishAmbulanceLocation);
   const accept = useMutation(api.ambulances.acceptBooking);
   const reject = useMutation(api.ambulances.rejectBooking);
   const updateStatus = useMutation(api.ambulances.updateBookingStatus);
@@ -66,11 +67,17 @@ export default function GuardianDashboard() {
   const [vehicle, setVehicle] = useState(emptyVehicle);
   const [editingId, setEditingId] = useState<Id<"ambulances"> | null>(null);
   const [nextStatus, setNextStatus] = useState<Record<string, string>>({});
+  const [watchingBookingId, setWatchingBookingId] = useState<Id<"ambulanceBookings"> | null>(null);
+  const [sharingFleetId, setSharingFleetId] = useState<Id<"ambulances"> | null>(null);
+  const watchRef = useRef<number | null>(null);
+  const fleetWatchRef = useRef<number | null>(null);
+  const lastShareAt = useRef(0);
+  const lastFleetShareAt = useRef(0);
 
-  const incoming = overview?.incoming ?? [];
-  const active = overview?.active ?? [];
-  const history = overview?.history ?? [];
-  const ambulances = overview?.ambulances ?? [];
+  const incoming = useMemo(() => overview?.incoming ?? [], [overview]);
+  const active = useMemo(() => overview?.active ?? [], [overview]);
+  const history = useMemo(() => overview?.history ?? [], [overview]);
+  const ambulances = useMemo(() => overview?.ambulances ?? [], [overview]);
   const profile = overview?.profile;
 
   const navItems = useMemo(
@@ -141,6 +148,113 @@ export default function GuardianDashboard() {
     } finally {
       setBusy(null);
     }
+  };
+
+  const stopLiveTracking = () => {
+    if (watchRef.current != null) {
+      navigator.geolocation.clearWatch(watchRef.current);
+      watchRef.current = null;
+    }
+    setWatchingBookingId(null);
+  };
+
+  const stopFleetLocation = () => {
+    if (fleetWatchRef.current != null) {
+      navigator.geolocation.clearWatch(fleetWatchRef.current);
+      fleetWatchRef.current = null;
+    }
+    setSharingFleetId(null);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (watchRef.current != null) navigator.geolocation.clearWatch(watchRef.current);
+      if (fleetWatchRef.current != null) navigator.geolocation.clearWatch(fleetWatchRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (
+      !watchingBookingId ||
+      active.some((booking) => booking.id === watchingBookingId)
+    ) {
+      return;
+    }
+    // Let the active-list update settle before clearing the watcher state.
+    const timer = window.setTimeout(() => stopLiveTracking(), 0);
+    return () => window.clearTimeout(timer);
+  }, [active, watchingBookingId]);
+
+  useEffect(() => {
+    if (!sharingFleetId) return;
+    const vehicle = ambulances.find((row) => row.id === sharingFleetId);
+    if (vehicle?.available && profile?.online) return;
+    // Discovery sharing is only meaningful while this vehicle is online and
+    // available. Drop the device watcher as soon as either changes.
+    const timer = window.setTimeout(() => stopFleetLocation(), 0);
+    return () => window.clearTimeout(timer);
+  }, [ambulances, profile?.online, sharingFleetId]);
+
+  const startFleetLocation = (ambulanceId: Id<"ambulances">) => {
+    if (!navigator.geolocation) {
+      toast.error("Location is not available in this browser.");
+      return;
+    }
+    stopFleetLocation();
+    lastFleetShareAt.current = 0;
+    setSharingFleetId(ambulanceId);
+    fleetWatchRef.current = navigator.geolocation.watchPosition(
+      (position) => {
+        if (Date.now() - lastFleetShareAt.current < 12_000) return;
+        lastFleetShareAt.current = Date.now();
+        void publishLocation({
+          ambulanceId,
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        }).catch(() => {
+          toast.error("Could not publish this vehicle's GPS. Location sharing stopped.");
+          stopFleetLocation();
+        });
+      },
+      () => {
+        toast.error("Location permission or GPS is unavailable. Location sharing stopped.");
+        stopFleetLocation();
+      },
+      { enableHighAccuracy: true, timeout: 20_000, maximumAge: 5_000 },
+    );
+    toast.success("Vehicle GPS is live for nearby discovery while you remain online and available.");
+  };
+
+  const startLiveTracking = (bookingId: Id<"ambulanceBookings">) => {
+    if (!navigator.geolocation) {
+      toast.error("Location is not available in this browser.");
+      return;
+    }
+    stopLiveTracking();
+    lastShareAt.current = 0;
+    setWatchingBookingId(bookingId);
+    watchRef.current = navigator.geolocation.watchPosition(
+      (position) => {
+        // Providers control this feed explicitly. Throttle durable writes while
+        // keeping the marker responsive to genuine GPS movement.
+        if (Date.now() - lastShareAt.current < 8_000) return;
+        lastShareAt.current = Date.now();
+        void share({
+          bookingId,
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        }).catch(() => {
+          toast.error("Live location update failed. The feed has been stopped.");
+          stopLiveTracking();
+        });
+      },
+      () => {
+        toast.error("Location permission or GPS is unavailable. Live tracking stopped.");
+        stopLiveTracking();
+      },
+      { enableHighAccuracy: true, timeout: 20_000, maximumAge: 5_000 },
+    );
+    toast.success("Live GPS sharing started. It stops when this journey ends.");
   };
 
   const shareCurrentLocation = (bookingId: Id<"ambulanceBookings">) => {
@@ -308,6 +422,11 @@ export default function GuardianDashboard() {
             <div className="grid gap-4 lg:grid-cols-[1.05fr_1fr]">
               <section className="rounded-2xl border border-border bg-card p-5">
                 <h2 className="text-[15px] font-bold">Registered ambulances</h2>
+                <p className="mt-1 text-[10.5px] leading-4 text-muted-foreground">
+                  Nearby discovery only lists approved, online, available vehicles with GPS
+                  shared in the last two minutes. Press Share GPS while this device is in the
+                  vehicle.
+                </p>
                 <div className="mt-3 space-y-2">
                   {ambulances.length === 0 ? (
                     <p className="rounded-xl border border-dashed border-border p-4 text-[11.5px] text-muted-foreground">
@@ -329,6 +448,11 @@ export default function GuardianDashboard() {
                             </p>
                             <p className="mt-1 text-[10.5px] text-muted-foreground">
                               Driver: {ambulance.driverName} · {ambulance.driverPhone}
+                            </p>
+                            <p className="mt-1 text-[10px] text-muted-foreground">
+                              {ambulance.lastLocationAt
+                                ? `Vehicle GPS updated ${formatRelative(ambulance.lastLocationAt)}`
+                                : "No vehicle GPS shared yet"}
                             </p>
                           </div>
                           <StatusBadge
@@ -359,6 +483,27 @@ export default function GuardianDashboard() {
                           >
                             Edit
                           </Button>
+                          {ambulance.available && (
+                            <Button
+                              size="sm"
+                              variant={sharingFleetId === ambulance.id ? "secondary" : "outline"}
+                              className="h-7 gap-1 text-[10.5px]"
+                              disabled={!profile.online}
+                              title={
+                                profile.online
+                                  ? "Share this device's GPS so the vehicle appears in nearby searches"
+                                  : "Go online before sharing vehicle GPS"
+                              }
+                              onClick={() =>
+                                sharingFleetId === ambulance.id
+                                  ? stopFleetLocation()
+                                  : startFleetLocation(ambulance.id)
+                              }
+                            >
+                              <Navigation className="size-3" />
+                              {sharingFleetId === ambulance.id ? "Stop GPS" : "Share GPS"}
+                            </Button>
+                          )}
                           <Button
                             size="sm"
                             variant="ghost"
@@ -684,7 +829,20 @@ export default function GuardianDashboard() {
                           disabled={busy === `location-${booking.id}`}
                           onClick={() => shareCurrentLocation(booking.id)}
                         >
-                          <Navigation className="size-3.5" /> Share live location
+                          <Navigation className="size-3.5" /> Send location now
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={watchingBookingId === booking.id ? "secondary" : "outline"}
+                          className="gap-1.5"
+                          onClick={() =>
+                            watchingBookingId === booking.id
+                              ? stopLiveTracking()
+                              : startLiveTracking(booking.id)
+                          }
+                        >
+                          <Navigation className="size-3.5" />
+                          {watchingBookingId === booking.id ? "Stop live GPS" : "Start live GPS"}
                         </Button>
                         <Button
                           size="sm"

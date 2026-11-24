@@ -87,6 +87,28 @@ export function nextGuardianStatuses(
 /** Open requests may be released by the system after this window. */
 export const AMBULANCE_REQUEST_TTL_MS = 15 * 60 * 1000;
 
+/** Nearest-first discovery radius used by the live ambulance network. */
+export const AMBULANCE_DISCOVERY_RADIUS_KM = 100;
+
+/**
+ * A vehicle location older than this is not considered live for discovery or
+ * tracking. The client uses the same threshold so a stale marker is never
+ * presented as a current GPS fix.
+ */
+export const AMBULANCE_LOCATION_STALE_MS = 2 * 60 * 1000;
+
+export function isAmbulanceLocationFresh(
+  lastLocationAt: number | null | undefined,
+  now = Date.now(),
+): boolean {
+  return (
+    typeof lastLocationAt === "number" &&
+    Number.isFinite(lastLocationAt) &&
+    lastLocationAt <= now &&
+    now - lastLocationAt <= AMBULANCE_LOCATION_STALE_MS
+  );
+}
+
 /**
  * Emergency one-tap requests keep searching for a genuinely available
  * ambulance for this bounded window. Manual requests keep the shorter TTL

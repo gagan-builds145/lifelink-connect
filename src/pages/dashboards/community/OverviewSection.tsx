@@ -22,7 +22,6 @@ import {
   Droplets,
   HeartHandshake,
   HeartPulse,
-  Loader2,
   Plus,
   Sparkles,
   UserRound,
@@ -46,7 +45,6 @@ const CRIMSON = "#b02a3c";
 
 export function OverviewSection({ onNavigate }: { onNavigate: (section: SectionKey) => void }) {
   const overview = useQuery(api.community.overview);
-  const notifications = useQuery(api.notifications.listMine);
 
   if (overview === undefined) {
     return (
@@ -64,7 +62,6 @@ export function OverviewSection({ onNavigate }: { onNavigate: (section: SectionK
   const donor = overview.donor;
   const requestor = overview.requestor;
   const hasAnyProfile = Boolean(donor || requestor);
-  const recentNotifications = (notifications ?? []).slice(0, 4);
   const trend = overview.donations.monthly;
   const hasTrend = trend.some((point) => point.count > 0);
   const statusRows = overview.requests.byStatus;
@@ -539,65 +536,6 @@ export function OverviewSection({ onNavigate }: { onNavigate: (section: SectionK
           </div>
         </section>
       </div>
-
-      {/* Notifications */}
-      <section className="rounded-2xl border border-border bg-card p-5">
-        <div className="flex items-start justify-between gap-3">
-          <SectionHeading
-            eyebrow="One inbox"
-            title="Recent notifications"
-            description="Invitations, request stages, allocations, transfers and account alerts."
-          />
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 gap-1 px-2 text-[10.5px]"
-            onClick={() => onNavigate("notifications")}
-          >
-            Open centre <ArrowRight className="size-3" />
-          </Button>
-        </div>
-        <div className="mt-4">
-          {notifications === undefined ? (
-            <div className="flex items-center justify-center gap-2 py-8 text-[11px] text-muted-foreground">
-              <Loader2 className="size-3.5 animate-spin" /> Loading notifications…
-            </div>
-          ) : recentNotifications.length === 0 ? (
-            <EmptyState
-              icon={BellRing}
-              title="No notifications yet"
-              description="Updates arrive here when a request changes, an invitation is sent, or stock is allocated."
-              className="border-0 bg-transparent px-2 py-6"
-            />
-          ) : (
-            <div className="grid gap-2 md:grid-cols-2">
-              {recentNotifications.map((notification) => (
-                <div
-                  key={notification._id}
-                  className={
-                    notification.read
-                      ? "rounded-xl border border-border bg-background p-3"
-                      : "rounded-xl border border-primary/20 bg-primary/[0.035] p-3"
-                  }
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="text-[11.5px] font-semibold leading-5">{notification.title}</p>
-                    {!notification.read && (
-                      <span className="mt-1 size-1.5 shrink-0 rounded-full bg-primary" />
-                    )}
-                  </div>
-                  <p className="mt-0.5 line-clamp-2 text-[10.5px] leading-5 text-muted-foreground">
-                    {notification.body}
-                  </p>
-                  <p className="mt-1 text-[9.5px] uppercase tracking-[0.08em] text-muted-foreground/70">
-                    {formatRelative(notification.createdAt)}
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </section>
 
       <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-muted/25 px-4 py-3 text-[10.5px] text-muted-foreground">
         <UserRound className="size-3.5 text-primary" />

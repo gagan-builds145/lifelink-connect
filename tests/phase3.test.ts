@@ -415,7 +415,11 @@ describe("Phase 3 — ambulance booking lifecycle", () => {
         },
       });
       const ambulance = await ctx.db.get(vehicle.ambulanceId);
-      await ctx.db.patch(ambulance!._id, { latitude: 18.52, longitude: 73.85 });
+      await ctx.db.patch(ambulance!._id, {
+        latitude: 18.52,
+        longitude: 73.85,
+        lastLocationAt: Date.now(),
+      });
     });
     return { ...seeded, asDonor, vehicle };
   }

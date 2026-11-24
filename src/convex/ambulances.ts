@@ -18,6 +18,7 @@ import {
 } from "./validators";
 import {
   ACTIVE_AMBULANCE_STATUSES,
+  AMBULANCE_DISCOVERY_RADIUS_KM,
   AMBULANCE_MAX_REMATCH_ATTEMPTS,
   AMBULANCE_REMATCH_INTERVAL_MS,
   AMBULANCE_SEARCH_WINDOW_MS,
@@ -26,6 +27,7 @@ import {
   estimateEtaMinutes,
   haversineKm,
   isActiveAmbulanceStatus,
+  isAmbulanceLocationFresh,
   nextGuardianStatuses,
   type AmbulanceBookingStatus,
 } from "../lib/ambulance";
@@ -128,6 +130,7 @@ async function emergencyCandidates(
   pickupLng: number,
   excludeBookingId?: Doc<"ambulanceBookings">["_id"],
 ): Promise<EmergencyCandidate[]> {
+  const now = Date.now();
   const [profiles, ambulances, bookings] = await Promise.all([
     ctx.db.query("guardianProfiles").collect(),
     ctx.db.query("ambulances").collect(),
@@ -158,7 +161,8 @@ async function emergencyCandidates(
         approvedOnline.has(String(ambulance.guardianUserId)) &&
         ambulance.latitude != null &&
         ambulance.longitude != null &&
-        validCoordinate(ambulance.latitude, ambulance.longitude),
+        validCoordinate(ambulance.latitude, ambulance.longitude) &&
+        isAmbulanceLocationFresh(ambulance.lastLocationAt, now),
     )
     .map((ambulance) => ({
       ambulance,
@@ -167,7 +171,7 @@ async function emergencyCandidates(
         { lat: ambulance.latitude as number, lng: ambulance.longitude as number },
       ),
     }))
-    .filter((candidate) => candidate.distanceKm <= 100)
+    .filter((candidate) => candidate.distanceKm <= AMBULANCE_DISCOVERY_RADIUS_KM)
     .sort((a, b) => a.distanceKm - b.distanceKm);
 }
 
@@ -466,6 +470,32 @@ export const setAmbulanceAvailability = mutation({
   },
 });
 
+export const publishAmbulanceLocation = mutation({
+  args: {
+    ambulanceId: v.id("ambulances"),
+    latitude: v.number(),
+    longitude: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireRole(ctx, ["guardian"]);
+    const ambulance = await ctx.db.get(args.ambulanceId);
+    if (!ambulance || ambulance.guardianUserId !== user._id) {
+      throw new Error("You can only share the location of your own ambulance.");
+    }
+    if (!validCoordinate(args.latitude, args.longitude)) {
+      throw new Error("Invalid GPS coordinates.");
+    }
+    const now = Date.now();
+    await ctx.db.patch(ambulance._id, {
+      latitude: args.latitude,
+      longitude: args.longitude,
+      lastLocationAt: now,
+      updatedAt: now,
+    });
+    return { ok: true, at: now };
+  },
+});
+
 export const nearby = query({
   args: {
     pickupLat: v.number(),
@@ -484,29 +514,37 @@ export const nearby = query({
         .map((profile) => String(profile.userId)),
     );
 
+    const now = Date.now();
     const ambulances = await ctx.db.query("ambulances").collect();
     const activeBookings = await ctx.db.query("ambulanceBookings").collect();
-    const busy = new Set(
-      activeBookings
-        .filter(
-          (booking) =>
-            booking.assignedAmbulanceId != null &&
-            ACTIVE_AMBULANCE_STATUSES.includes(
-              booking.status as AmbulanceBookingStatus,
-            ),
+    // A vehicle is unavailable when either accepted for a journey or targeted
+    // by any still-open request. Counting a targeted vehicle would let two
+    // requesters see and select the same ambulance.
+    const reserved = new Set<string>();
+    for (const booking of activeBookings) {
+      if (
+        !ACTIVE_AMBULANCE_STATUSES.includes(
+          booking.status as AmbulanceBookingStatus,
         )
-        .map((booking) => String(booking.assignedAmbulanceId)),
-    );
+      ) {
+        continue;
+      }
+      if (booking.assignedAmbulanceId) reserved.add(String(booking.assignedAmbulanceId));
+      if (booking.targetAmbulanceId) reserved.add(String(booking.targetAmbulanceId));
+    }
 
+    // Return every eligible vehicle: the discovery UI derives its headline
+    // count from this list, so truncating it would under-report supply.
     return ambulances
       .filter(
         (ambulance) =>
           ambulance.available &&
-          !busy.has(String(ambulance._id)) &&
+          !reserved.has(String(ambulance._id)) &&
           onlineIds.has(String(ambulance.guardianUserId)) &&
           ambulance.latitude != null &&
           ambulance.longitude != null &&
           validCoordinate(ambulance.latitude, ambulance.longitude) &&
+          isAmbulanceLocationFresh(ambulance.lastLocationAt, now) &&
           (args.type ? ambulance.type === args.type : true),
       )
       .map((ambulance) => {
@@ -522,13 +560,14 @@ export const nearby = query({
           capacity: ambulance.capacity,
           latitude: ambulance.latitude as number,
           longitude: ambulance.longitude as number,
+          lastLocationAt: ambulance.lastLocationAt as number,
           distanceKm: Math.round(distanceKm * 10) / 10,
           etaMinutes: estimateEtaMinutes(distanceKm),
           estimatedFare: estimateAmbulanceFare(distanceKm),
         };
       })
-      .sort((a, b) => a.distanceKm - b.distanceKm)
-      .slice(0, 12);
+      .filter((ambulance) => ambulance.distanceKm <= AMBULANCE_DISCOVERY_RADIUS_KM)
+      .sort((a, b) => a.distanceKm - b.distanceKm);
   },
 });
 
@@ -592,6 +631,24 @@ export const createBooking = mutation({
     }
     if (!validCoordinate(ambulance.latitude, ambulance.longitude)) {
       throw new Error("That ambulance has an invalid location.");
+    }
+    if (!isAmbulanceLocationFresh(ambulance.lastLocationAt, Date.now())) {
+      throw new Error(
+        "That ambulance's location is stale. Choose a vehicle with a current GPS fix.",
+      );
+    }
+    const openForVehicle = await ctx.db.query("ambulanceBookings").collect();
+    if (
+      openForVehicle.some(
+        (booking) =>
+          ACTIVE_AMBULANCE_STATUSES.includes(
+            booking.status as AmbulanceBookingStatus,
+          ) &&
+          (booking.assignedAmbulanceId === ambulance._id ||
+            booking.targetAmbulanceId === ambulance._id),
+      )
+    ) {
+      throw new Error("That ambulance already has an open request. Choose another vehicle.");
     }
     if (args.ambulanceType && ambulance.type !== args.ambulanceType) {
       throw new Error("The selected vehicle does not match the requested ambulance type.");
@@ -956,8 +1013,13 @@ export const updateBookingStatus = mutation({
     );
     if (args.status === "completed" || args.status === "cancelled") {
       if (booking.assignedAmbulanceId) {
+        // The shared journey is over: release the vehicle and erase the live
+        // fix so the requester cannot keep tracking it after a terminal state.
         await ctx.db.patch(booking.assignedAmbulanceId, {
           available: true,
+          latitude: undefined,
+          longitude: undefined,
+          lastLocationAt: undefined,
           updatedAt: now,
         });
       }
@@ -1012,6 +1074,9 @@ export const cancelBooking = mutation({
     if (booking.assignedAmbulanceId) {
       await ctx.db.patch(booking.assignedAmbulanceId, {
         available: true,
+        latitude: undefined,
+        longitude: undefined,
+        lastLocationAt: undefined,
         updatedAt: now,
       });
     }
@@ -1118,6 +1183,7 @@ export const bookingDetail = query({
       .withIndex("by_booking", (q) => q.eq("bookingId", booking._id))
       .collect();
     const assigned = booking.assignedAmbulanceId != null;
+    const shareLiveLocation = assigned && isActiveAmbulanceStatus(booking.status);
     return {
       ...bookingSummary(booking),
       requesterRole: booking.requesterRole,
@@ -1131,9 +1197,14 @@ export const bookingDetail = query({
             model: ambulance.model,
             type: ambulance.type,
             capacity: ambulance.capacity,
-            latitude: ambulance.latitude ?? null,
-            longitude: ambulance.longitude ?? null,
-            lastLocationAt: ambulance.lastLocationAt ?? null,
+            // Live coordinates are only released after provider acceptance and
+            // only while the booking is active. Nearby discovery is a separate
+            // authorized query and never exposes driver contact details.
+            latitude: shareLiveLocation ? (ambulance.latitude ?? null) : null,
+            longitude: shareLiveLocation ? (ambulance.longitude ?? null) : null,
+            lastLocationAt: shareLiveLocation
+              ? (ambulance.lastLocationAt ?? null)
+              : null,
             driverName: assigned ? ambulance.driverName : null,
             driverPhone: assigned ? ambulance.driverPhone : null,
             documentsStatus: null,

@@ -1,5 +1,22 @@
 # ML model operations
 
+## Current model status (2026-11-24)
+
+| Model | Status | Evidence |
+| --- | --- | --- |
+| XGBoost demand | Trained (synthetic data) | `artifacts/demand_model.json`, MAE 0.2998 / RMSE 0.4500 |
+| Random Forest donor response | Trained (synthetic data) | `artifacts/donor_response.joblib`, F1 0.8203 / ROC-AUC 0.6066 |
+| Isolation Forest anomaly | Trained (synthetic data) | `artifacts/inventory_anomaly.joblib`, recall 1.0 / F1 0.5 |
+| ANN donor response | **NOT TRAINED** | TensorFlow unavailable; no artifact |
+| LSTM demand | **NOT TRAINED** | TensorFlow unavailable; no artifact |
+| Autoencoder inventory | **NOT TRAINED** | TensorFlow unavailable; no artifact |
+
+`python3 scripts/train_all_deep.py` exits 2 with the exact TensorFlow blocker.
+`verify_deep_artifacts.py` reports all three deep artifacts missing. The deep
+endpoints return 503 and the Admin Console shows the missing-training state; no
+metric is invented. The training pipeline preserves per-series chronological
+splits and records provenance if executed on a TensorFlow-capable host.
+
 ## Serving model
 
 - XGBoost demand model: `ml_service/artifacts/demand_model.json`

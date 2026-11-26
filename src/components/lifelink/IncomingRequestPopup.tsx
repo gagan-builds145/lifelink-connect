@@ -53,8 +53,6 @@ export function IncomingRequestPopup({
 }: Props) {
   const [peeked, setPeeked] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const shouldSuppressPopup = popupDismissedRef.current || acknowledgedId === booking?.id || hasEverSeenBookingId.current || popupMutedRef.current;
-  const shouldSuppressDuplicate = shouldSuppressPopup;
   const [localAccepting, setLocalAccepting] = useState(false);
   const [localDeclining, setLocalDeclining] = useState(false);
   const [acknowledgedId, setAcknowledgedId] = useState<Id<"ambulanceBookings"> | null>(
@@ -65,9 +63,14 @@ export function IncomingRequestPopup({
   const mountRef = useRef(true);
   const lastBookingIdRef = useRef<Id<"ambulanceBookings"> | null>(null);
   const popupDismissedRef = useRef(false);
-  const isPopupVisibleRef = useRef(false);
-  const isPopupVisible = popupDismissedRef.current ? false : popupVisibleRef.current;
-  const shouldSuppressPopup = popupDismissedRef.current || acknowledgedId === booking?.id || hasEverSeenBookingId.current || popupMutedRef.current;
+  const popupVisibleRef = useRef(false);
+
+  const shouldSuppressPopup =
+    popupDismissedRef.current ||
+    acknowledgedId === booking?.id ||
+    hasEverSeenBookingId.current ||
+    popupMutedRef.current;
+  const shouldSuppressDuplicate = shouldSuppressPopup;
 
   // Decide whether this particular booking should trigger a fresh alert.
   const isNewNotification = booking != null && lastBookingIdRef.current !== booking.id && !shouldSuppressDuplicate;
@@ -97,9 +100,6 @@ export function IncomingRequestPopup({
     setAcknowledgedId((prev) => (prev === booking.id ? prev : booking.id));
   }, [booking?.id]);
 
-  // Do not keep the sheet open for a booking the user already acknowledged.
-  const shouldSuppressPopup = popupDismissedRef.current || acknowledgedId === booking?.id || hasEverSeenBookingId.current || popupMutedRef.current;
-
   if (!booking && incomingCount === 0) {
     return null;
   }
@@ -121,20 +121,6 @@ export function IncomingRequestPopup({
       setLocalAccepting(false);
     }
   };
-  const handleDecline = async () => {
-    if (!booking || localDeclining) return;
-    setLocalDeclining(true);
-    try {
-      onDecline(booking);
-      setAcknowledgedId(booking.id);
-      setPeeked(false);
-      setMobileOpen(false);
-      onDismiss();
-    } finally {
-      setLocalDeclining(false);
-    }
-  };
-
   const handleDecline = async () => {
     if (!booking || localDeclining) return;
     setLocalDeclining(true);

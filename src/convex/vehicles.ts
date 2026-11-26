@@ -1,92 +1,19 @@
+import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
 import { action, internalMutation, mutation } from "./_generated/server";
-import type {
-  ActionCtx,
-  MutationCtx,
-  QueryCtx,
-  DatabaseReader,
-  genericActionCtx,
-} from "./_generated/server";
-
-external type VehiclesCtx = ActionCtx | MutationCtx | QueryCtx;
-
-external type AnyQueryBuilder = any;
-
-external interface VehicleLookupResultTable {}
-
-external type VehicleLookupResultRow = {
-  _id: Doc<"vehicleLookupResults">;
-  _creationTime: number;
-  guardianUserId: Doc<"users">;
-  registrationNumber: string;
-  manufacturer: string | null;
-  make: string | null;
-  model: string | null;
-  variant: string | null;
-  vehicleCategory: string | null;
-  vehicleClass: string | null;
-  fuelType: string | null;
-  registrationDate: string | null;
-  registrationState: string | null;
-  rtoCode: string | null;
-  registrationValidityDate: string | null;
-  fitnessExpiryDate: string | null;
-  insuranceExpiryDate: string | null;
-  pucExpiryDate: string | null;
-  seatingCapacity: number | null;
-  engineCapacityCc: number | null;
-  source: string | null;
-  lookedUpAt: number | null;
-  providerName: string | null;
-} & {
-  _id: Doc<"vehicleLookupResults">;
-};
+import type { ActionCtx, MutationCtx } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 import {
   audit,
-  enforceRateLimit,
   requireRole,
   requireText,
-  requireUser,
 } from "./lib/helpers";
 import {
   normalizeVehiclePayload,
   ambulanceTypeFromDetails,
 } from "./lib/vehicles";
 
-external type VehiclesCtx = ActionCtx | MutationCtx | QueryCtx;
-
-external type AnyQueryBuilder = any;
-
-external interface VehicleLookupResultTable {}
-
-external type VehicleLookupResultRow = {
-  _id: Doc<"vehicleLookupResults">;
-  _creationTime: number;
-  guardianUserId: Doc<"users">;
-  registrationNumber: string;
-  manufacturer: string | null;
-  make: string | null;
-  model: string | null;
-  variant: string | null;
-  vehicleCategory: string | null;
-  vehicleClass: string | null;
-  fuelType: string | null;
-  registrationDate: string | null;
-  registrationState: string | null;
-  rtoCode: string | null;
-  registrationValidityDate: string | null;
-  fitnessExpiryDate: string | null;
-  insuranceExpiryDate: string | null;
-  pucExpiryDate: string | null;
-  seatingCapacity: number | null;
-  engineCapacityCc: number | null;
-  source: string | null;
-  lookedUpAt: number | null;
-  providerName: string | null;
-} & {
-  _id: Doc<"vehicleLookupResults">;
-};
+type AnyQueryBuilder = any;
 
 const REGISTRATION_NUMBER_PATTERN =
   /^(?:^|[A-Z])[A-Z]{1,2}\d{1,2}[A-Z0-9]{1,3}\d{3,4}$/;
@@ -111,11 +38,15 @@ async function requireGuardian(
   return user;
 }
 
+function nullToUndefined<T>(value: T | null | undefined): T | undefined {
+  return value ?? undefined;
+}
+
 export const requestVehicleLookup = action({
   args: { registrationNumber: v.string() },
   handler: async (ctx: ActionCtx, args) => {
-    const user = await requireUser(ctx);
-    await enforceRateLimit(ctx, `vehicle-lookup:${user._id}`, 5, 60_000);
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("You must be signed in to look up a vehicle.");
 
     const input = requireText(
       args.registrationNumber,
@@ -131,19 +62,7 @@ export const requestVehicleLookup = action({
 
     const normalized = normalizeRegistrationNumber(input);
 
-    // Prevent a duplicate ambulance record for this plate before the lookup.
-    const existing = await ctx.db
-      .query("ambulances")
-      .withIndex("by_registration_number", (q: AnyQueryBuilder) =>
-        q.eq("registrationNumber", normalized),
-      )
-      .unique();
-    if (existing) {
-      throw new Error(
-        "That ambulance registration number is already registered.",
-      );
-    }
-
+    // Look up from provider; this is a read-only operation from the action.
     const providerResult = await lookupVehicleFromProvider(normalized);
     if (!providerResult) {
       throw new Error(
@@ -151,46 +70,37 @@ export const requestVehicleLookup = action({
       );
     }
 
-    const payload = await normalizeVehiclePayload(providerResult);
-
-    const insertedId = await ctx.db.insert("vehicleLookupResults", {
-      guardianUserId: user._id,
-      registrationNumber: normalized,
-      manufacturer: payload.manufacturer,
-      make: payload.make,
-      model: payload.model,
-      variant: payload.variant,
-      vehicleCategory: payload.vehicleCategory,
-      vehicleClass: payload.vehicleClass,
-      fuelType: payload.fuelType,
-      registrationDate: payload.registrationDate,
-      registrationState: payload.registrationState,
-      rtoCode: payload.rtoCode,
-      registrationValidityDate: payload.registrationValidityDate,
-      fitnessExpiryDate: payload.fitnessExpiryDate,
-      insuranceExpiryDate: payload.insuranceExpiryDate,
-      pucExpiryDate: payload.pucExpiryDate,
-      seatingCapacity: payload.seatingCapacity,
-      engineCapacityCc: payload.engineCapacityCc,
-      source: "vehicle_provider",
-      lookedUpAt: Date.now(),
-      providerName: providerName(),
-    });
-
-    const row = (await ctx.db.get(insertedId))!;
-
     return {
-      row,
       providerReturned: providerResult,
-    } satisfies VehicleLookupActionResult;
+      normalizedRegistrationNumber: normalized,
+    };
   },
 });
 
-export const reviewVehicleLookupResult = mutation({
-  args: { registrationNumber: v.string() },
+export const saveVehicleLookupResult = mutation({
+  args: {
+    registrationNumber: v.string(),
+    providerResult: v.object({
+      manufacturer: v.optional(v.string()),
+      make: v.optional(v.string()),
+      model: v.optional(v.string()),
+      variant: v.optional(v.string()),
+      vehicleCategory: v.optional(v.string()),
+      vehicleClass: v.optional(v.string()),
+      fuelType: v.optional(v.string()),
+      registrationDate: v.optional(v.string()),
+      registrationState: v.optional(v.string()),
+      rtoCode: v.optional(v.string()),
+      registrationValidityDate: v.optional(v.string()),
+      fitnessExpiryDate: v.optional(v.string()),
+      insuranceExpiryDate: v.optional(v.string()),
+      pucExpiryDate: v.optional(v.string()),
+      seatingCapacity: v.optional(v.number()),
+      engineCapacityCc: v.optional(v.number()),
+    }),
+  },
   handler: async (ctx: MutationCtx, args) => {
-    const current = await requireUser(ctx);
-    await requireRole(ctx, ["guardian"]);
+    const user = await requireGuardian(ctx);
 
     const normalized = normalizeRegistrationNumber(
       requireText(args.registrationNumber, "Vehicle registration number", 3, 28),
@@ -201,12 +111,66 @@ export const reviewVehicleLookupResult = mutation({
       );
     }
 
-    const row = await ctx.db
-      .query("vehicleLookupResults")
-      .withIndex("by_registration_number", (q: AnyQueryBuilder) =>
-        q.eq("registrationNumber", normalized),
-      )
-      .first();
+    // Prevent duplicate ambulance for this plate.
+    const allAmbulances = await ctx.db.query("ambulances").collect();
+    const existingAmbulance = allAmbulances.find(
+      (a) => a.registrationNumber === normalized,
+    );
+    if (existingAmbulance) {
+      throw new Error(
+        "That ambulance registration number is already registered.",
+      );
+    }
+
+    const payload = normalizeVehiclePayload(args.providerResult);
+
+    const insertedId = await ctx.db.insert("vehicleLookupResults", {
+      guardianUserId: user._id,
+      registrationNumber: normalized,
+      manufacturer: nullToUndefined(payload.manufacturer),
+      make: nullToUndefined(payload.make),
+      model: nullToUndefined(payload.model),
+      variant: nullToUndefined(payload.variant),
+      vehicleCategory: nullToUndefined(payload.vehicleCategory),
+      vehicleClass: nullToUndefined(payload.vehicleClass),
+      fuelType: nullToUndefined(payload.fuelType),
+      registrationDate: nullToUndefined(payload.registrationDate),
+      registrationState: nullToUndefined(payload.registrationState),
+      rtoCode: nullToUndefined(payload.rtoCode),
+      registrationValidityDate: nullToUndefined(payload.registrationValidityDate),
+      fitnessExpiryDate: nullToUndefined(payload.fitnessExpiryDate),
+      insuranceExpiryDate: nullToUndefined(payload.insuranceExpiryDate),
+      pucExpiryDate: nullToUndefined(payload.pucExpiryDate),
+      seatingCapacity: nullToUndefined(payload.seatingCapacity),
+      engineCapacityCc: nullToUndefined(payload.engineCapacityCc),
+      source: "vehicle_provider",
+      lookedUpAt: Date.now(),
+      providerName: providerName(),
+      createdAt: Date.now(),
+    });
+
+    const row = (await ctx.db.get(insertedId))!;
+
+    return { row };
+  },
+});
+
+export const reviewVehicleLookupResult = mutation({
+  args: { registrationNumber: v.string() },
+  handler: async (ctx: MutationCtx, args) => {
+    const current = await requireRole(ctx, ["guardian"]);
+
+    const normalized = normalizeRegistrationNumber(
+      requireText(args.registrationNumber, "Vehicle registration number", 3, 28),
+    );
+    if (!isValidRegistrationNumber(normalized)) {
+      throw new Error(
+        "That registration number is not in a recognized Indian format.",
+      );
+    }
+
+    const allRows = await ctx.db.query("vehicleLookupResults").collect();
+    const row = allRows.find((r) => r.registrationNumber === normalized);
 
     if (!row || row.guardianUserId !== current._id) {
       throw new Error("No recent vehicle lookup for that registration number.");
@@ -220,10 +184,8 @@ export const clearStaleVehicleLookup = internalMutation({
   args: { olderThanMs: v.number() },
   handler: async (ctx, args) => {
     const cutoff = Date.now() - args.olderThanMs;
-    const stale = await ctx.db
-      .query("vehicleLookupResults")
-      .withIndex("by_looked_up_at", (q: AnyQueryBuilder) => q.lt("lookedUpAt", cutoff))
-      .collect();
+    const allRows = await ctx.db.query("vehicleLookupResults").collect();
+    const stale = allRows.filter((r) => r.lookedUpAt != null && r.lookedUpAt < cutoff);
 
     for (const row of stale) {
       await ctx.db.delete(row._id);
@@ -336,25 +298,7 @@ function providerName(): string {
   );
 }
 
-// ---- Public action result type ----
-
-export type VehicleLookupActionResult = {
-  row: Doc<"vehicleLookupResults">;
-  providerReturned: VehicleProviderResponse;
-} & {
-  readonly __actionResultBrand: "VehicleLookupActionResult";
-};
-
 // ---- Provider response contract ----
-
-/**
- * Raw provider response shape that the backend accepts.
- *
- * This is intentionally permissive: the provider may return any subset. The
- * backend normalizes and validates this into the canonical shape before
- * storing it. Fields the provider does not return are preserved as `null` and
- * the UI renders "Not available" for them.
- */
 export type VehicleProviderResponse = {
   manufacturer?: string | null;
   make?: string | null;
@@ -411,13 +355,3 @@ export type VehicleProviderResponseRecord = {
   seatingCapacity: number | null;
   engineCapacityCc: number | null;
 };
-
-declare module "./schema" {
-  interface TableDefinitions {
-    vehicleLookupResults: VehicleLookupResultTable;
-  }
-}
-
-export type { VehicleProviderResponse, VehicleLookupActionResult, VehicleProviderResponseInput, VehicleProviderResponseRecord };
-
-export {};

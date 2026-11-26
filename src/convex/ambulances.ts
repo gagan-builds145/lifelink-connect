@@ -59,6 +59,37 @@ function validCoordinate(lat: number, lng: number) {
   );
 }
 
+export type AmbulanceBookingSummary = ReturnType<typeof bookingSummary>;
+export type AmbulanceBookingSummaryLike = {
+  id: string;
+  bookingRef: string;
+  status: string;
+  patientName: string | null;
+  pickupLabel: string;
+  pickupLat: number;
+  pickupLng: number;
+  destinationLabel: string;
+  destinationLat: number | null;
+  destinationLng: number | null;
+  ambulanceType: string | null;
+  notes: string | null;
+  driverName: string | null;
+  driverPhone: string | null;
+  estimatedDistanceKm: number | null;
+  estimatedEtaMinutes: number | null;
+  estimatedFare: number | null;
+  cancellationReason: string | null;
+  searchExpiresAt: number | null;
+  rematchAttempts: number;
+  nextRematchAt: number | null;
+  rematchExhaustedAt: number | null;
+  requestedAt: number;
+  acceptedAt: number | null;
+  completedAt: number | null;
+  cancelledAt: number | null;
+  updatedAt: number;
+};
+
 function bookingSummary(booking: Doc<"ambulanceBookings">) {
   return {
     id: booking._id,

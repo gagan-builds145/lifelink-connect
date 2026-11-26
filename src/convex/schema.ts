@@ -1212,6 +1212,34 @@ const schema = defineSchema(
       windowStartedAt: v.number(),
     }).index("by_key", ["key"]),
 
+    vehicleLookupResults: defineTable({
+      guardianUserId: v.id("users"),
+      registrationNumber: v.string(),
+      manufacturer: v.optional(v.string()),
+      make: v.optional(v.string()),
+      model: v.optional(v.string()),
+      variant: v.optional(v.string()),
+      vehicleCategory: v.optional(v.string()),
+      vehicleClass: v.optional(v.string()),
+      fuelType: v.optional(v.string()),
+      registrationDate: v.optional(v.string()),
+      registrationState: v.optional(v.string()),
+      rtoCode: v.optional(v.string()),
+      registrationValidityDate: v.optional(v.string()),
+      fitnessExpiryDate: v.optional(v.string()),
+      insuranceExpiryDate: v.optional(v.string()),
+      pucExpiryDate: v.optional(v.string()),
+      seatingCapacity: v.optional(v.number()),
+      engineCapacityCc: v.optional(v.number()),
+      source: v.optional(v.string()),
+      lookedUpAt: v.optional(v.number()),
+      providerName: v.optional(v.string()),
+      createdAt: v.number(),
+    })
+      .index("by_guardian", ["guardianUserId"])
+      .index("by_registration_number", ["registrationNumber"])
+      .index("by_looked_up_at", ["lookedUpAt"]),
+
     /**
      * Security event ledger. Records suspicious activity, authentication
      * failures, authorization denials, rate-limit events and service-auth

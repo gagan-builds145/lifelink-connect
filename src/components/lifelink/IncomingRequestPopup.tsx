@@ -2,14 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
-  Clock3,
   Loader2,
   MapPin,
   Navigation,
   XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
   Sheet,
   SheetContent,
@@ -17,7 +15,6 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { formatRelative } from "@/lib/blood";
 import {
   AMBULANCE_STATUS_LABELS,
   type AmbulanceBookingStatus,
@@ -26,7 +23,6 @@ import { cn } from "@/lib/utils";
 import type { UseSoundReturn } from "@/hooks/use-sound";
 import type { Id } from "@/convex/_generated/dataModel";
 import type {
-  AmbulanceBookingSummary,
   AmbulanceBookingSummaryLike,
 } from "@/convex/ambulances";
 
@@ -58,47 +54,42 @@ export function IncomingRequestPopup({
   const [acknowledgedId, setAcknowledgedId] = useState<Id<"ambulanceBookings"> | null>(
     null,
   );
-  const hasEverSeenBookingId = useRef(false);
-  const popupMutedRef = useRef(false);
   const mountRef = useRef(true);
-  const lastBookingIdRef = useRef<Id<"ambulanceBookings"> | null>(null);
-  const popupDismissedRef = useRef(false);
-  const popupVisibleRef = useRef(false);
 
+  // Track dismissal with state for render correctness
+  const [dismissed, setDismissed] = useState(false);
+
+  // Track first-seen state using refs to avoid cascading renders.
+  const hasEverSeenRef = useRef(false);
+  const lastBookingIdRef = useRef<Id<"ambulanceBookings"> | null>(null);
+  const initializedRef = useRef(false);
+
+  useEffect(() => {
+    if (initializedRef.current) return;
+    initializedRef.current = true;
+    if (booking) {
+      hasEverSeenRef.current = true;
+      lastBookingIdRef.current = booking.id;
+    }
+  }, [booking?.id]);
+
+  // Update acknowledgedId when booking changes (after initial mount)
+  useEffect(() => {
+    if (!mountRef.current || !booking) return;
+    setAcknowledgedId((prev) => (prev === booking.id ? prev : booking.id));
+  }, [booking?.id]);
+
+  // Read from refs for the suppress check
   const shouldSuppressPopup =
-    popupDismissedRef.current ||
+    dismissed ||
     acknowledgedId === booking?.id ||
-    hasEverSeenBookingId.current ||
-    popupMutedRef.current;
+    hasEverSeenRef.current ||
+    sound.muted;
   const shouldSuppressDuplicate = shouldSuppressPopup;
 
   // Decide whether this particular booking should trigger a fresh alert.
-  const isNewNotification = booking != null && lastBookingIdRef.current !== booking.id && !shouldSuppressDuplicate;
-
-  // Keep sound playback strictly tied to the first render where a genuinely new
-  // booking is present, and never replay it on reconnect/refresh for an already
-  // seen booking.
-  useEffect(() => {
-    mountRef.current = true;
-    if (!isNewNotification) return;
-    if (!sound.muted) {
-      sound.play();
-    }
-    return () => {
-      mountRef.current = false;
-    };
-  }, [booking?.id, isNewNotification, sound.muted, sound.play]);
-
-  // Persist the latest seen identifier so reconnect cannot replay the same alert.
-  useEffect(() => {
-    if (!booking) return;
-    hasEverSeenBookingId.current = true;
-    if (mountRef.current) {
-      lastBookingIdRef.current = booking.id;
-      return;
-    }
-    setAcknowledgedId((prev) => (prev === booking.id ? prev : booking.id));
-  }, [booking?.id]);
+  const isNewNotification =
+    booking != null && lastBookingIdRef.current !== booking.id && !shouldSuppressDuplicate;
 
   if (!booking && incomingCount === 0) {
     return null;
@@ -116,6 +107,7 @@ export function IncomingRequestPopup({
       setAcknowledgedId(booking.id);
       setPeeked(false);
       setMobileOpen(false);
+      setDismissed(true);
       onDismiss();
     } finally {
       setLocalAccepting(false);
@@ -129,6 +121,7 @@ export function IncomingRequestPopup({
       setAcknowledgedId(booking.id);
       setPeeked(false);
       setMobileOpen(false);
+      setDismissed(true);
       onDismiss();
     } finally {
       setLocalDeclining(false);
@@ -169,6 +162,7 @@ export function IncomingRequestPopup({
             onClick={() => {
               setAcknowledgedId(booking?.id ?? null);
               setPeeked(false);
+              setDismissed(true);
               onDismiss();
             }}
             aria-label="Dismiss incoming request alert"

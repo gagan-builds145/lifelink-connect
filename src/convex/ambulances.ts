@@ -397,6 +397,19 @@ export const upsertAmbulance = mutation({
     );
     if (duplicate) throw new Error("That ambulance registration number is already registered.");
 
+    // Enforce one vehicle per guardian (unless editing existing vehicle)
+    if (!args.ambulanceId) {
+      const existingVehicles = await ctx.db
+        .query("ambulances")
+        .withIndex("by_guardian", (q) => q.eq("guardianUserId", user._id))
+        .collect();
+      if (existingVehicles.length > 0) {
+        throw new Error(
+          "Each Guardian can register only one ambulance vehicle. Edit your existing vehicle instead.",
+        );
+      }
+    }
+
     const documentIds = [
       args.documentId,
       args.frontPhotoDocumentId,

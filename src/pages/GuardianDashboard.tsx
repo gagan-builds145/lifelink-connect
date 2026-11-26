@@ -5,7 +5,6 @@ import { useSound } from "@/hooks/use-sound";
 import { IncomingRequestPopup } from "@/components/lifelink/IncomingRequestPopup";
 import type { IncomingBooking } from "@/components/lifelink/IncomingRequestPopup";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { useCallback } from "react";
 import { toast } from "sonner";
 import {
   Ambulance,
@@ -17,7 +16,6 @@ import {
   Route,
   ShieldCheck,
   Truck,
-  XCircle,
 } from "lucide-react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -39,7 +37,7 @@ import {
 import { formatRelative } from "@/lib/blood";
 import { GUARDIAN_STATUS_LABELS, type GuardianStatus } from "@/lib/guardian";
 
-type Tab = "overview" | "fleet" | "requests" | "active" | "history";
+type Tab = "overview" | "fleet" | "active" | "history";
 
 const emptyVehicle = {
   registrationNumber: "",
@@ -76,52 +74,17 @@ export default function GuardianDashboard() {
   const [editingId, setEditingId] = useState<Id<"ambulances"> | null>(null);
   const [nextStatus, setNextStatus] = useState<Record<string, string>>({});
   const [watchingBookingId, setWatchingBookingId] = useState<Id<"ambulanceBookings"> | null>(null);
-  const popupOnMount = useRef(true);
-  useEffect(() => {
-    if (!popupOnMount.current) return;
-    popupOnMount.current = false;
-    popupVisibleRef.current = true;
-    return () => {
-      popupVisibleRef.current = false;
-      popupOnMount.current = true;
-    };
-  }, []);
-  const isPopupEligible = (booking: IncomingBooking | null) => {
-    if (!booking) return false;
-    if (!profile?.approved) return false;
-    if (active.some((activeBooking) => activeBooking.id === booking.id)) return false;
-    if (shownIdRef.current === booking.id) return false;
-    if (popupDismissedRef.current) return false;
-    return true;
-  };
-  const effectiveTopBooking = useMemo(() => {
-    if (!isPopupEligible(topIncoming)) return null;
-    if (popupVisibleRef.current && shownIdRef.current === topIncoming?.id) return null;
-    return topIncoming;
-  }, [topIncoming]);
-  const popupVisible = popupVisibleRef.current && effectiveTopBooking ? effectiveTopBooking : null;
-  const popupVisible = popupVisibleRef.current && effectiveTopBooking;
-  const incomingSource = useMemo(() => overview?.incoming ?? [], [overview]);
-  const isPopupEligible = useCallback(
-    (booking: IncomingBooking | null) => {
-      if (!booking) return false;
-      if (!profile?.approved) return false;
-      if (active.some((activeBooking) => activeBooking.id === booking.id)) return false;
-      if (shownIdRef.current === booking.id) return false;
-      return true;
-    },
-    [active, profile?.approved],
-  );
-  const effectiveTopBooking = useMemo(() => {
-    if (!isPopupEligible(topIncoming)) return null;
-    if (popupVisibleRef.current && shownIdRef.current === topIncoming?.id) return null;
-    return topIncoming;
-  }, [topIncoming, isPopupEligible]);
   const [sharingFleetId, setSharingFleetId] = useState<Id<"ambulances"> | null>(null);
   const watchRef = useRef<number | null>(null);
   const fleetWatchRef = useRef<number | null>(null);
   const lastShareAt = useRef(0);
   const lastFleetShareAt = useRef(0);
+
+  // Popup state - consolidated single block
+  const sound = useSound();
+  const shownIdRef = useRef<Id<"ambulanceBookings"> | null>(null);
+  const popupVisibleRef = useRef(false);
+  const popupDismissedRef = useRef(false);
 
   const incoming = useMemo(() => overview?.incoming ?? [], [overview]);
   const topIncoming = useMemo(() => incoming.slice(0, 1)[0] ?? null, [incoming]);
@@ -129,42 +92,59 @@ export default function GuardianDashboard() {
   const history = useMemo(() => overview?.history ?? [], [overview]);
   const ambulances = useMemo(() => overview?.ambulances ?? [], [overview]);
   const profile = overview?.profile;
-  const { isAuthenticated, isLoading: authLoading } = useConvexAuth();
-  const sound = useSound();
-  const shownIdRef = useRef<Id<"ambulanceBookings"> | null>(null);
-  const popupVisibleRef = useRef(false);
-  const popupDismissedRef = useRef(false);
-  const handlePopupDismiss = useCallback(() => {
+
+  const isPopupEligible = useMemo(() => {
+    if (!topIncoming) return false;
+    if (!profile?.approved) return false;
+    if (active.some((ab) => ab.id === topIncoming.id)) return false;
+    if (shownIdRef.current === topIncoming.id) return false;
+    if (popupDismissedRef.current) return false;
+    return true;
+  }, [topIncoming, active, profile?.approved]);
+
+  const effectiveTopBooking = useMemo(() => {
+    if (!isPopupEligible) return null;
+    if (popupVisibleRef.current && shownIdRef.current === topIncoming?.id) return null;
+    return topIncoming ?? null;
+  }, [isPopupEligible, topIncoming]);
+
+  const popupVisible = popupVisibleRef.current && effectiveTopBooking ? effectiveTopBooking : null;
+
+  const handlePopupDismiss = () => {
     if (topIncoming) {
       shownIdRef.current = topIncoming.id;
       popupDismissedRef.current = true;
     }
-  }, [topIncoming]);
-  const popupMountedRef = useRef(true);
+  };
+
+  // Mount/unmount popup gating
   useEffect(() => {
-    popupMountedRef.current = true;
-    if (!popupVisibleRef.current && topIncoming && !popupDismissedRef.current) {
+    if (!topIncoming || !profile?.approved) return;
+    if (!popupVisibleRef.current && !popupDismissedRef.current) {
       popupVisibleRef.current = true;
     }
     return () => {
-      popupMountedRef.current = false;
+      popupVisibleRef.current = false;
     };
+  }, [topIncoming, profile?.approved]);
+
+  // Reset dismissal when a new incoming arrives
+  useEffect(() => {
+    if (topIncoming && shownIdRef.current !== topIncoming.id) {
+      popupDismissedRef.current = false;
+    }
   }, [topIncoming]);
-  const effectiveTopBooking = useMemo(() => {
-    if (!isPopupEligible(topIncoming)) return null;
-    if (popupVisibleRef.current && shownIdRef.current === topIncoming?.id) return null;
-    return topIncoming;
-  }, [topIncoming, isPopupEligible]);
+
+  const { isAuthenticated } = useConvexAuth();
 
   const navItems = useMemo(
     () => [
       { key: "overview", label: "Overview", icon: ShieldCheck },
       { key: "fleet", label: "My fleet", icon: Ambulance, badge: ambulances.length },
-      { key: "requests", label: "Incoming requests", icon: Navigation, badge: incoming.length },
       { key: "active", label: "Active journeys", icon: Route, badge: active.length },
       { key: "history", label: "Booking history", icon: Clock3 },
     ],
-    [ambulances.length, incoming.length, active.length],
+    [ambulances.length, active.length],
   );
 
   const run = async (key: string, action: () => Promise<unknown>, success: string) => {
@@ -471,20 +451,7 @@ export default function GuardianDashboard() {
                   <RoleSwitcher />
                   </div>
                 </div>
-                <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                  {[
-                    { label: "Vehicles", value: ambulances.length },
-                    { label: "Incoming requests", value: incoming.length },
-                    { label: "Active journeys", value: active.length },
-                  ].map((stat) => (
-                    <div key={stat.label} className="rounded-xl border border-border bg-muted/20 p-3">
-                      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
-                        {stat.label}
-                      </p>
-                      <p className="mt-1 text-2xl font-extrabold">{stat.value}</p>
-                    </div>
-                  ))}
-                </div>
+
               </section>
 
               {ambulances.length === 0 && (
@@ -498,7 +465,7 @@ export default function GuardianDashboard() {
             </div>
           )}
 
-          {isAuthenticated && profile?.approved && active.length === 0 && tab !== "requests" && (
+          {isAuthenticated && profile?.approved && active.length === 0 && (
             <IncomingRequestPopup
               booking={effectiveTopBooking}
               incomingCount={incoming.length}
@@ -788,79 +755,7 @@ export default function GuardianDashboard() {
             </div>
           )}
 
-          {tab === "requests" && (
-            <section className="space-y-3">
-              {incoming.length === 0 ? (
-                <EmptyState
-                  icon={Navigation}
-                  title="No incoming requests"
-                  description="Go online and keep an available ambulance to receive nearby booking requests."
-                />
-              ) : (
-                incoming.map((booking) => (
-                  <div key={booking.id} className="rounded-2xl border border-border bg-card p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div>
-                        <p className="text-[13px] font-bold">{booking.bookingRef}</p>
-                        <p className="mt-0.5 text-[11px] text-muted-foreground">
-                          Requested {formatRelative(booking.requestedAt)} · {booking.requesterRole}
-                        </p>
-                      </div>
-                      <StatusBadge status="pending" label="Awaiting response" />
-                    </div>
-                    <div className="mt-3 grid gap-2 text-[11.5px] sm:grid-cols-2">
-                      <p className="flex items-start gap-1.5">
-                        <MapPin className="mt-0.5 size-3.5 text-primary" /> Pickup: {booking.pickupLabel}
-                      </p>
-                      <p className="flex items-start gap-1.5">
-                        <Navigation className="mt-0.5 size-3.5 text-teal-600" /> Destination:{" "}
-                        {booking.destinationLabel}
-                      </p>
-                      <p>Distance: {booking.estimatedDistanceKm ?? "—"} km</p>
-                      <p>Est. fare: ₹{booking.estimatedFare ?? "—"}</p>
-                      {booking.patientName && <p>Patient: {booking.patientName}</p>}
-                      {booking.notes && <p className="sm:col-span-2">Notes: {booking.notes}</p>}
-                    </div>
-                    <div className="mt-3 flex gap-2">
-                      <Button
-                        size="sm"
-                        className="gap-1.5"
-                        disabled={busy === `accept-${booking.id}`}
-                        onClick={() =>
-                          void run(
-                            `accept-${booking.id}`,
-                            () => accept({ bookingId: booking.id }),
-                            "Booking accepted and guardian assigned.",
-                          )
-                        }
-                      >
-                        <CheckCircle2 className="size-3.5" /> Accept
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="gap-1.5"
-                        disabled={busy === `reject-${booking.id}`}
-                        onClick={() =>
-                          void run(
-                            `reject-${booking.id}`,
-                            () =>
-                              reject({
-                                bookingId: booking.id,
-                                reason: "Declined by the ambulance provider.",
-                              }),
-                            "Request declined.",
-                          )
-                        }
-                      >
-                        <XCircle className="size-3.5" /> Reject
-                      </Button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </section>
-          )}
+
 
           {tab === "active" && (
             <section className="space-y-3">

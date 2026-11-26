@@ -188,6 +188,10 @@ export function locationRule(
   return { ok: sameState && (sameCity || isEmergency), sameCity, sameState };
 }
 
+export function isEmergency(urgency?: string | Urgency): boolean {
+  return String(urgency ?? "") === "emergency";
+}
+
 export function cityCoords(city?: string | null) {
   if (!city) return null;
   return CITY_COORDS[city] ?? null;

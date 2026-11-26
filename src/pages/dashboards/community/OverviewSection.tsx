@@ -22,9 +22,11 @@ import {
   Droplets,
   HeartHandshake,
   HeartPulse,
+  MapPin,
   Plus,
   Sparkles,
   UserRound,
+  Loader2,
 } from "lucide-react";
 import {
   Area,
@@ -45,6 +47,7 @@ const CRIMSON = "#b02a3c";
 
 export function OverviewSection({ onNavigate }: { onNavigate: (section: SectionKey) => void }) {
   const overview = useQuery(api.community.overview);
+  const nearbyRequests = useQuery(api.requests.donorNearby);
 
   if (overview === undefined) {
     return (
@@ -344,6 +347,80 @@ export function OverviewSection({ onNavigate }: { onNavigate: (section: SectionK
           </div>
         </section>
       </div>
+
+            {/* Available requests near you */}
+      {donor && (
+        <section className="rounded-2xl border border-border bg-card p-5">
+          <SectionHeading
+            eyebrow="Help where it's needed"
+            title="Requests near you"
+            description="Compatible blood requests in your city."
+          />
+          <div className="mt-4 space-y-3">
+            {nearbyRequests === undefined ? (
+              <div className="flex items-center justify-center gap-2 py-6 text-[12px] text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" />
+                <p className="animate-pulse">Loading nearby requests</p>
+              </div>
+            ) : nearbyRequests.length === 0 ? (
+              <EmptyState
+                icon={Droplets}
+                title="No requests near you"
+                description="There are no open blood requests matching your blood group in your city right now."
+              />
+            ) : (
+              <div className="space-y-2">
+                {nearbyRequests.map((request) => (
+                  <article key={request._id} className="rounded-xl border border-border bg-background p-3.5">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <BloodGroupChip group={request.bloodGroup} size="sm" />
+                        <span className="text-[11.5px] font-bold">{request.requestId}</span>
+                      </div>
+                      <StatusBadge status={request.status} />
+                    </div>
+                    <p className="mt-1.5 text-[11px] text-muted-foreground">
+                      {request.component.replace("_", " ")} · {request.units} unit(s) · {request.hospitalName}, {request.city}
+                    </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-3 text-[10px] text-muted-foreground">
+                      <span className="inline-flex items-center gap-1">
+                        <Clock3 className="size-3" />
+                        Needed {formatRelative(request.requiredBy)}
+                      </span>
+                      {request.nearby && (
+                        <span className="inline-flex items-center gap-1">
+                          <MapPin className="size-3" />
+                          In your city
+                        </span>
+                      )}
+                      <span>Created {formatRelative(request.createdAt)}</span>
+                    </div>
+                    {request.contactUnlocked ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="mt-2 h-7 gap-1 text-[10.5px]"
+                        onClick={() => onNavigate("request")}
+                      >
+                        View details
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="mt-2 h-7 gap-1 text-[10.5px]"
+                        onClick={() => onNavigate("request")}
+                      >
+                        Offer to help
+                      </Button>
+                    )}
+                  </article>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* Profiles + activity */}
       <div className="grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">

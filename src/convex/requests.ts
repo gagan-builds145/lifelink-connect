@@ -31,7 +31,7 @@ import {
   requestorTypeValidator,
   urgencyValidator,
 } from "./validators";
-import { compatibility, locationRule, scoreMatch, stateOfCity, URGENCY_LABELS } from "../lib/blood";
+import { compatibility, isEmergency, locationRule, scoreMatch, stateOfCity, URGENCY_LABELS } from "../lib/blood";
 import { evaluateStockLevel } from "./lib/stockWatch";
 import { requestCoverage, verifiedReceivedUnits } from "./lib/requestLifecycle";
 
@@ -122,6 +122,23 @@ async function notifyCompatibleDonors(
     .withIndex("by_availability", (q) => q.eq("available", true))
     .collect();
   const requestState = stateOfCity(request.city);
+  const consents = await ctx.db.query("donorConsents").collect();
+  const consentsByProfile = new Map(consents.map((c) => [String(c.donorProfileId), c]));
+  const donations = await ctx.db.query("donations").collect();
+  const lastDonationByProfile = new Map<string, string | null>();
+  for (const d of donations) {
+    const key = String(d.donorProfileId);
+    const existing = lastDonationByProfile.get(key);
+    if (!existing || d.donationDate > existing) {
+      lastDonationByProfile.set(key, d.donationDate);
+    }
+  }
+  const existingInvitations = await ctx.db
+    .query("donorInvitations")
+    .withIndex("by_request", (q) => q.eq("requestId", request._id))
+    .collect();
+  const existingInviteKeys = new Set(existingInvitations.map((i) => i.idempotencyKey));
+
   let notified = 0;
   for (const donor of donors) {
     if (notified >= 25) break;
@@ -132,6 +149,40 @@ async function notifyCompatibleDonors(
     if (!compatibility(donor.bloodGroup, request.bloodGroup, request.component).compatible) {
       continue;
     }
+
+    // Check donor eligibility before creating an invitation.
+    const consent = consentsByProfile.get(String(donor._id));
+    const shareLocation =
+      consent?.shareLocation === true &&
+      consent.revokedAt == null &&
+      consent.expiresAt > Date.now();
+    const lastDonation = lastDonationByProfile.get(String(donor._id)) ?? donor.lastDonationDate ?? null;
+    const daysSince = lastDonation
+      ? Math.floor((Date.now() - new Date(lastDonation).getTime()) / (1000 * 60 * 60 * 24))
+      : 999;
+    const needsInterval = !isEmergency(request.urgency) && daysSince < 56;
+    if (!shareLocation || needsInterval) {
+      continue;
+    }
+
+    const idempotencyKey = `${request._id}:${donor._id}`;
+    if (existingInviteKeys.has(idempotencyKey)) continue;
+
+    // Create a donor invitation so the request appears on the donor's dashboard.
+    const requestingOrgId = request.hospitalOrgId ?? request.assignedOrgId;
+    if (!requestingOrgId) continue;
+    await ctx.db.insert("donorInvitations", {
+      requestId: request._id,
+      requestingOrgId,
+      donorUserId: donor.userId,
+      donorProfileId: donor._id,
+      bloodGroup: request.bloodGroup,
+      component: request.component,
+      units: request.units,
+      status: "sent",
+      idempotencyKey,
+      createdAt: Date.now(),
+    });
     const area = location.sameCity
       ? request.city
       : `${request.city}, ${requestState ?? "same state"}`;

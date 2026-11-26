@@ -10,8 +10,6 @@ import {
 } from "./lib/helpers";
 import { normalizeVehiclePayload } from "./lib/vehicles";
 
-type AnyQueryBuilder = any;
-
 const REGISTRATION_NUMBER_PATTERN =
   /^(?:^|[A-Z])[A-Z]{1,2}\d{1,2}[A-Z0-9]{1,3}\d{3,4}$/;
 

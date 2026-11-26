@@ -169,18 +169,56 @@ describe("Guardian registration and fleet authorization", () => {
   test("guardian can add an ambulance but cannot edit another guardian's vehicle", async () => {
     const t = convexTest(schema, modules);
     const seeded = await seed(t);
+
+    // A guardian with no vehicle can add one.
+    const freshGuardian = await t.run(async (ctx) => {
+      const user = await ctx.db.insert("users", {
+        name: "Fresh Guardian",
+        email: "fresh-guardian@test.example",
+        role: "guardian",
+        createdAt: Date.now(),
+      });
+      await ctx.db.insert("guardianProfiles", {
+        userId: user,
+        companyName: "Fresh Service",
+        contactPerson: "Fresh",
+        phone: "9876500099",
+        city: "Pune",
+        address: "6 Depot Road",
+        online: true,
+        documentsStatus: "verified",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+      return user;
+    });
     const added = await t
-      .withIdentity({ subject: String(seeded.guardian) })
+      .withIdentity({ subject: String(freshGuardian) })
       .mutation(api.ambulances.upsertAmbulance, {
-        registrationNumber: "mh12new1",
-        model: "New Van",
+        registrationNumber: "MH12FRESH1",
+        model: "Fresh Van",
         type: "icu",
         capacity: 1,
-        driverName: "Driver New",
+        driverName: "Driver Fresh",
         driverPhone: "9876522222",
       });
     expect(added.ambulanceId).toBeDefined();
 
+    // The same guardian cannot add a second vehicle.
+    await expect(
+      t
+        .withIdentity({ subject: String(freshGuardian) })
+        .mutation(api.ambulances.upsertAmbulance, {
+          registrationNumber: "MH12FRESH2",
+          model: "Second Van",
+          type: "bls",
+          capacity: 2,
+          driverName: "Driver Two",
+          driverPhone: "9876533333",
+        }),
+    ).rejects.toThrow(/Each Guardian can register only one ambulance vehicle/i);
+
+    // A different guardian cannot edit another guardian's vehicle.
     const otherGuardian = await t.run(async (ctx) => {
       const user = await ctx.db.insert("users", {
         name: "Other Guardian",
@@ -192,7 +230,7 @@ describe("Guardian registration and fleet authorization", () => {
         userId: user,
         companyName: "Other Service",
         contactPerson: "Other",
-        phone: "9876533333",
+        phone: "9876544444",
         city: "Pune",
         address: "5 Depot Road",
         online: true,
@@ -212,7 +250,7 @@ describe("Guardian registration and fleet authorization", () => {
           type: "bls",
           capacity: 2,
           driverName: "No",
-          driverPhone: "9876544444",
+          driverPhone: "9876555555",
         }),
     ).rejects.toThrow(/only update your own ambulance/i);
   });

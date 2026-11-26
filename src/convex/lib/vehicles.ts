@@ -87,19 +87,13 @@ export function normalizeVehiclePayload(
     vehicleCategory: safeText(response.vehicleCategory),
     vehicleClass: safeText(response.vehicleClass),
     fuelType: safeFuelType(response.fuelType),
-    registrationDate: safeDate(response.registrationDate, "registrationDate"),
+    registrationDate: safeDate(response.registrationDate),
     registrationState: safeText(response.registrationState),
     rtoCode: safeText(response.rto),
-    registrationValidityDate: safeDate(
-      response.registrationValidityDate,
-      "registrationValidityDate",
-    ),
-    fitnessExpiryDate: safeDate(response.fitnessExpiryDate, "fitnessExpiryDate"),
-    insuranceExpiryDate: safeDate(
-      response.insuranceExpiryDate,
-      "insuranceExpiryDate",
-    ),
-    pucExpiryDate: safeDate(response.pucExpiryDate, "pucExpiryDate"),
+    registrationValidityDate: safeDate(response.registrationValidityDate),
+    fitnessExpiryDate: safeDate(response.fitnessExpiryDate),
+    insuranceExpiryDate: safeDate(response.insuranceExpiryDate),
+    pucExpiryDate: safeDate(response.pucExpiryDate),
     seatingCapacity: safeCapacity(response.seatingCapacity),
     engineCapacityCc: safeCc(response.engineCapacityCc),
   };
@@ -133,7 +127,7 @@ export function safeFuelType(value: unknown): string | null {
   return normalized;
 }
 
-export function safeDate(value: unknown, label: string): string | null {
+export function safeDate(value: unknown): string | null {
   if (value === null || value === undefined) return null;
   if (typeof value === "string") {
     const trimmed = value.trim();

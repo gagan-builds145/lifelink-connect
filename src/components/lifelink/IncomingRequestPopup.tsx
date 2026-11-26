@@ -55,7 +55,7 @@ export function IncomingRequestPopup({
     null,
   );
   const [seenOnce, setSeenOnce] = useState(false);
-  const [lastSeenId, setLastSeenId] = useState<Id<"ambulanceBookings"> | null>(null);
+
   const [hasMounted, setHasMounted] = useState(false);
 
   // Track dismissal with state for render correctness
@@ -68,7 +68,6 @@ export function IncomingRequestPopup({
     setHasMounted(true);
     if (booking) {
       setSeenOnce(true);
-      setLastSeenId(booking.id);
     }
   }, [booking?.id]);
 
@@ -79,10 +78,6 @@ export function IncomingRequestPopup({
     seenOnce ||
     sound.muted;
   const shouldSuppressDuplicate = shouldSuppressPopup;
-
-  // Decide whether this particular booking should trigger a fresh alert.
-  const isNewNotification =
-    booking != null && lastSeenId !== booking.id && !shouldSuppressDuplicate;
 
   if (!booking && incomingCount === 0) {
     return null;
@@ -102,7 +97,6 @@ export function IncomingRequestPopup({
       setMobileOpen(false);
       setDismissed(true);
       setSeenOnce(false);
-      setLastSeenId(null);
       onDismiss();
     } finally {
       setLocalAccepting(false);
@@ -118,7 +112,6 @@ export function IncomingRequestPopup({
       setMobileOpen(false);
       setDismissed(true);
       setSeenOnce(false);
-      setLastSeenId(null);
       onDismiss();
     } finally {
       setLocalDeclining(false);

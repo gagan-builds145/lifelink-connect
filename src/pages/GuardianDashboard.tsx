@@ -1,21 +1,16 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useConvexAuth } from "convex/react";
-import { useAuth } from "@/hooks/use-auth";
 import { useSound } from "@/hooks/use-sound";
 import { IncomingRequestPopup } from "@/components/lifelink/IncomingRequestPopup";
-import type { IncomingBooking } from "@/components/lifelink/IncomingRequestPopup";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
 import {
   Ambulance,
-  CheckCircle2,
   Clock3,
-  MapPin,
   Navigation,
   Plus,
   Route,
   ShieldCheck,
-  Truck,
 } from "lucide-react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -58,7 +53,6 @@ export default function GuardianDashboard() {
   const publishLocation = useMutation(api.ambulances.publishAmbulanceLocation);
   const accept = useMutation(api.ambulances.acceptBooking);
   const reject = useMutation(api.ambulances.rejectBooking);
-  const amAccepted = useMutation(api.ambulances.updateBookingStatus);
   const updateStatus = useMutation(api.ambulances.updateBookingStatus);
   const share = useMutation(api.ambulances.shareLocation);
   const cancel = useMutation(api.ambulances.cancelBooking);
@@ -107,8 +101,6 @@ export default function GuardianDashboard() {
     if (popupVisibleState === topIncoming?.id && shownId === topIncoming?.id) return null;
     return topIncoming ?? null;
   }, [isPopupEligible, topIncoming, popupVisibleState]);
-
-  const popupVisible = popupVisibleState;
 
   const handlePopupDismiss = () => {
     if (topIncoming) {

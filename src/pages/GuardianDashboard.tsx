@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useConvexAuth } from "convex/react";
+import { useAuth } from "@/hooks/use-auth";
+import { useSound } from "@/hooks/use-sound";
+import { IncomingRequestPopup } from "@/components/lifelink/IncomingRequestPopup";
+import type { IncomingBooking } from "@/components/lifelink/IncomingRequestPopup";
 import { useAction, useMutation, useQuery } from "convex/react";
+import { useCallback } from "react";
 import { toast } from "sonner";
 import {
   Ambulance,
@@ -54,6 +60,7 @@ export default function GuardianDashboard() {
   const publishLocation = useMutation(api.ambulances.publishAmbulanceLocation);
   const accept = useMutation(api.ambulances.acceptBooking);
   const reject = useMutation(api.ambulances.rejectBooking);
+  const amAccepted = useMutation(api.ambulances.updateBookingStatus);
   const updateStatus = useMutation(api.ambulances.updateBookingStatus);
   const share = useMutation(api.ambulances.shareLocation);
   const cancel = useMutation(api.ambulances.cancelBooking);
@@ -69,6 +76,47 @@ export default function GuardianDashboard() {
   const [editingId, setEditingId] = useState<Id<"ambulances"> | null>(null);
   const [nextStatus, setNextStatus] = useState<Record<string, string>>({});
   const [watchingBookingId, setWatchingBookingId] = useState<Id<"ambulanceBookings"> | null>(null);
+  const popupOnMount = useRef(true);
+  useEffect(() => {
+    if (!popupOnMount.current) return;
+    popupOnMount.current = false;
+    popupVisibleRef.current = true;
+    return () => {
+      popupVisibleRef.current = false;
+      popupOnMount.current = true;
+    };
+  }, []);
+  const isPopupEligible = (booking: IncomingBooking | null) => {
+    if (!booking) return false;
+    if (!profile?.approved) return false;
+    if (active.some((activeBooking) => activeBooking.id === booking.id)) return false;
+    if (shownIdRef.current === booking.id) return false;
+    if (popupDismissedRef.current) return false;
+    return true;
+  };
+  const effectiveTopBooking = useMemo(() => {
+    if (!isPopupEligible(topIncoming)) return null;
+    if (popupVisibleRef.current && shownIdRef.current === topIncoming?.id) return null;
+    return topIncoming;
+  }, [topIncoming]);
+  const popupVisible = popupVisibleRef.current && effectiveTopBooking ? effectiveTopBooking : null;
+  const popupVisible = popupVisibleRef.current && effectiveTopBooking;
+  const incomingSource = useMemo(() => overview?.incoming ?? [], [overview]);
+  const isPopupEligible = useCallback(
+    (booking: IncomingBooking | null) => {
+      if (!booking) return false;
+      if (!profile?.approved) return false;
+      if (active.some((activeBooking) => activeBooking.id === booking.id)) return false;
+      if (shownIdRef.current === booking.id) return false;
+      return true;
+    },
+    [active, profile?.approved],
+  );
+  const effectiveTopBooking = useMemo(() => {
+    if (!isPopupEligible(topIncoming)) return null;
+    if (popupVisibleRef.current && shownIdRef.current === topIncoming?.id) return null;
+    return topIncoming;
+  }, [topIncoming, isPopupEligible]);
   const [sharingFleetId, setSharingFleetId] = useState<Id<"ambulances"> | null>(null);
   const watchRef = useRef<number | null>(null);
   const fleetWatchRef = useRef<number | null>(null);
@@ -76,10 +124,37 @@ export default function GuardianDashboard() {
   const lastFleetShareAt = useRef(0);
 
   const incoming = useMemo(() => overview?.incoming ?? [], [overview]);
+  const topIncoming = useMemo(() => incoming.slice(0, 1)[0] ?? null, [incoming]);
   const active = useMemo(() => overview?.active ?? [], [overview]);
   const history = useMemo(() => overview?.history ?? [], [overview]);
   const ambulances = useMemo(() => overview?.ambulances ?? [], [overview]);
   const profile = overview?.profile;
+  const { isAuthenticated, isLoading: authLoading } = useConvexAuth();
+  const sound = useSound();
+  const shownIdRef = useRef<Id<"ambulanceBookings"> | null>(null);
+  const popupVisibleRef = useRef(false);
+  const popupDismissedRef = useRef(false);
+  const handlePopupDismiss = useCallback(() => {
+    if (topIncoming) {
+      shownIdRef.current = topIncoming.id;
+      popupDismissedRef.current = true;
+    }
+  }, [topIncoming]);
+  const popupMountedRef = useRef(true);
+  useEffect(() => {
+    popupMountedRef.current = true;
+    if (!popupVisibleRef.current && topIncoming && !popupDismissedRef.current) {
+      popupVisibleRef.current = true;
+    }
+    return () => {
+      popupMountedRef.current = false;
+    };
+  }, [topIncoming]);
+  const effectiveTopBooking = useMemo(() => {
+    if (!isPopupEligible(topIncoming)) return null;
+    if (popupVisibleRef.current && shownIdRef.current === topIncoming?.id) return null;
+    return topIncoming;
+  }, [topIncoming, isPopupEligible]);
 
   const navItems = useMemo(
     () => [
@@ -354,7 +429,7 @@ export default function GuardianDashboard() {
             </div>
           )}
 
-          {tab === "overview" && (
+                        {tab === "overview" && (
             <div className="space-y-4">
               <section className="rounded-2xl border border-border bg-card p-5">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -421,6 +496,33 @@ export default function GuardianDashboard() {
                 />
               )}
             </div>
+          )}
+
+          {isAuthenticated && profile?.approved && active.length === 0 && tab !== "requests" && (
+            <IncomingRequestPopup
+              booking={effectiveTopBooking}
+              incomingCount={incoming.length}
+              sound={sound}
+              onAccept={(booking) => {
+                void run(
+                  `accept-${booking.id}`,
+                  () => accept({ bookingId: booking.id }),
+                  "Booking accepted and guardian assigned.",
+                );
+              }}
+              onDecline={(booking) => {
+                void run(
+                  `decline-${booking.id}`,
+                  () =>
+                    reject({
+                      bookingId: booking.id,
+                      reason: "Declined by the ambulance provider.",
+                    }),
+                  "Request declined.",
+                );
+              }}
+              onDismiss={handlePopupDismiss}
+            />
           )}
 
           {tab === "fleet" && (

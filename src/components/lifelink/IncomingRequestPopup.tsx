@@ -54,42 +54,35 @@ export function IncomingRequestPopup({
   const [acknowledgedId, setAcknowledgedId] = useState<Id<"ambulanceBookings"> | null>(
     null,
   );
-  const mountRef = useRef(true);
+  const [seenOnce, setSeenOnce] = useState(false);
+  const [lastSeenId, setLastSeenId] = useState<Id<"ambulanceBookings"> | null>(null);
+  const [hasMounted, setHasMounted] = useState(false);
 
   // Track dismissal with state for render correctness
   const [dismissed, setDismissed] = useState(false);
 
-  // Track first-seen state using refs to avoid cascading renders.
-  const hasEverSeenRef = useRef(false);
-  const lastBookingIdRef = useRef<Id<"ambulanceBookings"> | null>(null);
-  const initializedRef = useRef(false);
-
+  // Mark the component as mounted and record the first-seen booking id
+  // after the initial render to avoid flash/read-on-render issues.
   useEffect(() => {
-    if (initializedRef.current) return;
-    initializedRef.current = true;
+    if (hasMounted) return;
+    setHasMounted(true);
     if (booking) {
-      hasEverSeenRef.current = true;
-      lastBookingIdRef.current = booking.id;
+      setSeenOnce(true);
+      setLastSeenId(booking.id);
     }
   }, [booking?.id]);
 
-  // Update acknowledgedId when booking changes (after initial mount)
-  useEffect(() => {
-    if (!mountRef.current || !booking) return;
-    setAcknowledgedId((prev) => (prev === booking.id ? prev : booking.id));
-  }, [booking?.id]);
-
-  // Read from refs for the suppress check
+  // Read from state for the suppress check.
   const shouldSuppressPopup =
     dismissed ||
     acknowledgedId === booking?.id ||
-    hasEverSeenRef.current ||
+    seenOnce ||
     sound.muted;
   const shouldSuppressDuplicate = shouldSuppressPopup;
 
   // Decide whether this particular booking should trigger a fresh alert.
   const isNewNotification =
-    booking != null && lastBookingIdRef.current !== booking.id && !shouldSuppressDuplicate;
+    booking != null && lastSeenId !== booking.id && !shouldSuppressDuplicate;
 
   if (!booking && incomingCount === 0) {
     return null;
@@ -108,6 +101,8 @@ export function IncomingRequestPopup({
       setPeeked(false);
       setMobileOpen(false);
       setDismissed(true);
+      setSeenOnce(false);
+      setLastSeenId(null);
       onDismiss();
     } finally {
       setLocalAccepting(false);
@@ -122,6 +117,8 @@ export function IncomingRequestPopup({
       setPeeked(false);
       setMobileOpen(false);
       setDismissed(true);
+      setSeenOnce(false);
+      setLastSeenId(null);
       onDismiss();
     } finally {
       setLocalDeclining(false);

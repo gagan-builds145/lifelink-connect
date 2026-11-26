@@ -1,5 +1,3 @@
-import { v } from "convex/values";
-
 /**
  * Map provider-reported vehicle details onto LifeLink's ambulance model
  * category where the provider gives enough signal to do so confidently.

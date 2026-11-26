@@ -82,9 +82,9 @@ export default function GuardianDashboard() {
 
   // Popup state - consolidated single block
   const sound = useSound();
-  const shownIdRef = useRef<Id<"ambulanceBookings"> | null>(null);
-  const popupVisibleRef = useRef(false);
-  const popupDismissedRef = useRef(false);
+  const [shownId, setShownId] = useState<Id<"ambulanceBookings"> | null>(null);
+  const [popupDismissed, setPopupDismissed] = useState(false);
+  const [popupVisibleState, setPopupVisibleState] = useState<Id<"ambulanceBookings"> | null>(null);
 
   const incoming = useMemo(() => overview?.incoming ?? [], [overview]);
   const topIncoming = useMemo(() => incoming.slice(0, 1)[0] ?? null, [incoming]);
@@ -97,43 +97,52 @@ export default function GuardianDashboard() {
     if (!topIncoming) return false;
     if (!profile?.approved) return false;
     if (active.some((ab) => ab.id === topIncoming.id)) return false;
-    if (shownIdRef.current === topIncoming.id) return false;
-    if (popupDismissedRef.current) return false;
+    if (shownId === topIncoming.id) return false;
+    if (popupDismissed) return false;
     return true;
   }, [topIncoming, active, profile?.approved]);
 
   const effectiveTopBooking = useMemo(() => {
     if (!isPopupEligible) return null;
-    if (popupVisibleRef.current && shownIdRef.current === topIncoming?.id) return null;
+    if (popupVisibleState === topIncoming?.id && shownId === topIncoming?.id) return null;
     return topIncoming ?? null;
-  }, [isPopupEligible, topIncoming]);
+  }, [isPopupEligible, topIncoming, popupVisibleState]);
 
-  const popupVisible = popupVisibleRef.current && effectiveTopBooking ? effectiveTopBooking : null;
+  const popupVisible = popupVisibleState;
 
   const handlePopupDismiss = () => {
     if (topIncoming) {
-      shownIdRef.current = topIncoming.id;
-      popupDismissedRef.current = true;
+      setShownId(topIncoming.id);
+      setPopupDismissed(true);
+      setPopupVisibleState(null);
     }
   };
 
-  // Mount/unmount popup gating
+  // Mount/unmount popup gating. The initial visibility is derived from the
+  // async query result, so we must set state during this effect.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     if (!topIncoming || !profile?.approved) return;
-    if (!popupVisibleRef.current && !popupDismissedRef.current) {
-      popupVisibleRef.current = true;
+    if (!popupVisibleState && !popupDismissed) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPopupVisibleState(topIncoming.id);
     }
     return () => {
-      popupVisibleRef.current = false;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPopupVisibleState(null);
     };
   }, [topIncoming, profile?.approved]);
 
-  // Reset dismissal when a new incoming arrives
+  // Reset dismissal when a new incoming arrives. The state updates keep
+  // the visible booking in sync with the reactive query snapshot.
   useEffect(() => {
-    if (topIncoming && shownIdRef.current !== topIncoming.id) {
-      popupDismissedRef.current = false;
+    if (topIncoming && shownId !== topIncoming.id) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPopupDismissed(false);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPopupVisibleState(null);
     }
-  }, [topIncoming]);
+  }, [topIncoming, shownId]);
 
   const { isAuthenticated } = useConvexAuth();
 
@@ -345,6 +354,98 @@ export default function GuardianDashboard() {
     );
   };
 
+  // Overview: render the Guardian application in card form according to its state
+  const overviewPanel = () => {
+    const p = profile as NonNullable<typeof profile>;
+    const o = overview as NonNullable<typeof overview>;
+    const amb = ambulances;
+    const status = (p.status as GuardianStatus) ?? "DRAFT";
+    const statusLabel = GUARDIAN_STATUS_LABELS[status];
+    const vehicle = amb[0];
+
+    if (amb.length === 0) {
+      return (
+        <div className="rounded-2xl border border-amber-300/70 bg-amber-50/70 p-4">
+          <h3 className="font-display text-lg font-bold text-amber-950">Register Your Vehicle</h3>
+          <p className="mt-1 text-[11.5px] text-amber-950/80">
+            You have not registered an ambulance vehicle yet. Your fleet stays hidden from nearby
+            searches and you cannot accept bookings until an administrator approves the application
+            and every required document is valid. You can still add vehicles, drivers and documents now.
+          </p>
+          <Button onClick={() => setTab("fleet")}>Open my fleet</Button>
+        </div>
+      );
+    }
+
+    if (!p.approved) {
+      let reason = p.reviewNote ?? "";
+      if (!reason) {
+        const compliance = o.issues.filter(
+          (issue) => !issue.startsWith("Guardian application") && !issue.startsWith("No ambulance"),
+        );
+        reason = compliance.join(" ");
+      }
+      if (!reason) reason = "No additional detail recorded.";
+      let nextLabel = "Continue to onboarding";
+      if (status === "REJECTED") nextLabel = "Provide corrections and resubmit";
+      else if (status === "SUSPENDED") nextLabel = "Contact support to reopen this application";
+      else if (status === "RESUBMISSION_REQUIRED") nextLabel = "Resubmit the corrected application";
+
+      return (
+        <div className="rounded-2xl border border-amber-300/70 bg-amber-50/70 p-4">
+          <h3 className="font-display text-lg font-bold text-amber-950">{statusLabel}</h3>
+          <p className="mt-1 text-[11.5px] text-amber-950/80">{reason}</p>
+          <Button onClick={() => setTab("fleet")}>{nextLabel}</Button>
+        </div>
+      );
+    }
+
+    const documentIssues = o.issues.filter(
+      (issue) =>
+        issue.includes("expired") || issue.includes("invalid") || issue.includes("missing"),
+    );
+    if (documentIssues.length > 0) {
+      return (
+        <div className="rounded-2xl border border-amber-300/70 bg-amber-50/70 p-4">
+          <h3 className="font-display text-lg font-bold text-amber-950">Documents need attention</h3>
+          <ul className="mt-2 list-disc pl-4 text-[11.5px] text-amber-950/80">
+            {documentIssues.map((issue) => (
+              <li key={issue}>{issue}</li>
+            ))}
+          </ul>
+          <p className="mt-2 text-[11.5px] text-amber-950/80">
+            Upload refreshed versions of the affected documents, then choose to resubmit.
+          </p>
+          <Button onClick={() => setTab("fleet")} variant="outline">
+            Open documents checklist
+          </Button>
+        </div>
+      );
+    }
+
+    // Approved and a vehicle is registered: show the fleet and its availability.
+    return (
+      <div className="rounded-2xl border border-border bg-card p-4">
+        <h3 className="font-display text-lg font-bold text-foreground">Registered vehicle</h3>
+        <div className="mt-2 grid gap-2 text-sm text-foreground">
+          <p>Registration: {vehicle.registrationNumber}</p>
+          <p>Model: {vehicle.model} · Type: {AMBULANCE_TYPE_LABELS[vehicle.type]}</p>
+          <p>Capacity: {vehicle.capacity} patients</p>
+          <p>Driver: {vehicle.driverName}</p>
+        </div>
+        <div className="mt-3 flex items-center gap-2">
+          <StatusBadge
+            status={vehicle.available ? "verified" : "pending"}
+            label={vehicle.available ? "Available" : "Unavailable"}
+          />
+          <Button onClick={() => setTab("fleet")} size="sm">
+            Open my fleet
+          </Button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <DashboardShell
       roleLabel="Guardian"
@@ -454,14 +555,7 @@ export default function GuardianDashboard() {
 
               </section>
 
-              {ambulances.length === 0 && (
-                <EmptyState
-                  icon={Truck}
-                  title="Add your first ambulance"
-                  description="Register a vehicle and driver before accepting bookings."
-                  action={<Button onClick={() => setTab("fleet")}>Open my fleet</Button>}
-                />
-              )}
+              {overviewPanel()}
             </div>
           )}
 

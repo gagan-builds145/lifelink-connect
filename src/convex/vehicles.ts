@@ -8,10 +8,7 @@ import {
   requireRole,
   requireText,
 } from "./lib/helpers";
-import {
-  normalizeVehiclePayload,
-  ambulanceTypeFromDetails,
-} from "./lib/vehicles";
+import { normalizeVehiclePayload } from "./lib/vehicles";
 
 type AnyQueryBuilder = any;
 

@@ -186,11 +186,17 @@ async function notifyCompatibleDonors(
     const area = location.sameCity
       ? request.city
       : `${request.city}, ${requestState ?? "same state"}`;
+    const requestStatusLabel =
+      request.status === "pending"
+        ? "A new"
+        : request.status === "under_verification"
+          ? "A request under review"
+          : "A verified";
     await notifyUser(ctx, donor.userId, {
       title: location.sameCity
         ? `Donor match near ${request.city}`
         : `Emergency donor match · ${area}`,
-      body: `A verified ${URGENCY_LABELS[request.urgency].toLowerCase()} request needs ${request.component.replace("_", " ")} at a hospital in ${area}. Open your dashboard to view the masked request.`,
+      body: `${requestStatusLabel} ${URGENCY_LABELS[request.urgency].toLowerCase()} request needs ${request.component.replace("_", " ")} at a hospital in ${area}. Open your dashboard to view the masked request.`,
       kind: "match",
       requestId: request._id,
       link: "/donor/dashboard",
@@ -235,7 +241,11 @@ export async function recordRequestAccessDenied(
 
 export const create = mutation({
   args: {
-    source: v.union(v.literal("requestor"), v.literal("hospital")),
+    source: v.union(
+      v.literal("requestor"),
+      v.literal("hospital"),
+      v.literal("red_cross"),
+    ),
     requestorName: v.string(),
     requestorType: requestorTypeValidator,
     requesterPhone: v.string(),
@@ -278,14 +288,31 @@ export const create = mutation({
     await enforceRateLimit(ctx, `request-create:${user._id}`, 6);
 
     const role = roleOf(user);
-    let organization = null;
+    let organization: Doc<"organizations"> | null = null;
+    let actorRoleLabel: "hospital" | "red_cross";
     if (args.source === "hospital") {
-      if (!["hospital", "admin"].includes(role)) {
-        throw new Error("Only verified hospital staff can submit a hospital request.");
+      if (role !== "hospital" && role !== "admin") {
+        throw new Error(
+          "Only verified hospital staff can submit a hospital blood request. This account cannot create one.",
+        );
       }
       organization = await requireOrganization(ctx, user, ["hospital"]);
-    } else if (!["community", "requestor", "donor", "user", "member"].includes(role)) {
-      throw new Error("This account cannot submit a requestor request.");
+      actorRoleLabel = "hospital";
+    } else if (args.source === "red_cross") {
+      if (role !== "red_cross" && role !== "admin") {
+        throw new Error(
+          "Only verified Red Cross staff can submit a blood request on behalf of a facility. This account cannot create one.",
+        );
+      }
+      organization = await requireOrganization(ctx, user, ["red_cross", "blood_bank"]);
+      actorRoleLabel = "red_cross";
+    } else {
+      // requestor source: blood request creation is now limited to verified
+      // hospitals and Red Cross organizations. Requestors can still view and
+      // manage requests they created previously, but cannot create new ones.
+      throw new Error(
+        "Blood request creation is limited to verified hospitals and Red Cross organizations. This account cannot create a blood request.",
+      );
     }
 
     const units = requireUnits(args.units);
@@ -340,7 +367,7 @@ export const create = mutation({
       patientRef,
       patientAge: args.patientAge,
       hospitalName,
-      hospitalOrgId: organization?._id,
+      hospitalOrgId: args.source === "hospital" ? organization?._id : undefined,
       city,
       area: args.area,
       bloodGroup: args.bloodGroup,
@@ -367,7 +394,7 @@ export const create = mutation({
       ctx,
       request,
       "pending",
-      args.source === "hospital" ? "hospital" : "requestor",
+      actorRoleLabel,
       user._id,
       "Request submitted and queued for verification.",
     );
@@ -389,13 +416,28 @@ export const create = mutation({
         link: "/hospital/dashboard",
       });
     }
+    if (args.source === "red_cross" && organization) {
+      await notifyOrganization(ctx, organization._id, {
+        title: `Request ${requestId} created on behalf of ${hospitalName}`,
+        body: `The request is pending Red Cross verification. Track its status from the blood bank dashboard.`,
+        kind: "request",
+        requestId: id,
+        link: "/red-cross/dashboard",
+      });
+    }
+
+    // Notify eligible, consented donors in the request city so the request
+    // reaches recipients in real time instead of only after Red Cross approval.
+    // The notification wording is pending-aware: it does not claim the request
+    // has been verified when it is still queued for review.
+    await notifyCompatibleDonors(ctx, request);
 
     await audit(ctx, {
       actor: user,
       action: "request.created",
       entityType: "bloodRequest",
       entityId: requestId,
-      detail: `${args.bloodGroup} ${args.component} x${units} for ${city}; urgency ${args.urgency}.`,
+      detail: `${args.bloodGroup} ${args.component} x${units} for ${city}; urgency ${args.urgency}; created by ${actorRoleLabel}.`,
       organizationId: organization?._id,
     });
 

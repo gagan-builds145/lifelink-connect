@@ -263,7 +263,11 @@ const schema = defineSchema(
       requestId: v.string(),
       /** Client-generated retry key; a double submit returns the same request. */
       clientRequestId: v.optional(v.string()),
-      source: v.union(v.literal("requestor"), v.literal("hospital")),
+      source: v.union(
+        v.literal("requestor"),
+        v.literal("hospital"),
+        v.literal("red_cross"),
+      ),
       createdByUserId: v.optional(v.id("users")),
       createdByOrgId: v.optional(v.id("organizations")),
       requestorName: v.string(),

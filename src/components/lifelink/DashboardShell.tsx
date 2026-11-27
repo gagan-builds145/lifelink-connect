@@ -10,6 +10,8 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import {
   ExternalLink,
   Leaf,
@@ -19,9 +21,13 @@ import {
   Settings2,
   ShieldCheck,
   Sparkles,
+  Copy,
+  Check,
   type LucideIcon,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
+import { LifeLinkIdBadge } from "./LifeLinkIdBadge";
+import { toast } from "sonner";
 import { Link } from "react-router";
 import { LifeLinkLogo } from "./Logo";
 import { LogoutDialog, useLogoutConfirmation } from "./LogoutConfirmation";
@@ -76,6 +82,7 @@ export function DashboardShell({
   accentIcon?: LucideIcon;
 }) {
   const { user } = useAuth();
+  const myId = useQuery(api.profiles.myLifeLinkId);
   const logout = useLogoutConfirmation();
   const location = useLocationPermission(user?._id);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -230,6 +237,11 @@ export function DashboardShell({
               <h1 className="truncate font-display text-[15px] font-bold sm:text-base">
                 {title}
               </h1>
+              {myId?.lifeLinkId && (
+                <div className="mt-1">
+                  <LifeLinkIdBadge />
+                </div>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -257,13 +269,18 @@ export function DashboardShell({
                   <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-foreground text-[10px] font-bold text-background">
                     {initials(user?.name ?? user?.email)}
                   </span>
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <p className="truncate text-[12.5px] font-semibold">
                       {user?.name ?? "LifeLink account"}
                     </p>
                     <p className="truncate text-[10.5px] text-muted-foreground">
                       {user?.email ?? roleKey}
                     </p>
+                    {myId?.lifeLinkId && (
+                      <p className="mt-0.5 font-mono text-[10px] font-semibold text-primary">
+                        {myId.lifeLinkId}
+                      </p>
+                    )}
                   </div>
                 </div>
                 {onProfile && (

@@ -123,14 +123,19 @@ export const myMedicalRecords = query({
       .filter((q) => q.eq(q.field("purpose"), "donor_medical_record"))
       .collect();
 
-    const orgById = new Map((await ctx.db.query("organizations").collect()).map((o) => [o._id, o]));
+    const users = await ctx.db.query("users").collect();
+    const userById = new Map(users.map((u) => [u._id, u]));
+    const orgs = await ctx.db.query("organizations").collect();
+    const orgById = new Map(orgs.map((o) => [o._id, o]));
 
     return {
       lifeLinkId: idEntry?.lifeLinkId ?? donor.donorId,
       records: records
         .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
         .map((r) => {
-          const uploaderOrg = r.uploadedByUserId ? orgById.get(r.uploadedByUserId) : null;
+          const uploaderUser = r.uploadedByUserId ? userById.get(r.uploadedByUserId) : null;
+          const uploaderOrgId = uploaderUser?.organizationId;
+          const uploaderOrg = uploaderOrgId ? orgById.get(uploaderOrgId) : null;
           return {
             _id: r._id,
             documentId: r._id,
@@ -260,7 +265,10 @@ export const donorMedicalRecordsForHospital = query({
       .filter((q) => q.eq(q.field("purpose"), "donor_medical_record"))
       .collect();
 
-    const orgById = new Map((await ctx.db.query("organizations").collect()).map((o) => [o._id, o]));
+    const users = await ctx.db.query("users").collect();
+    const userById = new Map(users.map((u) => [u._id, u]));
+    const orgs = await ctx.db.query("organizations").collect();
+    const orgById = new Map(orgs.map((o) => [o._id, o]));
 
     return {
       lifeLinkId: entry.lifeLinkId,
@@ -275,7 +283,9 @@ export const donorMedicalRecordsForHospital = query({
       records: records
         .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
         .map((r) => {
-          const uploaderOrg = r.uploadedByUserId ? orgById.get(r.uploadedByUserId) : null;
+          const uploaderUser = r.uploadedByUserId ? userById.get(r.uploadedByUserId) : null;
+          const uploaderOrgId = uploaderUser?.organizationId;
+          const uploaderOrg = uploaderOrgId ? orgById.get(uploaderOrgId) : null;
           return {
             _id: r._id,
             documentId: r._id,
@@ -317,6 +327,7 @@ export const getMedicalRecordUrl = mutation({
     if (meta.purpose !== "donor_medical_record") throw safeError("That is not a donor medical record.");
     if (meta.scanStatus !== "clean") throw safeError("This document is quarantined until malware scanning succeeds.");
 
+    if (!meta.donorUserId) throw new Error("Document metadata is incomplete.");
     const donor = await getDonorProfile(ctx, meta.donorUserId);
     if (!donor) throw new Error("Donor profile not found.");
 

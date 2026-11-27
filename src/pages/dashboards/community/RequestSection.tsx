@@ -3,7 +3,6 @@ import type { Id } from "@/convex/_generated/dataModel";
 import type { FunctionReturnType } from "convex/server";
 import { ActivateRequestorPanel } from "@/components/lifelink/community/Activations";
 import { SectionHeading, SkeletonPanel } from "@/components/lifelink/community/shared";
-import { RequestForm } from "@/components/lifelink/RequestForm";
 import {
   BloodGroupChip,
   DemoDataBanner,
@@ -52,8 +51,7 @@ import {
   type Component,
   type Urgency,
 } from "@/lib/blood";
-import { friendlyError } from "@/lib/utils";
-import { useMutation, useQuery } from "convex/react";
+import { useQuery } from "convex/react";
 import {
   AlertTriangle,
   ArrowRight,
@@ -65,7 +63,6 @@ import {
   Loader2,
   MapPin,
   Pencil,
-  Plus,
   Search,
   ShieldCheck,
   Siren,
@@ -98,7 +95,7 @@ export function RequestSection({
   user: User;
   onNavigate: (section: SectionKey) => void;
 }) {
-  const [tab, setTab] = useState<"requests" | "new">("requests");
+  const [tab, setTab] = useState<"requests">("requests");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("active");
   const [trackedId, setTrackedId] = useState<Id<"bloodRequests"> | null>(null);
@@ -117,7 +114,6 @@ export function RequestSection({
 
   const requests = useQuery(api.requests.mine);
   const updateStatus = useMutation(api.requests.updateStatus);
-  const updateOwnRequest = useMutation(api.requests.updateOwnRequest);
   const tracked = useQuery(api.requests.getDetail, trackedId ? { id: trackedId } : "skip");
 
   const stats = useMemo(() => {
@@ -269,12 +265,7 @@ export function RequestSection({
       <SectionHeading
         eyebrow="Request blood"
         title="Requestor functionality"
-        description="Create a request, track allocation and transfers, confirm receipts and review your history — without leaving this dashboard."
-        actions={
-          <Button className="gap-1.5" onClick={() => setTab("new")}>
-            <Plus className="size-4" /> New request
-          </Button>
-        }
+        description="Track allocation and transfers, confirm receipts and review your history. Only verified hospitals and Red Cross organizations can create new blood requests."
       />
 
       {demoPresent && <DemoDataBanner />}
@@ -291,96 +282,55 @@ export function RequestSection({
         aria-label="Request functionality"
         className="flex w-fit gap-1 rounded-xl border border-border bg-card p-1"
       >
-        {[
-          { key: "requests" as const, label: "My requests" },
-          { key: "new" as const, label: "Create request" },
-        ].map((entry) => (
-          <button
-            key={entry.key}
-            role="tab"
-            type="button"
-            aria-selected={tab === entry.key}
-            onClick={() => setTab(entry.key)}
-            className={
-              tab === entry.key
-                ? "rounded-lg bg-foreground px-3 py-1.5 text-[11.5px] font-semibold text-background"
-                : "rounded-lg px-3 py-1.5 text-[11.5px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
-            }
-          >
-            {entry.label}
-          </button>
-        ))}
+        <button
+          role="tab"
+          type="button"
+          aria-selected={tab === "requests"}
+          onClick={() => setTab("requests")}
+          className={
+            tab === "requests"
+              ? "rounded-lg bg-foreground px-3 py-1.5 text-[11.5px] font-semibold text-background"
+              : "rounded-lg px-3 py-1.5 text-[11.5px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+          }
+        >
+          My requests
+        </button>
       </div>
 
-      {tab === "new" && (
-        <div className="grid gap-4 lg:grid-cols-[1.35fr_0.65fr] lg:items-start">
-          <section className="rounded-2xl border border-border bg-card p-5 sm:p-6">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h2 className="font-display text-xl font-extrabold">Submit a blood request</h2>
-                <p className="mt-1 text-[12px] leading-5 text-muted-foreground">
-                  Required fields are validated here and again on the server. You will get a
-                  unique request ID immediately.
-                </p>
-              </div>
-              <span className="hidden shrink-0 rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.08em] text-teal-800 sm:inline-flex">
-                Shared request ledger
-              </span>
-            </div>
-            <div className="mt-5">
-              <RequestForm
-                source="requestor"
-                defaultRequestorName={requestor.fullName ?? user.name ?? ""}
-                defaultPhone={requestor.phone ?? ""}
-                defaultCity={requestor.city ?? user.city ?? "Pune"}
-                defaultEmail={user.email ?? ""}
-                onCreated={(created) => {
-                  toast.success(`Request ${created.requestId} submitted`, {
-                    description: "Track verification, allocation and receipt from My requests.",
-                  });
-                  setTab("requests");
-                  setSearch("");
-                  setStatusFilter("active");
-                }}
-              />
-            </div>
-          </section>
-          <aside className="space-y-3">
-            <div className="rounded-2xl border border-border bg-card p-4">
-              <h3 className="text-[12.5px] font-bold">Before you submit</h3>
-              <ul className="mt-3 space-y-2.5">
-                {[
-                  "Confirm the hospital can receive the component.",
-                  "Use the exact patient reference from hospital records.",
-                  "Attach a prescription if one is available.",
-                  "Mark Emergency only when delay risks a life.",
-                ].map((point) => (
-                  <li key={point} className="flex items-start gap-2 text-[11px] leading-5 text-muted-foreground">
-                    <CheckCircle2 className="mt-0.5 size-3 shrink-0 text-teal-600" />
-                    {point}
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div className="rounded-2xl border border-border bg-muted/25 p-4">
-              <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-muted-foreground">
-                <AlertTriangle className="size-3.5 text-amber-600" /> Safety
+      {tab === "requests" && (
+        <>
+        <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="size-5 shrink-0 text-amber-600" />
+            <div>
+              <h3 className="font-display text-lg font-extrabold">Blood request creation is limited</h3>
+              <p className="mt-1 text-[12px] leading-5 text-muted-foreground">
+                New blood requests can only be created by verified hospitals and Red Cross
+                organizations. This keeps requests clinically vetted and tied to a verified
+                facility from the start.
               </p>
-              <p className="mt-1.5 text-[11px] leading-5 text-muted-foreground">
-                LifeLink cannot guarantee stock. Blood group labels alone do not guarantee
-                compatibility; screening and cross-matching are mandatory.
+              <p className="mt-2 text-[11.5px] leading-5 text-muted-foreground">
+                If you need blood, contact a hospital directly or ask a verified facility to
+                submit a request on your behalf. You can still track any request you created
+                previously from this tab, and check reported stock availability.
               </p>
             </div>
-            <Button asChild variant="outline" className="w-full gap-1.5 text-[11.5px]">
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button asChild variant="outline" className="gap-1.5 text-[11.5px]">
               <Link to="/blood-search">
                 <Search className="size-3.5" /> Check reported availability
               </Link>
             </Button>
-          </aside>
+            <Button asChild variant="ghost" className="gap-1.5 text-[11.5px]">
+              <Link to="/ambulance?auto=1">
+                <Siren className="size-3.5" /> Arrange transport
+              </Link>
+            </Button>
+          </div>
         </div>
-      )}
 
-      {tab === "requests" && (
+
         <div className="space-y-4">
           <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
@@ -424,10 +374,12 @@ export function RequestSection({
             <EmptyState
               icon={ClipboardList}
               title="No requests submitted"
-              description="Create a request with the patient reference, hospital, component and units. You can upload a prescription during submission."
+              description="Previous requests, if any, appear here. New blood requests can only be created by verified hospitals and Red Cross organizations."
               action={
-                <Button size="sm" onClick={() => setTab("new")}>
-                  <Plus className="mr-1.5 size-3.5" /> Create your first request
+                <Button asChild variant="outline" size="sm">
+                  <Link to="/blood-search">
+                    <Search className="mr-1 size-3" /> Check availability
+                  </Link>
                 </Button>
               }
             />

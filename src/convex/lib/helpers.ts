@@ -406,12 +406,9 @@ export async function getOrCreateLifeLinkId(
     .withIndex("by_user", (q) => q.eq("userId", user._id))
     .unique();
   if (existing) {
-    const kindNow = lifeLinkIdKind(existing.lifeLinkId);
-    if (kindNow !== kind) {
-      throw new Error(
-        "This account already has a LifeLink ID. Existing IDs are never reissued under a new format.",
-      );
-    }
+    // One permanent LifeLink ID per account. The prefix reflects the role at
+    // first creation and is never changed, even if the account later activates
+    // additional roles (for example a donor who also becomes a requestor).
     return existing.lifeLinkId;
   }
   const prefix = LIFELINK_ID_PREFIXES[kind];

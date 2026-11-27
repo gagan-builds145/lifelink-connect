@@ -1,1 +1,0 @@
-import{j as o}from"./framer-motion-i7nd1XFy.js";import{d as r,N as s}from"./react-vendor-CWcBGOK2.js";function c(){const a=r(),t=new URLSearchParams(a.search);return t.set("section","request"),o.jsx(s,{to:`/community/dashboard?${t.toString()}`,replace:!0})}export{c as default};

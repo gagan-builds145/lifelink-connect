@@ -368,6 +368,114 @@ export function requireUnits(value: number) {
  * one-time codes. If a real IP or session ref is available upstream, pass it
  * here trimmed and truncated; otherwise fall back to a stable placeholder.
  */
+export type LifeLinkIdKind = "LL-D" | "LL-P" | "LL-HOSP" | "LL-RC" | "LL-GUA" | "LL-ADM";
+
+/**
+ * Role-appropriate LifeLink ID prefixes. The format is fixed per role and must
+ * not be changed for an existing account. An account keeps the prefix it was
+ * created with even if its active workspace later changes.
+ */
+export const LIFELINK_ID_PREFIXES: Record<LifeLinkIdKind, string> = {
+  "LL-D": "LL-D",
+  "LL-P": "LL-P",
+  "LL-HOSP": "LL-HOSP",
+  "LL-RC": "LL-RC",
+  "LL-GUA": "LL-GUA",
+  "LL-ADM": "LL-ADM",
+};
+
+export const LIFELINK_ID_PATTERN = /^LL-(D|P|HOSP|RC|GUA|ADM)-\d{4,}$/;
+
+export function isValidLifeLinkId(value: unknown): value is string {
+  return typeof value === "string" && LIFELINK_ID_PATTERN.test(value);
+}
+
+export function lifeLinkIdKind(id: string): LifeLinkIdKind {
+  const m = id.match(/^LL-(D|P|HOSP|RC|GUA|ADM)-\d{4,}$/);
+  if (!m) throw new Error("Invalid LifeLink ID format.");
+  return m[1] as LifeLinkIdKind;
+}
+
+export async function getOrCreateLifeLinkId(
+  ctx: MutationCtx,
+  user: Doc<"users">,
+  kind: LifeLinkIdKind,
+): Promise<string> {
+  const existing = await ctx.db
+    .query("lifeLinkIds")
+    .withIndex("by_user", (q) => q.eq("userId", user._id))
+    .unique();
+  if (existing) {
+    const kindNow = lifeLinkIdKind(existing.lifeLinkId);
+    if (kindNow !== kind) {
+      throw new Error(
+        "This account already has a LifeLink ID. Existing IDs are never reissued under a new format.",
+      );
+    }
+    return existing.lifeLinkId;
+  }
+  const prefix = LIFELINK_ID_PREFIXES[kind];
+  const counterKey = `lifelink:${kind}`;
+  const counter = await ctx.db
+    .query("counters")
+    .withIndex("by_key", (q) => q.eq("key", counterKey))
+    .unique();
+  const next = (counter?.value ?? 0) + 1;
+  if (counter) {
+    await ctx.db.patch(counter._id, { value: next });
+  } else {
+    await ctx.db.insert("counters", { key: counterKey, value: next });
+  }
+  const lifeLinkId = `${prefix}-${String(next).padStart(4, "0")}`;
+  await requireUniqueLifeLinkId(ctx, lifeLinkId);
+  await ctx.db.insert("lifeLinkIds", {
+    userId: user._id,
+    lifeLinkId,
+    roleAtCreation: kind,
+    createdAt: Date.now(),
+  });
+  return lifeLinkId;
+}
+
+export async function findLifeLinkIdByValue(ctx: Ctx, lifeLinkId: string): Promise<Doc<"lifeLinkIds"> | null> {
+  return await ctx.db
+    .query("lifeLinkIds")
+    .withIndex("by_life_link_id", (q) => q.eq("lifeLinkId", lifeLinkId))
+    .unique();
+}
+
+export async function requireUniqueLifeLinkId(
+  ctx: MutationCtx,
+  lifeLinkId: string,
+): Promise<void> {
+  if (!LIFELINK_ID_PATTERN.test(lifeLinkId)) {
+    throw new Error("That LifeLink ID format is invalid.");
+  }
+  const existing = await ctx.db
+    .query("lifeLinkIds")
+    .withIndex("by_life_link_id", (q) => q.eq("lifeLinkId", lifeLinkId))
+    .unique();
+  if (existing) {
+    throw new Error("That LifeLink ID is already in use by another account.");
+  }
+}
+
+export async function backfillLifeLinkIdsForUser(
+  ctx: MutationCtx,
+  userId: Id<"users">,
+  kind: LifeLinkIdKind,
+): Promise<string> {
+  const user = await ctx.db.get(userId);
+  if (!user) throw new Error("Account not found.");
+  if (user.isAnonymous) throw new Error("Guest accounts cannot receive a LifeLink ID.");
+  const existing = await ctx.db
+    .query("lifeLinkIds")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .unique();
+  if (existing) return existing.lifeLinkId;
+  return getOrCreateLifeLinkId(ctx, user, kind);
+}
+
 export function normalizeClientRef(value: string | null | undefined): string | undefined {
   if (!value) return undefined;
   const trimmed = value.trim();

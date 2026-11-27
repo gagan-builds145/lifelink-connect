@@ -334,6 +334,28 @@ export const aiTrainingRunStatusValidator = v.union(
   v.literal("cancelled"),
 );
 
+export const medicalDocumentKindValidator = v.union(
+  v.literal("discharge_summary"),
+  v.literal("blood_test_report"),
+  v.literal("laboratory_report"),
+  v.literal("blood_group_report"),
+  v.literal("diagnosis_report"),
+  v.literal("treatment_report"),
+  v.literal("prescription"),
+  v.literal("operation_surgery_report"),
+  v.literal("medical_certificate"),
+  v.literal("other_medical"),
+);
+
+export const medicalRecordActionValidator = v.union(
+  v.literal("upload"),
+  v.literal("view"),
+  v.literal("download"),
+  v.literal("search"),
+  v.literal("consent_grant"),
+  v.literal("consent_revoke"),
+);
+
 export const aiDatasetStatusValidator = v.union(
   v.literal("active"),
   v.literal("archived"),

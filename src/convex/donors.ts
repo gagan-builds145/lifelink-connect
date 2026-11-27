@@ -8,9 +8,42 @@ import {
   requireRole,
   requireUser,
   roleOf,
+  safeError,
 } from "./lib/helpers";
 import { bloodGroupValidator, componentValidator } from "./validators";
 import { daysSince, donationGuidance } from "../lib/blood";
+
+export const lookupDonorByLifeLinkId = query({
+  args: { lifeLinkId: v.string() },
+  handler: async (ctx, args) => {
+    const user = await requireRole(ctx, ["hospital", "red_cross", "admin"]);
+    const entry = await ctx.db
+      .query("lifeLinkIds")
+      .withIndex("by_life_link_id", (q) => q.eq("lifeLinkId", args.lifeLinkId))
+      .unique();
+    if (!entry) throw safeError("No donor matches that LifeLink ID.");
+    const donor = await getDonorProfile(ctx, entry.userId);
+    if (!donor) throw safeError("That LifeLink ID is not linked to a donor profile.");
+    const canSeeContact = donor.shareContact && roleOf(user) === "red_cross";
+    return {
+      _id: donor._id,
+      donorId: donor.donorId,
+      lifeLinkId: entry.lifeLinkId,
+      fullName: canSeeContact ? donor.fullName : "Donor (contact protected)",
+      bloodGroup: donor.bloodGroup,
+      city: donor.city,
+      area: donor.area ?? null,
+      available: donor.available,
+      lastDonationDate: donor.lastDonationDate ?? null,
+      preferredCenter: donor.preferredCenter ?? null,
+      phone: canSeeContact ? donor.phone : null,
+      email: canSeeContact ? donor.email ?? null : null,
+      shareContact: donor.shareContact,
+      guidance: donationGuidance(donor.lastDonationDate),
+      isDemo: donor.isDemo ?? false,
+    };
+  },
+});
 
 export const directory = query({
   args: {

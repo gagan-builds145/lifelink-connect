@@ -73,7 +73,7 @@ export const attachDocument = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
-    const stored = await ctx.db.system.get(args.storageId);
+    const stored = await ctx.storage.get(args.storageId);
     if (!stored) throw new Error("The uploaded file could not be found.");
     if (!ALLOWED.includes(args.contentType)) {
       throw new Error("Only PDF, JPEG and PNG documents are accepted.");
@@ -86,7 +86,7 @@ export const attachDocument = mutation({
     }
 
     // Backend-only signature check. Never trust the browser content type alone.
-    const blob = await ctx.storage.get(args.storageId);
+    const blob = stored;
     if (!blob || !(await hasValidSignature(blob, args.contentType))) {
       throw new Error("The file content does not match its declared PDF/JPEG/PNG type.");
     }

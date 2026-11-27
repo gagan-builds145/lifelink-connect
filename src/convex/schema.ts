@@ -8,6 +8,7 @@ import {
   guardianDocumentKindValidator,
   guardianDocumentStatusValidator,
   userRolesValidator,
+  medicalDocumentKindValidator,
   aiDatasetStatusValidator,
   aiModelKindValidator,
   aiModelStatusValidator,
@@ -115,6 +116,20 @@ const schema = defineSchema(
       .index("by_donor_id", ["donorId"])
       .index("by_city_blood", ["city", "bloodGroup"])
       .index("by_availability", ["available"]),
+
+    /** Permanent, unique public LifeLink IDs for accounts that present one.
+     * One row per account, generated once and never changed. The format is
+     * fixed per role, but an existing ID is never rewritten to a new format.
+     */
+    lifeLinkIds: defineTable({
+      userId: v.id("users"),
+      /** Stable public identifier, e.g. LL-D-0001, LL-HOSP-0001. */
+      lifeLinkId: v.string(),
+      roleAtCreation: v.string(),
+      createdAt: v.number(),
+    })
+      .index("by_user", ["userId"])
+      .index("by_life_link_id", ["lifeLinkId"]),
 
     requestorProfiles: defineTable({
       userId: v.id("users"),
@@ -391,12 +406,25 @@ const schema = defineSchema(
       // metadata below is queryable, and admin-only reads go through
       // documents.getUrl.
       purpose: v.optional(
-        v.union(v.literal("blood_request"), v.literal("guardian_onboarding")),
+        v.union(
+          v.literal("blood_request"),
+          v.literal("guardian_onboarding"),
+          v.literal("donor_medical_record"),
+        ),
       ),
       guardianUserId: v.optional(v.id("users")),
+      /** For donor medical records: the donor who owns this document. */
+      donorUserId: v.optional(v.id("users")),
       ambulanceId: v.optional(v.id("ambulances")),
-      documentKind: v.optional(guardianDocumentKindValidator),
+      documentKind: v.optional(
+        v.union(guardianDocumentKindValidator, medicalDocumentKindValidator),
+      ),
+      /** For donor medical records: the clinical document date (e.g. 2026-01-15). */
       expiryDate: v.optional(v.string()),
+      /** Uploading hospital's recorded doctor name, where applicable. */
+      doctorName: v.optional(v.string()),
+      /** Uploading hospital's notes about the document. */
+      notes: v.optional(v.string()),
       status: v.optional(guardianDocumentStatusValidator),
       reviewNote: v.optional(v.string()),
       /** Quarantine state. Only a clean scan may be opened or reviewed. */
@@ -419,7 +447,10 @@ const schema = defineSchema(
       .index("by_uploader", ["uploadedByUserId"])
       .index("by_request", ["requestId"])
       .index("by_guardian", ["guardianUserId"])
-      .index("by_ambulance", ["ambulanceId"]),
+      .index("by_ambulance", ["ambulanceId"])
+      .index("by_donor", ["donorUserId"])
+      .index("by_donor_record", ["donorUserId", "documentKind"])
+      .index("by_purpose", ["purpose"]),
 
     notifications: defineTable({
       userId: v.id("users"),
@@ -775,6 +806,62 @@ const schema = defineSchema(
       detail: v.optional(v.string()),
       createdAt: v.number(),
     }).index("by_user", ["userId"]),
+
+    /**
+     * Medical-record sharing consent. A donor grants a specific hospital
+     * permission to view a specific document, or all of the donor's records,
+     * for a bounded time. Consent is revocable and never implies identity
+     * disclosure outside the authorized hospital.
+     */
+    donorMedicalConsents: defineTable({
+      donorUserId: v.id("users"),
+      donorProfileId: v.id("donorProfiles"),
+      hospitalOrgId: v.id("organizations"),
+      scope: v.union(
+        v.literal("all_records"),
+        v.literal("specific_document"),
+      ),
+      documentId: v.optional(v.id("documentMetadata")),
+      grantedAt: v.number(),
+      expiresAt: v.number(),
+      revokedAt: v.optional(v.number()),
+      updatedAt: v.number(),
+    })
+      .index("by_donor", ["donorUserId"])
+      .index("by_hospital", ["hospitalOrgId"])
+      .index("by_document", ["documentId"])
+      .index("by_active", ["donorUserId", "hospitalOrgId"]),
+
+    /**
+     * Medical-record access log. Every view/download/upload/search is recorded
+     * here so the donor and administrators can see who touched which record and
+     * when. This is immutable audit history and is never deleted. `recordId` and
+     * `donorProfileId` are optional so non-document actions (search, consent grant/
+     * revoke) can be logged without a specific record.
+     */
+    medicalRecordAccessLogs: defineTable({
+      recordId: v.optional(v.id("documentMetadata")),
+      donorUserId: v.id("users"),
+      donorProfileId: v.optional(v.id("donorProfiles")),
+      actorUserId: v.id("users"),
+      actorRole: v.string(),
+      hospitalOrgId: v.optional(v.id("organizations")),
+      action: v.union(
+        v.literal("upload"),
+        v.literal("view"),
+        v.literal("download"),
+        v.literal("search"),
+        v.literal("consent_grant"),
+        v.literal("consent_revoke"),
+      ),
+      detail: v.optional(v.string()),
+      createdAt: v.number(),
+    })
+      .index("by_record", ["recordId"])
+      .index("by_donor", ["donorUserId"])
+      .index("by_actor", ["actorUserId"])
+      .index("by_hospital", ["hospitalOrgId"])
+      .index("by_action", ["action"]),
 
     donorInvitations: defineTable({
       requestId: v.optional(v.id("bloodRequests")),

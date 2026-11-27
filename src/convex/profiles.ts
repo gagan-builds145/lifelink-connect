@@ -2,9 +2,14 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import {
   audit,
+  backfillLifeLinkIdsForUser,
   enforceRateLimit,
+  findLifeLinkIdByValue,
   getDonorProfile,
   getRequestorProfile,
+  getOrCreateLifeLinkId,
+  LIFELINK_ID_PATTERN,
+  lifeLinkIdKind,
   nextSequentialId,
   normalizeEmail,
   optionalUser,
@@ -16,6 +21,7 @@ import {
   requireUser,
   roleOf,
   rolesOf,
+  LifeLinkIdKind,
 } from "./lib/helpers";
 import {
   bloodGroupValidator,
@@ -38,6 +44,10 @@ export const me = query({
     const organization = user.organizationId
       ? await ctx.db.get(user.organizationId)
       : null;
+    const idEntry = await ctx.db
+      .query("lifeLinkIds")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .unique();
     return {
       user: {
         _id: user._id,
@@ -52,6 +62,7 @@ export const me = query({
       donor,
       requestor,
       organization,
+      lifeLinkId: idEntry?.lifeLinkId ?? null,
     };
   },
 });
@@ -142,6 +153,7 @@ export const registerDonor = mutation({
 
     const donorId = await nextSequentialId(ctx, "donor", "LL-D");
     const now = Date.now();
+    const lifeLinkId = await getOrCreateLifeLinkId(ctx, user, "LL-D");
     const profileId = await ctx.db.insert("donorProfiles", {
       userId: user._id,
       donorId,
@@ -176,7 +188,7 @@ export const registerDonor = mutation({
     await ctx.db.insert("notifications", {
       userId: user._id,
       title: "Welcome to LifeLink",
-      body: `Your donor ID is ${donorId}. Keep your availability current so verified requests can reach you.`,
+      body: `Your LifeLink ID is ${lifeLinkId}. Keep your availability current so verified requests can reach you.`,
       kind: "system",
       read: false,
       createdAt: now,
@@ -187,7 +199,7 @@ export const registerDonor = mutation({
       action: "donor.registered",
       entityType: "donorProfile",
       entityId: donorId,
-      detail: `Donor ${donorId} registered in ${city} with group ${args.bloodGroup}.`,
+      detail: `Donor ${donorId} registered in ${city} with group ${args.bloodGroup}; LifeLink ID ${lifeLinkId}.`,
     });
 
     return { donorId, profileId };
@@ -218,6 +230,7 @@ export const registerRequestor = mutation({
     const city = requireText(args.city, "City", 2, 80);
     const requestorId = await nextSequentialId(ctx, "requestor", "LL-P");
     const now = Date.now();
+    const lifeLinkId = await getOrCreateLifeLinkId(ctx, user, "LL-P");
 
     const profileId = await ctx.db.insert("requestorProfiles", {
       userId: user._id,
@@ -242,13 +255,21 @@ export const registerRequestor = mutation({
     await ctx.db.insert("notifications", {
       userId: user._id,
       title: "Requestor account ready",
-      body: `Your requestor ID is ${requestorId}. You can now submit and track blood requests.`,
+      body: `Your LifeLink ID is ${lifeLinkId}. You can now submit and track blood requests.`,
       kind: "system",
       read: false,
       createdAt: now,
     });
 
-    return { requestorId, profileId };
+    await audit(ctx, {
+      actor: { ...user, role: "community" },
+      action: "requestor.registered",
+      entityType: "requestorProfile",
+      entityId: requestorId,
+      detail: `Requestor ${requestorId} registered in ${city}; LifeLink ID ${lifeLinkId}.`,
+    });
+
+    return { requestorId, profileId, lifeLinkId };
   },
 });
 
@@ -325,10 +346,13 @@ export const registerOrganization = mutation({
       createdAt: user.createdAt ?? now,
     });
 
+    const lifeLinkKind: LifeLinkIdKind = args.type === "red_cross" ? "LL-RC" : "LL-HOSP";
+    const lifeLinkId = await getOrCreateLifeLinkId(ctx, user, lifeLinkKind);
+    const orgOrgId = orgId as string;
     await ctx.db.insert("notifications", {
       userId: user._id,
       title: "Organization registered and verified",
-      body: `${name} (${orgId}) is now linked to your account. Inventory and request actions are recorded in the audit log.`,
+      body: `${name} (${orgOrgId}) is now linked to your account. Your LifeLink ID is ${lifeLinkId}. Inventory and request actions are recorded in the audit log.`,
       kind: "system",
       read: false,
       createdAt: now,
@@ -338,12 +362,12 @@ export const registerOrganization = mutation({
       actor: { ...user, role: args.type },
       action: "organization.registered",
       entityType: "organization",
-      entityId: orgId,
-      detail: `${name} registered as ${args.type} in ${city}.`,
+      entityId: orgOrgId,
+      detail: `${name} registered as ${args.type} in ${city}; LifeLink ID ${lifeLinkId}.`,
       organizationId,
     });
 
-    return { orgId, organizationId };
+    return { orgId, organizationId, lifeLinkId };
   },
 });
 
@@ -549,6 +573,74 @@ export const updateMyOrganization = mutation({
  * `scope` mirrors the blood search: a single city unless an emergency widens
  * the search to the state or the whole country.
  */
+export const lifeLinkIdByValue = query({
+  args: { lifeLinkId: v.string() },
+  handler: async (ctx, args) => {
+    const entry = await findLifeLinkIdByValue(ctx, args.lifeLinkId);
+    if (!entry) return null;
+    const user = await ctx.db.get(entry.userId);
+    if (!user) return null;
+    return {
+      lifeLinkId: entry.lifeLinkId,
+      userId: entry.userId,
+      role: roleOf(user),
+      name: user.name ?? null,
+      email: user.email ?? null,
+      organizationId: user.organizationId ?? null,
+      createdAt: entry.createdAt,
+    };
+  },
+});
+
+export const myLifeLinkId = query({
+  args: {},
+  handler: async (ctx) => {
+    const user = await requireUser(ctx);
+    const entry = await ctx.db
+      .query("lifeLinkIds")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .unique();
+    if (!entry) return null;
+    if (!LIFELINK_ID_PATTERN.test(entry.lifeLinkId)) {
+      // Defensive: never surface an internally-corrupted identifier.
+      throw new Error("Your LifeLink ID is invalid. Contact support.");
+    }
+    const kind = lifeLinkIdKind(entry.lifeLinkId);
+    return {
+      lifeLinkId: entry.lifeLinkId,
+      kind,
+      roleAtCreation: entry.roleAtCreation,
+      createdAt: entry.createdAt,
+    };
+  },
+});
+
+export const backfillLifeLinkId = mutation({
+  args: {
+    kind: v.union(
+      v.literal("LL-D"),
+      v.literal("LL-P"),
+      v.literal("LL-HOSP"),
+      v.literal("LL-RC"),
+      v.literal("LL-GUA"),
+      v.literal("LL-ADM"),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireUser(ctx);
+    const kind = args.kind as LifeLinkIdKind;
+    const lifeLinkId = await backfillLifeLinkIdsForUser(ctx, user._id, kind);
+    await audit(ctx, {
+      actor: user,
+      action: "account.lifelink_id_backfilled",
+      entityType: "user",
+      entityId: String(user._id),
+      detail: `LifeLink ID ${lifeLinkId} assigned (${kind}) for account that did not have one.`,
+    });
+    return { lifeLinkId };
+  },
+});
+
 export const publicOrganizations = query({
   args: {
     type: v.optional(orgTypeValidator),

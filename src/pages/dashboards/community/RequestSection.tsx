@@ -51,7 +51,8 @@ import {
   type Component,
   type Urgency,
 } from "@/lib/blood";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
+import { friendlyError } from "@/lib/utils";
 import {
   AlertTriangle,
   ArrowRight,
@@ -114,6 +115,7 @@ export function RequestSection({
 
   const requests = useQuery(api.requests.mine);
   const updateStatus = useMutation(api.requests.updateStatus);
+  const updateOwnRequest = useMutation(api.requests.updateOwnRequest);
   const tracked = useQuery(api.requests.getDetail, trackedId ? { id: trackedId } : "skip");
 
   const stats = useMemo(() => {
@@ -495,6 +497,7 @@ export function RequestSection({
             </div>
           )}
         </div>
+      </>
       )}
 
       {/* Tracking dialog */}

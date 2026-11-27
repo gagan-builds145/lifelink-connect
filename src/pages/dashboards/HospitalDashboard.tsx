@@ -2,6 +2,8 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { DashboardShell } from "@/components/lifelink/DashboardShell";
 import { RequestForm } from "@/components/lifelink/RequestForm";
+import HospitalPatientRecords from "@/pages/HospitalPatientRecords";
+
 import {
   BatchDeadlineEditor,
   BloodTypeCoverage,
@@ -56,6 +58,7 @@ import {
   ClipboardList,
   Clock3,
   Droplets,
+  FolderOpen,
   HeartHandshake,
   Hospital,
   Info,
@@ -78,7 +81,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { toast } from "sonner";
 
-type Tab = "overview" | "requests" | "new" | "storage" | "availability" | "profile";
+type Tab = "overview" | "requests" | "new" | "storage" | "availability" | "patient-records" | "profile";
 
 const today = () => new Date().toISOString().slice(0, 10);
 const plusDays = (days: number) =>
@@ -254,6 +257,7 @@ export default function HospitalDashboard() {
     { key: "new", label: "New request", icon: Plus },
     { key: "storage", label: "Blood storage", icon: Droplets, badge: openAlerts.length },
     { key: "availability", label: "Partner availability", icon: Search },
+    { key: "patient-records", label: "Patient records", icon: FolderOpen },
   ];
 
   return (
@@ -837,6 +841,10 @@ export default function HospitalDashboard() {
             expose donor identity or promise that reported stock remains available.
           </div>
         </div>
+             )}
+
+      {tab === "patient-records" && (
+        <HospitalPatientRecords />
       )}
 
       {tab === "profile" && (

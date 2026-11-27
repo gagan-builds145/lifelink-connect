@@ -1,5 +1,6 @@
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { DonorMedicalRecordsSection } from "./DonorMedicalRecordsSection";
 import type { FunctionReturnType } from "convex/server";
 import { ActivateDonorPanel } from "@/components/lifelink/community/Activations";
 import { SectionHeading, SkeletonPanel } from "@/components/lifelink/community/shared";
@@ -70,6 +71,7 @@ import {
   Sparkles,
   Users,
 } from "lucide-react";
+
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { toast } from "sonner";
@@ -77,7 +79,7 @@ import type { SectionKey } from "../CommunityDashboard";
 
 type DonorProfile = NonNullable<FunctionReturnType<typeof api.profiles.me>>["donor"];
 
-type DonateTab = "home" | "invitations" | "matches" | "camps" | "history" | "profile";
+type DonateTab = "home" | "invitations" | "matches" | "camps" | "history" | "profile" | "medical-records";
 
 const TABS: { key: DonateTab; label: string }[] = [
   { key: "home", label: "Donor home" },
@@ -86,6 +88,7 @@ const TABS: { key: DonateTab; label: string }[] = [
   { key: "camps", label: "Camps" },
   { key: "history", label: "History" },
   { key: "profile", label: "Donor profile" },
+  { key: "medical-records", label: "Medical records" },
 ];
 
 function TabBar({
@@ -152,6 +155,7 @@ export function DonateSection({
     shareContact: boolean;
   } | null>(null);
 
+  const me = useQuery(api.profiles.me);
   const summary = useQuery(api.donors.summary);
   const nearby = useQuery(api.requests.donorNearby);
   const donationsData = useQuery(api.donors.myDonations);
@@ -527,9 +531,9 @@ export function DonateSection({
                 variant="outline"
                 size="sm"
                 className="mt-4 w-full gap-1.5 text-[11px]"
-                onClick={() => setTab("profile")}
+                onClick={() => setTab("medical-records")}
               >
-                <Settings2 className="size-3.5" /> Manage privacy settings
+                <FileMedical className="size-3.5" /> View medical records
               </Button>
             </section>
           </div>
@@ -1155,11 +1159,17 @@ export function DonateSection({
                 clinical factors determine eligibility. The donation centre has final say.
               </p>
             </div>
-            <Button variant="outline" size="sm" className="w-full gap-1.5 text-[11px]" onClick={() => setTab("invitations")}>
-              <MapPin className="size-3.5" /> Location sharing consent
+                          <Button variant="outline" size="sm" className="w-full gap-1.5 text-[11px]" onClick={() => setTab("medical-records")}>
+              <FileMedical className="size-3.5" /> Medical records
             </Button>
           </section>
         </div>
+      )}
+
+      {tab === "medical-records" && (
+        <DonorMedicalRecordsSection
+          lifeLinkId={me?.lifeLinkId ?? donor.donorId}
+        />
       )}
 
       <Dialog open={offerTarget != null} onOpenChange={(open) => !open && setOfferTarget(null)}>

@@ -396,7 +396,7 @@ export const commitDonorEscalation = internalMutation({
       );
       if (!eligibility.eligible) continue;
 
-      const score = entry.score;
+      const ml = scoreByProfile.get(String(entry.donorProfileId));
       await ctx.db.insert("donorInvitations", {
         requestId: args.requestId,
         requestingOrgId: args.prepared.requestingOrgId,
@@ -406,15 +406,15 @@ export const commitDonorEscalation = internalMutation({
         component: args.prepared.component as Doc<"bloodRequests">["component"],
         units: args.prepared.shortfall,
         distanceKm: entry.distanceKm,
-        responseProbability: entry.responseProbability ?? undefined,
-        responseModel: score ? "random_forest_donor_response" : args.model,
-        responseModelVersion: score?.modelVersion ?? undefined,
-        responseModelSynthetic: score?.synthetic ?? false,
+        responseProbability: ml?.responseProbability ?? undefined,
+        responseModel: ml ? "random_forest_donor_response" : args.model,
+        responseModelVersion: ml?.modelVersion ?? undefined,
+        responseModelSynthetic: ml?.synthetic ?? false,
         responseExplanation:
-          score?.explanation ??
+          ml?.explanation ??
           args.fallbackReason ??
           "ML scoring was unavailable. Invitations were ordered by distance only.",
-        predictedAt: score ? now : undefined,
+        predictedAt: ml ? now : undefined,
         status: "sent",
         idempotencyKey: entry.idempotencyKey,
         createdAt: now,

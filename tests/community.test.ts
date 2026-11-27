@@ -582,23 +582,44 @@ describe("request lifecycle in the unified dashboard", () => {
     });
     const asOwner = t.withIdentity({ subject: String(seeded.id) });
 
-    const created = await asOwner.mutation(api.requests.create, {
-      source: "requestor",
-      requestorName: "Community Member",
-      requestorType: "family",
-      requesterPhone: "9876543210",
-      patientName: "Synthetic Patient",
-      patientRef: "SYN-CREATE-1",
-      hospitalName: "Community Test Hospital",
-      city: "Pune",
-      bloodGroup: "O+",
-      component: "red_cells",
-      units: 2,
-      requiredBy: NOW + 2 * DAY,
-      urgency: "urgent",
-      reason: "Synthetic request created from the unified community dashboard test.",
-      consent: true,
-      clientRequestId: "community-create-1",
+    // Community/requestor accounts can no longer create blood requests through
+    // the mutation (creation is limited to verified hospitals and Red Cross).
+    // Seed the request directly so the dashboard integration can still be
+    // exercised: a request the community account created previously appears in
+    // the overview and activity even though new creation is now blocked.
+    const created = await t.run(async (ctx) => {
+      const id = await ctx.db.insert("bloodRequests", {
+        requestId: "LL-COM-7500",
+        source: "requestor",
+        createdByUserId: seeded.id,
+        requestorName: "Community Member",
+        requestorType: "family",
+        requesterPhone: "9876543210",
+        patientName: "Synthetic Patient",
+        patientRef: "SYN-CREATE-1",
+        hospitalName: "Community Test Hospital",
+        hospitalOrgId: network.hospitalOrg,
+        city: "Pune",
+        bloodGroup: "O+",
+        component: "red_cells",
+        units: 2,
+        requiredBy: NOW + 2 * DAY,
+        urgency: "urgent",
+        reason: "Synthetic request created from the unified community dashboard test.",
+        consent: true,
+        status: "pending",
+        createdAt: NOW,
+        updatedAt: NOW,
+      });
+      await ctx.db.insert("requestStatusHistory", {
+        requestId: id,
+        status: "pending",
+        actorRole: "requestor",
+        actorUserId: seeded.id,
+        note: "Synthetic seed history.",
+        createdAt: NOW,
+      });
+      return { id, requestId: "LL-COM-7500" };
     });
 
     const overview = await asOwner.query(api.community.overview, {});

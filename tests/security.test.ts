@@ -209,8 +209,12 @@ async function setup(t: TestApp) {
 type Network = Awaited<ReturnType<typeof setup>>;
 
 async function createRequest(t: TestApp, network: Network, overrides: Record<string, unknown> = {}) {
-  return await t.withIdentity({ subject: String(network.requestorA) }).mutation(api.requests.create, {
-    source: "requestor",
+  // Blood request creation is limited to verified hospitals and Red Cross
+  // organizations. These security tests create requests as a hospital so the
+  // permission model is exercised correctly while still testing injection,
+  // XSS, cross-user access and error masking.
+  return await t.withIdentity({ subject: String(network.hospitalAUser) }).mutation(api.requests.create, {
+    source: "hospital",
     requestorName: "Requestor A",
     requestorType: "family",
     requesterPhone: "9876543210",
@@ -230,7 +234,7 @@ async function createRequest(t: TestApp, network: Network, overrides: Record<str
     consent: true,
     clientRequestId: `sec-${Math.random().toString(36).slice(2, 10)}`,
     ...overrides,
-  } as never);
+  });
 }
 
 describe("security firewall", () => {
@@ -239,10 +243,11 @@ describe("security firewall", () => {
     const network = await setup(t);
     const payload = "'; DROP TABLE users; -- {\"$ne\": null}";
     const created = await createRequest(t, network, { patientName: payload });
-    const detail = await t
-      .withIdentity({ subject: String(network.requestorA) })
+    // The hospital creator sees the payload stored exactly as submitted.
+    const creatorView = await t
+      .withIdentity({ subject: String(network.hospitalAUser) })
       .query(api.requests.getDetail, { id: created.id });
-    expect(detail?.request.patientName).toBe(payload);
+    expect(creatorView?.request.patientName).toBe(payload);
     // The payload did not alter the users table or grant another user access.
     const other = await t
       .withIdentity({ subject: String(network.requestorB) })
@@ -264,10 +269,11 @@ describe("security firewall", () => {
 
     const xss = '<img src=x onerror="alert(1)">';
     const created = await createRequest(t, network, { reason: xss });
-    const detail = await t
-      .withIdentity({ subject: String(network.requestorA) })
+    // The hospital creator sees the XSS payload stored as inert text.
+    const creatorView = await t
+      .withIdentity({ subject: String(network.hospitalAUser) })
       .query(api.requests.getDetail, { id: created.id });
-    expect(detail?.request.reason).toBe(xss);
+    expect(creatorView?.request.reason).toBe(xss);
   });
 
   test("3. brute-force / OTP requests are rate limited and logged", async () => {
@@ -343,14 +349,34 @@ describe("security firewall", () => {
   test("7. malformed API requests are rejected by schema validation", async () => {
     const t = convexTest(schema, modules);
     const network = await setup(t);
+    // Units outside the allowed range are rejected at the validation layer.
     await expect(createRequest(t, network, { units: 0 })).rejects.toThrow();
     await expect(createRequest(t, network, { units: 999 })).rejects.toThrow();
+    // An invalid blood group is rejected at the validation layer.
     await expect(createRequest(t, network, { bloodGroup: "Z+" })).rejects.toThrow();
+    // A requestor account that supplies every required field still cannot create
+    // a blood request, because creation is now limited to verified hospitals and
+    // Red Cross organizations. Schema validation passes (all required fields are
+    // present) and the handler enforces the permission gate.
     await expect(
       t.withIdentity({ subject: String(network.requestorA) }).mutation(api.requests.create, {
         source: "requestor",
+        requestorName: "Requestor A",
+        requestorType: "family",
+        requesterPhone: "9876543210",
+        patientName: "Synthetic Patient",
+        patientRef: "SYN-1",
+        hospitalName: "Hospital A",
+        city: "Pune",
+        bloodGroup: "O+",
+        component: "red_cells",
+        units: 2,
+        requiredBy: Date.now() + 6 * 3_600_000,
+        urgency: "urgent",
+        reason: "Synthetic post-operative haemorrhage requiring transfusion.",
+        consent: true,
       } as never),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/cannot create a blood request/i);
   });
 
   test("8. oversized requests are rejected", async () => {

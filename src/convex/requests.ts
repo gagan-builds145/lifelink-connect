@@ -168,21 +168,14 @@ async function notifyCompatibleDonors(
     const idempotencyKey = `${request._id}:${donor._id}`;
     if (existingInviteKeys.has(idempotencyKey)) continue;
 
-    // Create a donor invitation so the request appears on the donor's dashboard.
+    // Real-time donor awareness: notify eligible, consented donors so the
+    // request reaches recipients without waiting for Red Cross approval.
+    // The donor invitation record (which allows accept/decline) is created by
+    // the donor fallback action only after institutional stock is reserved and
+    // a shortfall is confirmed, so invitations are never created for a request
+    // that institutional supply can already cover.
     const requestingOrgId = request.hospitalOrgId ?? request.assignedOrgId;
     if (!requestingOrgId) continue;
-    await ctx.db.insert("donorInvitations", {
-      requestId: request._id,
-      requestingOrgId,
-      donorUserId: donor.userId,
-      donorProfileId: donor._id,
-      bloodGroup: request.bloodGroup,
-      component: request.component,
-      units: request.units,
-      status: "sent",
-      idempotencyKey,
-      createdAt: Date.now(),
-    });
     const area = location.sameCity
       ? request.city
       : `${request.city}, ${requestState ?? "same state"}`;

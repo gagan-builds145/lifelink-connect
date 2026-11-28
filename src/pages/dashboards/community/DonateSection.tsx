@@ -60,7 +60,7 @@ import {
   Clock3,
   Droplets,
   HeartHandshake,
-  HeartPulse,
+
   History,
   Loader2,
   MapPin,
@@ -227,7 +227,7 @@ export function DonateSection({
             </ul>
           </section>
           <section className="rounded-2xl border border-dashed border-border bg-muted/20 p-5">
-            <HeartPulse className="size-5 text-primary" />
+                          <HeartPulse="size-5 text-primary" />
             <h3 className="mt-2 font-display text-base font-bold">Requesting blood still works</h3>
             <p className="mt-1 text-[11.5px] leading-5 text-muted-foreground">
               Your requestor profile is separate from donor access. Continue tracking requests
